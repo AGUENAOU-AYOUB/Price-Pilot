@@ -21,6 +21,7 @@
 - Provide preview, backup, apply actions, real-time logs, and guarded loading states across all sub-pages.
 - Recompute and display compare-at prices alongside every price calculation to keep them synchronized.
 
+
 #### Bracelets
 - Supplements (MAD): Forsat S +0 (default/base price), Forsat M +150, Forsat L +290, Gourmette S +290, Chopard S +390, Gourmette M +550, Chopard M +750.
 - Workflow: for each product tagged `brac` in collection "bracelet", set each variant price to `base_price (Forsat S) + supplement`.
