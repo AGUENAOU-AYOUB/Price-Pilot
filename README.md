@@ -12,6 +12,8 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
 - 🌐 **English/French toggle** – Switch instantly between languages.
 - 🎨 **Tailwind styling** – Responsive UI using the provided Azor Jewelry palette.
 
+> **Note:** The codebase is intentionally JavaScript-only. No `.ts`, `.tsx`, or declaration files are used so the project aligns with the requested stack.
+
 ## Getting started
 
 1. **Install dependencies**
