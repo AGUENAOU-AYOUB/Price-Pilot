@@ -63,6 +63,7 @@ export const messages = {
     'table.newCompareAt': 'New compare at',
     'table.variants': 'Variants',
     'table.noVariants': 'No variants yet',
+    'table.noPreviews': 'No preview data yet',
   },
   fr: {
     'nav.dashboard': 'Tableau de bord',
@@ -128,5 +129,6 @@ export const messages = {
     'table.newCompareAt': 'Nouveau prix comparatif',
     'table.variants': 'Variantes',
     'table.noVariants': 'Aucune variante pour le moment',
+    'table.noPreviews': 'Aucun aperçu pour le moment',
   },
 };
