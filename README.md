@@ -39,8 +39,23 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
 
    The Shopify values are available in the app through `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN` and `import.meta.env.VITE_SHOPIFY_ACCESS_TOKEN` whenever you wire the API calls.
 
+3. **Generate a Shopify Admin API token**
 
-3. **Run the development server**
+   Shopify issues Admin API tokens from a custom app inside your store. You only need to do this once per store:
+
+   1. Sign in to your Shopify admin and open **Settings ▸ Apps and sales channels**.
+   2. Click **Develop apps** (enable it if prompted) and select **Create an app**.
+   3. Give the app a name such as “Price Pilot” and create it.
+   4. Under **Configuration**, add the following Admin API scopes:
+      - `read_products`
+      - `write_products`
+      - `read_product_listings`
+      - `write_product_listings`
+   5. Save, then go to **API credentials**, click **Install app**, and confirm.
+   6. Copy the **Admin API access token** (it is shown only once) and place it in your `.env` file as `VITE_SHOPIFY_ACCESS_TOKEN`.
+   7. Copy your store domain (e.g. `azorjewelry.myshopify.com`) into `VITE_SHOPIFY_STORE_DOMAIN`.
+
+4. **Run the development server**
 
    ```bash
    npm run dev
