@@ -34,6 +34,11 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
    | --- | --- |
    | `VITE_APP_USERNAME` | Username required to sign in |
    | `VITE_APP_PASSWORD` | Password required to sign in |
+   | `VITE_SHOPIFY_STORE_DOMAIN` | Your Shopify storefront domain (e.g. `azorjewelry.myshopify.com`) |
+   | `VITE_SHOPIFY_ACCESS_TOKEN` | Admin API access token used for authenticated requests |
+
+   The Shopify values are available in the app through `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN` and `import.meta.env.VITE_SHOPIFY_ACCESS_TOKEN` whenever you wire the API calls.
+
 
 3. **Run the development server**
 
@@ -54,7 +59,7 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
 
 - [React 18](https://react.dev/)
 - [Vite 5](https://vitejs.dev/)
-- [TypeScript](https://www.typescriptlang.org/)
+- [JavaScript (ESNext)](https://developer.mozilla.org/docs/Web/JavaScript)
 - [Zustand](https://github.com/pmndrs/zustand)
 - [Tailwind CSS](https://tailwindcss.com/)
 

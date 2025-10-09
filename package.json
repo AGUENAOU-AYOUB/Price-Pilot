@@ -5,13 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@headlessui/react": "^1.7.18",
-    "@heroicons/react": "^2.1.5",
-    "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -19,13 +16,10 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@types/react": "^18.2.45",
-    "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.3",
-    "typescript": "^5.4.2",
     "vite": "^5.1.3"
   }
 }
