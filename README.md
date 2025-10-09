@@ -36,6 +36,7 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
    | `VITE_APP_PASSWORD` | Password required to sign in |
    | `VITE_SHOPIFY_STORE_DOMAIN` | Your Shopify storefront domain (e.g. `azorjewelry.myshopify.com`) |
    | `VITE_SHOPIFY_ACCESS_TOKEN` | Admin API access token used for authenticated requests |
+   | `SHOPIFY_WEBHOOK_SECRET` | Secret used to verify webhook signatures from Shopify |
 
    The Shopify values are available in the app through `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN` and `import.meta.env.VITE_SHOPIFY_ACCESS_TOKEN` whenever you wire the API calls.
 
@@ -69,6 +70,33 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
 - **Supplement editors** – Modify the supplements for each variant type; hand chain values derive automatically from necklace data, and sets combine bracelet + necklace supplements.
 - **Compare-at parity** – Every price update mirrors immediately to its compare-at counterpart.
 - **Backups** – Trigger a backup before applying to preserve the current state. Restore at any time from the activity log panel.
+
+## Automating Forsat S changes from Shopify
+
+Whenever you update the **Forsat S** base price directly inside Shopify, you can forward the event to this project so that every other variant is recalculated automatically.
+
+1. **Expose the webhook listener**
+
+   ```bash
+   npm run webhook
+   ```
+
+   The server listens on port `3000` by default. Use a tunneling service such as [ngrok](https://ngrok.com/) to expose `http://localhost:3000/webhooks/product-update` to Shopify.
+
+2. **Capture the webhook secret** – In your Shopify custom app, open **Configuration ▸ Webhooks** and copy the signing secret. Place it in `.env` as `SHOPIFY_WEBHOOK_SECRET`.
+
+3. **Create the webhook** – Still inside the custom app, add a **Product update** webhook and point it to the public URL from step 1. Select the same Admin API version configured in the server (defaults to `2024-04`).
+
+4. **Trigger updates** – Whenever a product tagged `brac`, `nckl`, or `set` (and marked active) has its Forsat S variant price changed, the webhook listener:
+   - locates the Forsat S + 41cm base variant,
+   - recalculates every other variant using the supplement tables in `src/data/supplements.js`,
+   - rounds prices to the nearest `00`/`90`,
+   - mirrors the values onto `compare_at_price`, and
+   - calls Shopify’s Admin API to persist the new numbers.
+
+5. **Monitor the logs** – The listener prints a summary for each product. You can also `GET /healthz` to verify the service is alive.
+
+> **Tip:** Adjusting supplements inside the React dashboard updates the preview state only. To keep webhook automation in sync, edit `src/data/supplements.js` (and restart the webhook server) so both paths share the same supplement values.
 
 ## Tech stack
 

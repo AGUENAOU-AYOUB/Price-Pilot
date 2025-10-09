@@ -54,6 +54,7 @@
 ## Shopify Sync Requirements
 - When Forsat S price changes directly in Shopify (bracelets, necklaces, sets), automatically recalculate other variant prices using the supplement tables to keep variants in sync. The same recalculations must be applied to each variant's compare-at price.
 - Exclude rings from this automatic Shopify-triggered recalculation.
+- Provide a webhook listener (`npm run webhook`) that ingests Shopify `product/update` events, verifies the HMAC secret, and persists the recalculated prices via the Admin API.
 
 ## Example Calculations
 - **Necklace Example**: Base price (Forsat S @ 41cm) = 2,000 MAD. Choosing Chopard M (+1,890 MAD) and 70cm adds `(70 - 41) * 70 = 2,030 MAD`. Final price = `2,000 + 1,890 + 2,030 = 5,920 MAD`.
