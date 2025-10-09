@@ -39,6 +39,7 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
 
    The Shopify values are available in the app through `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN` and `import.meta.env.VITE_SHOPIFY_ACCESS_TOKEN` whenever you wire the API calls.
 
+
 3. **Run the development server**
 
    ```bash
