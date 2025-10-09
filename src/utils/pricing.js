@@ -1,4 +1,4 @@
-import { necklaceSizes, ringBandSupplements, ringSizes } from '../data/supplements';
+import { necklaceSizes, ringBandSupplements, ringSizes } from '../data/supplements.js';
 
 export const roundToLuxuryStep = (value) => {
   if (!Number.isFinite(value)) {
