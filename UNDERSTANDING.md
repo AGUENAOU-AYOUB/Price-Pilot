@@ -10,6 +10,7 @@
 - Fetch all active Shopify products and adjust their prices by a chosen percentage.
 - Round adjusted prices to the nearest value ending in `.00` or `.90` (e.g., 1,587 → 1,590; 1,596 → 1,600).
 - Display previews showing old vs. new prices (including compare-at prices) before applying updates.
+- Apply identical adjustments to each variant's compare-at price whenever the primary price changes (including during backups and restores).
 - Provide explicit controls for preview, applying updates, and backing up prices prior to changes.
 - Show real-time logs and loading states to prevent duplicate submissions and monitor progress.
 
@@ -18,6 +19,8 @@
 - Each sub-page processes only active Shopify products within a specific collection and tag (e.g., Bracelets: collection "bracelet" with tag "brac").
 - Use configurable supplement tables (stored in JSON and editable in the UI) to calculate Shopify variant prices from base (default) variants.
 - Provide preview, backup, apply actions, real-time logs, and guarded loading states across all sub-pages.
+- Recompute and display compare-at prices alongside every price calculation to keep them synchronized.
+
 
 #### Bracelets
 - Supplements (MAD): Forsat S +0 (default/base price), Forsat M +150, Forsat L +290, Gourmette S +290, Chopard S +390, Gourmette M +550, Chopard M +750.
@@ -50,7 +53,7 @@
 - Supplement tables inherit updates from bracelets/necklaces automatically.
 
 ## Shopify Sync Requirements
-- When Forsat S price changes directly in Shopify (bracelets, necklaces, sets), automatically recalculate other variant prices using the supplement tables to keep variants in sync.
+- When Forsat S price changes directly in Shopify (bracelets, necklaces, sets), automatically recalculate other variant prices using the supplement tables to keep variants in sync. The same recalculations must be applied to each variant's compare-at price.
 - Exclude rings from this automatic Shopify-triggered recalculation.
 
 ## Example Calculations
