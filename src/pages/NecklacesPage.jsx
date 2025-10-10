@@ -26,12 +26,13 @@ export function NecklacesPage() {
     setPreviews(previewNecklaces());
   };
 
-  const handleApply = () => {
+  const handleApply = async () => {
     toggleLoading('necklaces', true);
-    setTimeout(() => {
-      applyNecklaces();
+    try {
+      await applyNecklaces();
+    } finally {
       toggleLoading('necklaces', false);
-    }, 450);
+    }
   };
 
   return (

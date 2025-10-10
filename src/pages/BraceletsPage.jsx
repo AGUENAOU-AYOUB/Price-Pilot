@@ -26,12 +26,13 @@ export function BraceletsPage() {
     setPreviews(previewBracelets());
   };
 
-  const handleApply = () => {
+  const handleApply = async () => {
     toggleLoading('bracelets', true);
-    setTimeout(() => {
-      applyBracelets();
+    try {
+      await applyBracelets();
+    } finally {
       toggleLoading('bracelets', false);
-    }, 450);
+    }
   };
 
   return (
