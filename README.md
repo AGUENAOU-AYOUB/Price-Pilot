@@ -95,6 +95,15 @@ your backend, Shopify’s CORS restrictions no longer apply and the dashboard no
 receives the full active catalog instead of falling back to the bundled
 eight-item mock list.
 
+### Persisting ring price updates
+
+When you click **Apply** on the Rings page, the UI now posts the recalculated
+variant prices to the proxy’s `POST /variants/bulk-update` endpoint. The server
+streams each change to Shopify’s Admin API using the private
+`SHOPIFY_ACCESS_TOKEN`, then reports any failures back to the activity log. Keep
+the proxy running before applying ring changes so the storefront is updated
+alongside the local dashboard state.
+
 ## Key concepts
 
 - **Luxury rounding** – All computed prices are rounded to the closest value ending in `00` or `90`.

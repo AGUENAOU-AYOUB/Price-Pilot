@@ -9,7 +9,7 @@ import {
 } from '../data/supplements';
 import { mockProducts } from '../data/products';
 import { hasShopifyProxy } from '../config/shopify';
-import { fetchActiveProducts } from '../services/shopify';
+import { fetchActiveProducts, pushVariantUpdates } from '../services/shopify';
 import {
   applyPercentage,
   buildBraceletVariants,
@@ -221,15 +221,159 @@ export const usePricingStore = create(
         }));
     },
 
-    applyRings: () => {
+    applyRings: async () => {
       const { products, supplements } = get();
-      const updated = products.map((product) => {
-        if (product.collection !== 'bague') return product;
-        const variants = buildRingVariants(product, supplements.rings);
-        return { ...product, variants };
-      });
-      set({ products: updated });
-      get().log('Ring variants updated.', 'rings');
+
+      const updatedProducts = [];
+      const updatesByProduct = new Map();
+      const missingMappings = [];
+      const originalVariantLookup = new Map();
+
+      for (const product of products) {
+        if (product.collection !== 'bague') {
+          updatedProducts.push(product);
+          continue;
+        }
+
+        for (const variant of product.variants) {
+          if (variant?.id) {
+            const variantId = String(variant.id);
+            originalVariantLookup.set(variantId, variant);
+          }
+        }
+
+        const targetVariants = buildRingVariants(product, supplements.rings);
+        const targetByTitle = new Map(targetVariants.map((variant) => [variant.title, variant]));
+
+        const nextVariants = product.variants.map((variant) => {
+          const target = targetByTitle.get(variant.title);
+          if (!target) {
+            return variant;
+          }
+
+          if (
+            variant.id &&
+            (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
+          ) {
+            if (!updatesByProduct.has(product.id)) {
+              updatesByProduct.set(product.id, {
+                productId: product.id,
+                productTitle: product.title,
+                variants: [],
+              });
+            }
+
+            updatesByProduct.get(product.id).variants.push({
+              id: variant.id,
+              price: target.price,
+              compareAtPrice: target.compareAtPrice,
+            });
+          }
+
+          return {
+            ...variant,
+            price: target.price,
+            compareAtPrice: target.compareAtPrice,
+          };
+        });
+
+        const missingTitles = targetVariants
+          .filter((variant) => !product.variants.some((existing) => existing.title === variant.title))
+          .map((variant) => variant.title);
+
+        if (missingTitles.length > 0) {
+          missingMappings.push({ product, titles: missingTitles });
+        }
+
+        updatedProducts.push({ ...product, variants: nextVariants });
+      }
+
+      if (missingMappings.length > 0) {
+        for (const { product, titles } of missingMappings) {
+          get().log(
+            `Skipped ${titles.length} ring variants for ${product.title} because matching Shopify variants were not found.`,
+            'rings',
+          );
+        }
+      }
+
+      const updatesPayload = Array.from(updatesByProduct.values());
+
+      if (!hasShopifyProxy()) {
+        get().log('Shopify proxy missing; ring changes applied locally only.', 'rings');
+        set({ products: updatedProducts });
+        get().log('Ring variants updated.', 'rings');
+        return;
+      }
+
+      if (updatesPayload.length === 0) {
+        set({ products: updatedProducts });
+        get().log('Ring variants already aligned with supplements; no Shopify update sent.', 'rings');
+        return;
+      }
+
+      try {
+        const result = await pushVariantUpdates(updatesPayload);
+
+        const failedVariantIds = new Set(
+          Array.isArray(result?.failures)
+            ? result.failures
+                .map((failure) => (failure?.variantId ? String(failure.variantId) : ''))
+                .filter(Boolean)
+            : [],
+        );
+
+        const finalProducts = updatedProducts.map((product) => {
+          if (product.collection !== 'bague' || failedVariantIds.size === 0) {
+            return product;
+          }
+
+          const nextVariants = product.variants.map((variant) => {
+            const variantId = String(variant?.id ?? '');
+            if (!variantId || !failedVariantIds.has(variantId)) {
+              return variant;
+            }
+
+            const original = originalVariantLookup.get(variantId);
+            return original ? { ...original } : variant;
+          });
+
+          return { ...product, variants: nextVariants };
+        });
+
+        set({ products: finalProducts });
+
+        const failedCount = Number.isFinite(result?.failedCount)
+          ? result.failedCount
+          : Array.isArray(result?.failures)
+          ? result.failures.length
+          : 0;
+        const failures = Array.isArray(result?.failures) ? result.failures : [];
+        const updatedCount = Number.isFinite(result?.updatedCount)
+          ? result.updatedCount
+          : 0;
+
+        if (failedCount > 0) {
+          get().log(
+            `Updated ${updatedCount} Shopify ring variants with ${failedCount} failures.`,
+            'rings',
+          );
+          for (const failure of failures) {
+            get().log(
+              `Failed to update variant ${failure.variantId} for ${failure.productTitle}: ${failure.reason}`,
+              'rings',
+            );
+          }
+        } else {
+          get().log(`Updated ${updatedCount} Shopify ring variants.`, 'rings');
+        }
+        if (updatedCount > 0) {
+          get().log('Ring variants updated.', 'rings');
+        }
+      } catch (error) {
+        console.error('Failed to push ring variant updates to Shopify', error);
+        get().log('Failed to push ring variant updates to Shopify.', 'rings');
+      }
     },
 
     previewHandChains: () => {
