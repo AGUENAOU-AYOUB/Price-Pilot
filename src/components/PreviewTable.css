@@ -44,6 +44,17 @@
   justify-content: space-between;
   gap: 1.25rem;
   cursor: pointer;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+}
+
+.preview-gallery__header:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+  border-radius: 1.25rem;
 }
 
 .preview-gallery__meta {

@@ -173,18 +173,17 @@ const parseLinkHeader = (header) => {
 
   return null;
 };
+
 const buildProductsUrl = ({ status = 'active', pageInfo = null }) => {
   const url = new URL(PRODUCTS_ENDPOINT);
   url.searchParams.set('limit', '250');
   url.searchParams.set('fields', 'id,title,handle,status,tags,product_type,variants');
-  
-  // ✅ FIX: Only add status parameter if pageInfo is NOT present
-  if (pageInfo) {
-    url.searchParams.set('page_info', pageInfo);
-  } else if (status) {
+  if (status) {
     url.searchParams.set('status', status);
   }
-  
+  if (pageInfo) {
+    url.searchParams.set('page_info', pageInfo);
+  }
   return url.toString();
 };
 

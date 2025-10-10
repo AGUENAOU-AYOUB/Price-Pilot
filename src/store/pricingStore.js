@@ -103,6 +103,50 @@ const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) =
   return merged;
 };
 
+const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const resolveVariantPrice = (variant, product) => {
+  const basePrice = toNumberOrNull(product?.basePrice) ?? 0;
+  return toNumberOrNull(variant?.price) ?? basePrice;
+};
+
+const resolveVariantCompareAt = (variant, product) => {
+  const fallbackPrice = resolveVariantPrice(variant, product);
+  const variantCompare = toNumberOrNull(variant?.compareAtPrice);
+  if (variantCompare !== null) {
+    return variantCompare;
+  }
+
+  const productCompare = toNumberOrNull(product?.baseCompareAtPrice);
+  if (productCompare !== null) {
+    return productCompare;
+  }
+
+  return fallbackPrice;
+};
+
+const hasMeaningfulDelta = (previous, next, tolerance = 0.01) => {
+  const prevNum = toNumberOrNull(previous);
+  const nextNum = toNumberOrNull(next);
+
+  if (prevNum === null && nextNum === null) {
+    return false;
+  }
+
+  if (prevNum === null || nextNum === null) {
+    return true;
+  }
+
+  return Math.abs(prevNum - nextNum) > tolerance;
+};
+
 const buildRingKey = (band, size) => {
   if (!band || !size) {
     return null;
@@ -1038,22 +1082,32 @@ export const usePricingStore = create(
               const key = deriveBraceletKey(variant);
               const currentVariant = key ? lookup.get(key) : null;
               const matched = Boolean(currentVariant);
-              const previousPrice = matched
-                ? Number(currentVariant?.price ?? product.basePrice)
-                : null;
-              const previousCompare = matched
-                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
-                : null;
-              const changed =
+              const targetPrice = toNumberOrNull(variant.price);
+              const targetCompare = toNumberOrNull(variant.compareAtPrice);
+              const previousPrice = matched ? resolveVariantPrice(currentVariant, product) : null;
+              const previousCompare = matched ? resolveVariantCompareAt(currentVariant, product) : null;
+              const priceChanged = matched && hasMeaningfulDelta(previousPrice, targetPrice);
+              const compareChanged =
                 matched &&
-                (previousPrice !== Number(variant.price) ||
-                  previousCompare !== Number(variant.compareAtPrice));
+                targetCompare !== null &&
+                (previousCompare === null || hasMeaningfulDelta(previousCompare, targetCompare));
+
+              const changeType = !matched
+                ? null
+                : priceChanged && compareChanged
+                  ? 'price-compare'
+                  : priceChanged
+                    ? 'price'
+                    : compareChanged
+                      ? 'compare'
+                      : null;
 
               return {
                 ...variant,
                 previousPrice,
                 previousCompareAtPrice: previousCompare,
-                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
+                status: matched ? (changeType ? 'changed' : 'unchanged') : 'missing',
+                changeType,
               };
             }),
           };
@@ -1206,22 +1260,32 @@ export const usePricingStore = create(
               const signature = deriveNecklaceSignature(variant);
               const currentVariant = signature.key ? lookup.get(signature.key) : null;
               const matched = Boolean(currentVariant);
-              const previousPrice = matched
-                ? Number(currentVariant?.price ?? product.basePrice)
-                : null;
-              const previousCompare = matched
-                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
-                : null;
-              const changed =
+              const targetPrice = toNumberOrNull(variant.price);
+              const targetCompare = toNumberOrNull(variant.compareAtPrice);
+              const previousPrice = matched ? resolveVariantPrice(currentVariant, product) : null;
+              const previousCompare = matched ? resolveVariantCompareAt(currentVariant, product) : null;
+              const priceChanged = matched && hasMeaningfulDelta(previousPrice, targetPrice);
+              const compareChanged =
                 matched &&
-                (previousPrice !== Number(variant.price) ||
-                  previousCompare !== Number(variant.compareAtPrice));
+                targetCompare !== null &&
+                (previousCompare === null || hasMeaningfulDelta(previousCompare, targetCompare));
+
+              const changeType = !matched
+                ? null
+                : priceChanged && compareChanged
+                  ? 'price-compare'
+                  : priceChanged
+                    ? 'price'
+                    : compareChanged
+                      ? 'compare'
+                      : null;
 
               return {
                 ...variant,
                 previousPrice,
                 previousCompareAtPrice: previousCompare,
-                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
+                status: matched ? (changeType ? 'changed' : 'unchanged') : 'missing',
+                changeType,
               };
             }),
           };
@@ -1374,22 +1438,32 @@ export const usePricingStore = create(
               const key = buildRingKey(variant.band, variant.size);
               const currentVariant = key ? lookup.get(key) : null;
               const matched = Boolean(currentVariant);
-              const previousPrice = matched
-                ? Number(currentVariant?.price ?? product.basePrice)
-                : null;
-              const previousCompare = matched
-                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
-                : null;
-              const changed =
+              const targetPrice = toNumberOrNull(variant.price);
+              const targetCompare = toNumberOrNull(variant.compareAtPrice);
+              const previousPrice = matched ? resolveVariantPrice(currentVariant, product) : null;
+              const previousCompare = matched ? resolveVariantCompareAt(currentVariant, product) : null;
+              const priceChanged = matched && hasMeaningfulDelta(previousPrice, targetPrice);
+              const compareChanged =
                 matched &&
-                (previousPrice !== Number(variant.price) ||
-                  previousCompare !== Number(variant.compareAtPrice));
+                targetCompare !== null &&
+                (previousCompare === null || hasMeaningfulDelta(previousCompare, targetCompare));
+
+              const changeType = !matched
+                ? null
+                : priceChanged && compareChanged
+                  ? 'price-compare'
+                  : priceChanged
+                    ? 'price'
+                    : compareChanged
+                      ? 'compare'
+                      : null;
 
               return {
                 ...variant,
                 previousPrice,
                 previousCompareAtPrice: previousCompare,
-                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
+                status: matched ? (changeType ? 'changed' : 'unchanged') : 'missing',
+                changeType,
               };
             }),
           };
@@ -1546,22 +1620,32 @@ export const usePricingStore = create(
               const key = deriveHandChainKey(variant);
               const currentVariant = key ? lookup.get(key) : null;
               const matched = Boolean(currentVariant);
-              const previousPrice = matched
-                ? Number(currentVariant?.price ?? product.basePrice)
-                : null;
-              const previousCompare = matched
-                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
-                : null;
-              const changed =
+              const targetPrice = toNumberOrNull(variant.price);
+              const targetCompare = toNumberOrNull(variant.compareAtPrice);
+              const previousPrice = matched ? resolveVariantPrice(currentVariant, product) : null;
+              const previousCompare = matched ? resolveVariantCompareAt(currentVariant, product) : null;
+              const priceChanged = matched && hasMeaningfulDelta(previousPrice, targetPrice);
+              const compareChanged =
                 matched &&
-                (previousPrice !== Number(variant.price) ||
-                  previousCompare !== Number(variant.compareAtPrice));
+                targetCompare !== null &&
+                (previousCompare === null || hasMeaningfulDelta(previousCompare, targetCompare));
+
+              const changeType = !matched
+                ? null
+                : priceChanged && compareChanged
+                  ? 'price-compare'
+                  : priceChanged
+                    ? 'price'
+                    : compareChanged
+                      ? 'compare'
+                      : null;
 
               return {
                 ...variant,
                 previousPrice,
                 previousCompareAtPrice: previousCompare,
-                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
+                status: matched ? (changeType ? 'changed' : 'unchanged') : 'missing',
+                changeType,
               };
             }),
           };
@@ -1719,22 +1803,32 @@ export const usePricingStore = create(
               const signature = deriveSetSignature(variant);
               const currentVariant = signature.key ? lookup.get(signature.key) : null;
               const matched = Boolean(currentVariant);
-              const previousPrice = matched
-                ? Number(currentVariant?.price ?? product.basePrice)
-                : null;
-              const previousCompare = matched
-                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
-                : null;
-              const changed =
+              const targetPrice = toNumberOrNull(variant.price);
+              const targetCompare = toNumberOrNull(variant.compareAtPrice);
+              const previousPrice = matched ? resolveVariantPrice(currentVariant, product) : null;
+              const previousCompare = matched ? resolveVariantCompareAt(currentVariant, product) : null;
+              const priceChanged = matched && hasMeaningfulDelta(previousPrice, targetPrice);
+              const compareChanged =
                 matched &&
-                (previousPrice !== Number(variant.price) ||
-                  previousCompare !== Number(variant.compareAtPrice));
+                targetCompare !== null &&
+                (previousCompare === null || hasMeaningfulDelta(previousCompare, targetCompare));
+
+              const changeType = !matched
+                ? null
+                : priceChanged && compareChanged
+                  ? 'price-compare'
+                  : priceChanged
+                    ? 'price'
+                    : compareChanged
+                      ? 'compare'
+                      : null;
 
               return {
                 ...variant,
                 previousPrice,
                 previousCompareAtPrice: previousCompare,
-                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
+                status: matched ? (changeType ? 'changed' : 'unchanged') : 'missing',
+                changeType,
               };
             }),
           };

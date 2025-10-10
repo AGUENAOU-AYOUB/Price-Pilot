@@ -1,7 +1,6 @@
 import { useState } from 'react';
 
 import { Button } from '../components/Button';
-import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import { Logo } from '../components/Logo';
 import { usePricingStore } from '../store/pricingStore';
@@ -30,55 +29,54 @@ export function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-primary-50 via-white to-neutral-100">
-      <div className="pointer-events-none absolute -left-24 top-16 h-72 w-72 rounded-full bg-primary-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -right-24 bottom-16 h-80 w-80 rounded-full bg-success-200/40 blur-3xl" />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top,_#ffe6f8,_#fdf5ff_55%,_#e0f2ff)]">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-white/40 blur-[160px]" />
+        <div className="absolute -bottom-48 right-[-140px] h-[420px] w-[420px] rounded-full bg-primary-200/35 blur-[140px]" />
+        <div className="absolute bottom-24 left-[-160px] h-[360px] w-[360px] rounded-full bg-success-200/35 blur-[140px]" />
+      </div>
 
-      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center px-6 py-16 lg:flex-row lg:items-center lg:gap-16">
-        <div className="mb-16 flex flex-1 flex-col gap-6 text-neutral-700 lg:mb-0">
-          <div className="flex items-center gap-4">
-            <div className="rounded-3xl bg-white/80 p-4 shadow-sm">
-              <Logo />
-            </div>
-            <span className="text-sm font-medium uppercase tracking-wide text-neutral-500">Azor Jewelry</span>
-          </div>
-          <h1 className="text-4xl font-semibold text-neutral-900 sm:text-5xl">{t('login.heroTitle')}</h1>
-          <p className="max-w-xl text-lg leading-relaxed text-neutral-600">{t('login.heroBody')}</p>
+      <div className="relative z-10 w-full max-w-md px-6">
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-10 rounded-full border border-white/60 bg-white/70 px-4 text-sm font-semibold text-neutral-600 shadow-sm backdrop-blur-md hover:bg-white"
+            onClick={() => setLanguage(language === 'en' ? 'fr' : 'en')}
+          >
+            {language === 'en' ? 'FR' : 'EN'}
+          </Button>
         </div>
 
-        <div className="flex w-full flex-1 justify-center">
-          <Card
-            className="w-full max-w-md bg-white/90 backdrop-blur-sm shadow-xl"
-            title={t('login.title')}
-            subtitle={t('login.subtitle')}
-          >
-            <div className="mb-4 flex justify-end">
-              <Button type="button" variant="secondary" onClick={() => setLanguage(language === 'en' ? 'fr' : 'en')}>
-                {language === 'en' ? 'FR' : 'EN'}
-              </Button>
-            </div>
-            <form className="space-y-5" onSubmit={handleSubmit}>
-              <Input
-                label={t('login.username')}
-                value={username}
-                onChange={(event) => setUsernameInput(event.target.value)}
-                autoComplete="username"
-                required
-              />
-              <Input
-                label={t('login.password')}
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
-                required
-              />
-              {error && <p className="text-base font-medium text-error-500">{error}</p>}
-              <Button type="submit" className="w-full">
-                {t('action.login')}
-              </Button>
-            </form>
-          </Card>
+        <div className="mt-6 rounded-[32px] border border-white/60 bg-white/80 p-10 text-center shadow-[0_24px_60px_-24px_rgba(79,70,229,0.45)] backdrop-blur-xl">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/85 shadow-inner">
+            <Logo />
+          </div>
+          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.4em] text-neutral-500">Azor Admin</p>
+          <h1 className="mt-4 text-3xl font-semibold text-neutral-900">{t('login.welcomeTitle')}</h1>
+          <p className="mt-2 text-base text-neutral-600">{t('login.welcomeSubtitle')}</p>
+
+          <form className="mt-8 space-y-5 text-left" onSubmit={handleSubmit}>
+            <Input
+              label={t('login.username')}
+              value={username}
+              onChange={(event) => setUsernameInput(event.target.value)}
+              autoComplete="username"
+              required
+            />
+            <Input
+              label={t('login.password')}
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+            />
+            {error && <p className="rounded-xl bg-error-50 p-3 text-sm font-medium text-error-600">{error}</p>}
+            <Button type="submit" className="h-12 w-full rounded-2xl text-base">
+              {t('action.login')}
+            </Button>
+          </form>
         </div>
       </div>
     </div>

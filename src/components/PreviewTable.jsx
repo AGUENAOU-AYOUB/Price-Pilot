@@ -37,6 +37,15 @@ export function PreviewTable({ previews }) {
 
   const hasPreviews = Array.isArray(previews) && previews.length > 0;
 
+  const changeLabels = useMemo(
+    () => ({
+      price: t('table.changePrice'),
+      compare: t('table.changeCompareAt'),
+      'price-compare': t('table.changePriceAndCompare'),
+    }),
+    [t],
+  );
+
   const toggleCard = (productId, defaultOpen) => {
     setExpansionState((current) => {
       const next = new Map(current);
@@ -95,17 +104,11 @@ export function PreviewTable({ previews }) {
 
       return (
         <article key={product.id} className={cardClassName} data-product-id={product.id}>
-          <header
+          <button
+            type="button"
             className="preview-gallery__header"
             onClick={() => toggleCard(product.id, hasChanges)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                toggleCard(product.id, hasChanges);
-              }
-            }}
+            aria-expanded={isExpanded}
           >
             <div className="preview-gallery__meta">
               <h3 className="preview-gallery__title">{product.title}</h3>
@@ -134,7 +137,7 @@ export function PreviewTable({ previews }) {
                 <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-          </header>
+          </button>
 
           <section className="preview-gallery__variants">
             {summaryBadges.length > 0 && (
@@ -155,6 +158,16 @@ export function PreviewTable({ previews }) {
                   const status = variant.status ?? 'unchanged';
                   const isChanged = status === 'changed';
                   const isMissing = status === 'missing';
+                  const changeType = variant.changeType;
+                  const changeBadgeTone =
+                    changeType === 'compare'
+                      ? 'is-info'
+                      : changeType === 'price-compare'
+                        ? 'is-pending'
+                        : 'is-pending';
+                  const changeBadgeLabel = changeType
+                    ? changeLabels[changeType] ?? t('table.pendingBadge')
+                    : t('table.pendingBadge');
 
                   return (
                     <div
@@ -175,9 +188,7 @@ export function PreviewTable({ previews }) {
                         <span className="preview-gallery__variant-new">{formatMoney(variant.compareAtPrice)}</span>
                       </div>
                       {isChanged && (
-                        <span className={clsx('preview-gallery__badge', 'is-pending')}>
-                          {t('table.pendingBadge')}
-                        </span>
+                        <span className={clsx('preview-gallery__badge', changeBadgeTone)}>{changeBadgeLabel}</span>
                       )}
                       {isMissing && (
                         <span className={clsx('preview-gallery__badge', 'is-error')}>
