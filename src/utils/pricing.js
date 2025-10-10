@@ -69,6 +69,8 @@ export const buildRingVariants = (product, ringSupplements = ringBandSupplements
       variants.push({
         id: `${product.id}-${band}-${size}`,
         title,
+        band,
+        size,
         price,
         compareAtPrice,
       });
