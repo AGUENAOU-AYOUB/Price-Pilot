@@ -8,6 +8,8 @@ import {
   ringBandSupplements,
 } from '../data/supplements';
 import { mockProducts } from '../data/products';
+import { hasShopifyCredentials } from '../config/shopify';
+import { fetchActiveProducts } from '../services/shopify';
 import {
   applyPercentage,
   buildBraceletVariants,
@@ -36,6 +38,8 @@ export const usePricingStore = create(
     username: null,
     language: 'en',
     products: mockProducts,
+    productsInitialized: false,
+    productsSyncing: false,
     supplements: cloneSupplements(),
     backups: {},
     logs: [],
@@ -66,6 +70,38 @@ export const usePricingStore = create(
         }
         return { loadingScopes: next };
       });
+    },
+
+    syncProductsFromShopify: async () => {
+      if (get().productsSyncing || get().productsInitialized) {
+        return;
+      }
+
+      if (!hasShopifyCredentials()) {
+        get().log('Shopify credentials missing; using local mock catalog.', 'catalog');
+        set({ productsInitialized: true });
+        return;
+      }
+
+      set({ productsSyncing: true });
+      get().toggleLoading('catalog', true);
+
+      try {
+        const products = await fetchActiveProducts();
+        set({ products });
+        if (products.length === 0) {
+          get().log('No active Shopify products found for this store.', 'catalog');
+        } else {
+          get().log(`Loaded ${products.length} Shopify products.`, 'catalog');
+        }
+      } catch (error) {
+        console.error('Failed to synchronize Shopify products', error);
+        get().log('Failed to load Shopify products. Using mock catalog.', 'catalog');
+        set({ products: mockProducts });
+      } finally {
+        get().toggleLoading('catalog', false);
+        set({ productsInitialized: true, productsSyncing: false });
+      }
     },
 
     backupScope: (scope) => {

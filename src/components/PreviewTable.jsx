@@ -46,7 +46,7 @@ export function PreviewTable({ previews }) {
                 <td className="px-6 py-5 align-top">
                   <div className="flex flex-col gap-1">
                     <span className="text-base font-semibold text-charcoal">{product.title}</span>
-                    <span className="text-xs uppercase tracking-wide text-slategray/70">#{product.handle}</span>
+                    <span className="text-xs uppercase tracking-wide text-slategray/70">#{product.handle ?? product.id}</span>
                   </div>
                 </td>
                 <td className="px-6 py-5 align-top text-slategray">{product.basePrice.toFixed(2)} dh</td>
