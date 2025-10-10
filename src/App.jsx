@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { PageLayout } from './components/PageLayout';
@@ -28,6 +29,13 @@ function AppRoutes() {
 
 export default function App() {
   const username = usePricingStore((state) => state.username);
+  const syncProductsFromShopify = usePricingStore((state) => state.syncProductsFromShopify);
+
+  useEffect(() => {
+    if (username) {
+      syncProductsFromShopify();
+    }
+  }, [username, syncProductsFromShopify]);
 
   if (!username) {
     return <LoginPage />;
