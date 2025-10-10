@@ -57,6 +57,12 @@
   border-radius: 1.25rem;
 }
 
+.preview-gallery__meta-group {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
 .preview-gallery__meta {
   display: flex;
   flex-direction: column;
@@ -126,6 +132,32 @@
   color: #2563eb;
   padding: 0.6rem;
   transition: transform 0.2s ease;
+}
+
+.preview-gallery__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.preview-gallery__status svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.preview-gallery__status.is-success {
+  background: rgba(22, 163, 74, 0.16);
+  color: #15803d;
+}
+
+.preview-gallery__status.is-error {
+  background: rgba(239, 68, 68, 0.16);
+  color: #b91c1c;
 }
 
 .preview-gallery__card.is-expanded .preview-gallery__chevron {

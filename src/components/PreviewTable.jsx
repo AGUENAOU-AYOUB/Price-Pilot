@@ -31,6 +31,18 @@ const buildSummaryRow = (label, previous, next) => ({
   changed: Number(previous ?? 0) !== Number(next ?? 0),
 });
 
+const SuccessMarkIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M16.25 5.75l-7.5 8-3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const ErrorMarkIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M6 6l8 8M6 14L14 6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 export function PreviewTable({ previews }) {
   const { t } = useTranslation();
   const [expansionState, setExpansionState] = useState(() => new Map());
@@ -76,6 +88,9 @@ export function PreviewTable({ previews }) {
       const hasChanges = hasVariantChanges || hasSummaryChanges || hasMissingVariants;
       const expansionPreference = expansionState.get(product.id);
       const isExpanded = expansionPreference ?? hasChanges;
+      const hasIssues = hasMissingVariants;
+      const statusTone = hasIssues ? 'error' : 'success';
+      const statusLabel = hasIssues ? t('table.statusNeedsAttention') : t('table.statusReady');
 
       const summaryBadges = [];
       if (hasVariantChanges) {
@@ -110,9 +125,20 @@ export function PreviewTable({ previews }) {
             onClick={() => toggleCard(product.id, hasChanges)}
             aria-expanded={isExpanded}
           >
-            <div className="preview-gallery__meta">
-              <h3 className="preview-gallery__title">{product.title}</h3>
-              <p className="preview-gallery__handle">#{product.handle ?? product.id}</p>
+            <div className="preview-gallery__meta-group">
+              <div className="preview-gallery__meta">
+                <h3 className="preview-gallery__title">{product.title}</h3>
+                <p className="preview-gallery__handle">#{product.handle ?? product.id}</p>
+              </div>
+              <div
+                className={clsx('preview-gallery__status', `is-${statusTone}`)}
+                role="status"
+                aria-label={statusLabel}
+                title={statusLabel}
+              >
+                {statusTone === 'success' ? <SuccessMarkIcon /> : <ErrorMarkIcon />}
+                <span className="sr-only">{statusLabel}</span>
+              </div>
             </div>
             <div className="preview-gallery__summary">
               {summaryRows.map((row) => (
