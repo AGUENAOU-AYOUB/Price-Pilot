@@ -66,6 +66,29 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
 
    Vite will print a local URL (usually `http://localhost:5173`).
 
+### Why you still see only eight products
+
+The React app cannot call Shopify’s Admin REST API directly from the browser. The
+`fetchActiveProducts` helper in `src/services/shopify.js` issues requests such as
+`https://<store>/admin/api/<version>/products.json`, but Shopify blocks those
+calls from client-side JavaScript via CORS unless they go through an authenticated
+backend under your control. When the request is rejected, the pricing store falls
+back to the bundled mock catalog, which contains the original eight placeholder
+products, so every preview still shows only that limited list.
+
+To load your real catalog you must proxy the Admin API through a secure server.
+You can reuse the existing Express webhook server in `shopify/webhookServer.js`
+or create a new endpoint that:
+
+1. Runs on your infrastructure (or as a serverless function).
+2. Reads the Admin API token from server-side environment variables.
+3. Calls the `/admin/api/<version>/products.json` endpoint with pagination.
+4. Returns the normalized product data to the React app.
+
+Do **not** expose the Admin API token in the browser—Shopify treats it as a
+secret. Once the frontend points to your proxy endpoint, the pricing dashboard
+will receive every active product instead of the mock eight-item list.
+
 ## Key concepts
 
 - **Luxury rounding** – All computed prices are rounded to the closest value ending in `00` or `90`.
