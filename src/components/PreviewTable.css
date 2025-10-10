@@ -1,7 +1,90 @@
 .preview-gallery {
   display: flex;
   flex-direction: column;
+  gap: 1.5rem;
+}
+
+.preview-gallery__overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(203, 213, 225, 0.7);
+  background: linear-gradient(160deg, rgba(248, 250, 252, 0.92) 0%, rgba(241, 245, 249, 0.75) 100%);
+  padding: 1rem 1.25rem;
+  box-shadow: 0 20px 40px -28px rgba(15, 23, 42, 0.35);
+}
+
+.preview-gallery__overview-item {
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(255, 255, 255, 0.55);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.preview-gallery__overview-item.is-success {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(187, 247, 208, 0.55);
+}
+
+.preview-gallery__overview-item.is-error {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(254, 226, 226, 0.65);
+}
+
+.preview-gallery__overview-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.preview-gallery__overview-item.is-success .preview-gallery__overview-label {
+  color: #047857;
+}
+
+.preview-gallery__overview-item.is-error .preview-gallery__overview-label {
+  color: #b91c1c;
+}
+
+.preview-gallery__overview-value {
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.preview-gallery__overview-item.is-success .preview-gallery__overview-value {
+  color: #047857;
+}
+
+.preview-gallery__overview-item.is-error .preview-gallery__overview-value {
+  color: #b91c1c;
+}
+
+.preview-gallery__list {
+  display: flex;
+  flex-direction: column;
   gap: 1.75rem;
+  max-height: min(65vh, 600px);
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.preview-gallery__list::-webkit-scrollbar {
+  width: 0.45rem;
+}
+
+.preview-gallery__list::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.45);
+}
+
+.preview-gallery__list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .preview-gallery__empty {
@@ -271,6 +354,10 @@
 @media (max-width: 768px) {
   .preview-gallery__card {
     padding: 1.5rem;
+  }
+
+  .preview-gallery__overview {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   }
 
   .preview-gallery__header {

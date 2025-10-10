@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { clsx } from 'clsx';
 
 import { useTranslation } from '../i18n/useTranslation';
@@ -58,22 +58,32 @@ export function PreviewTable({ previews }) {
     [t],
   );
 
-  const toggleCard = (productId, defaultOpen) => {
-    setExpansionState((current) => {
-      const next = new Map(current);
-      const existing = next.get(productId);
-      const currentlyOpen = existing ?? Boolean(defaultOpen);
-      next.set(productId, !currentlyOpen);
-      return next;
-    });
-  };
+  const toggleCard = useCallback(
+    (productId, defaultOpen) => {
+      setExpansionState((current) => {
+        const next = new Map(current);
+        const existing = next.get(productId);
+        const currentlyOpen = existing ?? Boolean(defaultOpen);
+        next.set(productId, !currentlyOpen);
+        return next;
+      });
+    },
+    [setExpansionState],
+  );
 
-  const renderedCards = useMemo(() => {
+  const { cards: renderedCards, stats: summaryStats } = useMemo(() => {
     if (!hasPreviews) {
-      return null;
+      return {
+        cards: null,
+        stats: { total: 0, modified: 0, success: 0, failed: 0 },
+      };
     }
 
-    return previews.map(({ product, updatedBasePrice, updatedCompareAtPrice, variants = [] }) => {
+    let modifiedCount = 0;
+    let successCount = 0;
+    let failedCount = 0;
+
+    const cards = previews.map(({ product, updatedBasePrice, updatedCompareAtPrice, variants = [] }) => {
       const summaryRows = [
         buildSummaryRow(t('table.basePrice'), product.basePrice, updatedBasePrice),
         buildSummaryRow(t('table.compareAt'), product.baseCompareAtPrice, updatedCompareAtPrice),
@@ -91,6 +101,15 @@ export function PreviewTable({ previews }) {
       const hasIssues = hasMissingVariants;
       const statusTone = hasIssues ? 'error' : 'success';
       const statusLabel = hasIssues ? t('table.statusNeedsAttention') : t('table.statusReady');
+
+      if (hasChanges) {
+        modifiedCount += 1;
+      }
+      if (hasIssues) {
+        failedCount += 1;
+      } else {
+        successCount += 1;
+      }
 
       const summaryBadges = [];
       if (hasVariantChanges) {
@@ -118,7 +137,12 @@ export function PreviewTable({ previews }) {
       const cardClassName = clsx('preview-gallery__card', isExpanded ? 'is-expanded' : 'is-collapsed');
 
       return (
-        <article key={product.id} className={cardClassName} data-product-id={product.id}>
+        <article
+          key={product.id}
+          className={cardClassName}
+          data-product-id={product.id}
+          role="listitem"
+        >
           <button
             type="button"
             className="preview-gallery__header"
@@ -230,11 +254,45 @@ export function PreviewTable({ previews }) {
         </article>
       );
     });
-  }, [expansionState, hasPreviews, previews, t]);
+
+    return {
+      cards,
+      stats: {
+        total: previews.length,
+        modified: modifiedCount,
+        success: successCount,
+        failed: failedCount,
+      },
+    };
+  }, [changeLabels, expansionState, hasPreviews, previews, t, toggleCard]);
 
   if (!hasPreviews) {
     return <div className="preview-gallery__empty">{t('table.noPreviews')}</div>;
   }
 
-  return <div className="preview-gallery">{renderedCards}</div>;
+  return (
+    <div className="preview-gallery">
+      <div className="preview-gallery__overview" role="status" aria-live="polite">
+        <div className="preview-gallery__overview-item">
+          <span className="preview-gallery__overview-label">{t('table.summaryTotal')}</span>
+          <span className="preview-gallery__overview-value">{summaryStats.total}</span>
+        </div>
+        <div className="preview-gallery__overview-item">
+          <span className="preview-gallery__overview-label">{t('table.summaryModified')}</span>
+          <span className="preview-gallery__overview-value">{summaryStats.modified}</span>
+        </div>
+        <div className="preview-gallery__overview-item is-success">
+          <span className="preview-gallery__overview-label">{t('table.summarySuccess')}</span>
+          <span className="preview-gallery__overview-value">{summaryStats.success}</span>
+        </div>
+        <div className="preview-gallery__overview-item is-error">
+          <span className="preview-gallery__overview-label">{t('table.summaryFailed')}</span>
+          <span className="preview-gallery__overview-value">{summaryStats.failed}</span>
+        </div>
+      </div>
+      <div className="preview-gallery__list" role="list">
+        {renderedCards}
+      </div>
+    </div>
+  );
 }
