@@ -8,7 +8,7 @@ import {
   ringBandSupplements,
 } from '../data/supplements';
 import { mockProducts } from '../data/products';
-import { hasShopifyCredentials } from '../config/shopify';
+import { hasShopifyProxy } from '../config/shopify';
 import { fetchActiveProducts } from '../services/shopify';
 import {
   applyPercentage,
@@ -77,8 +77,8 @@ export const usePricingStore = create(
         return;
       }
 
-      if (!hasShopifyCredentials()) {
-        get().log('Shopify credentials missing; using local mock catalog.', 'catalog');
+      if (!hasShopifyProxy()) {
+        get().log('Shopify proxy missing; using local mock catalog.', 'catalog');
         set({ productsInitialized: true });
         return;
       }
