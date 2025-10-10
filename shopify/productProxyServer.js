@@ -38,6 +38,12 @@ const basePath = SHOPIFY_PROXY_BASE_PATH.endsWith('/')
 
 const app = express();
 
+app.use(
+  express.json({
+    limit: '1mb',
+  }),
+);
+
 app.use((req, res, next) => {
   const origin = req.get('Origin');
   if (allowedOrigins.length === 0) {
@@ -46,7 +52,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
 
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
 
   if (req.method === 'OPTIONS') {
@@ -181,6 +187,68 @@ const transformShopifyProduct = (product) => {
   };
 };
 
+const VARIANT_ENDPOINT = (variantId) =>
+  `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`;
+
+const formatMoney = (value) => {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return parsed.toFixed(2);
+};
+
+const buildVariantPayload = (variant) => {
+  if (!variant || typeof variant !== 'object') {
+    return null;
+  }
+
+  const price = formatMoney(variant.price);
+  const compareAtPrice = formatMoney(variant.compareAtPrice);
+
+  if (price === null && compareAtPrice === null) {
+    return null;
+  }
+
+  const payload = { id: String(variant.id ?? '') };
+
+  if (price !== null) {
+    payload.price = price;
+  }
+
+  if (compareAtPrice !== null) {
+    payload.compare_at_price = compareAtPrice;
+  }
+
+  if (!payload.id) {
+    return null;
+  }
+
+  return payload;
+};
+
+const updateVariantPrice = async (variant) => {
+  const payload = buildVariantPayload(variant);
+
+  if (!payload) {
+    throw new Error('Invalid variant payload provided for update.');
+  }
+
+  const response = await fetch(VARIANT_ENDPOINT(payload.id), {
+    method: 'PUT',
+    headers: REQUEST_HEADERS,
+    body: JSON.stringify({ variant: payload }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Failed to update variant ${payload.id}: ${response.status} ${response.statusText} - ${body}`,
+    );
+  }
+};
+
 const fetchProducts = async (status = 'active') => {
   const products = [];
   let pageInfo = null;
@@ -230,6 +298,45 @@ app.get(`${basePath}/products`, async (req, res) => {
       details: error.message,
     });
   }
+});
+
+app.post(`${basePath}/variants/bulk-update`, async (req, res) => {
+  const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
+
+  if (updates.length === 0) {
+    res.status(400).json({ error: 'No variant updates provided.' });
+    return;
+  }
+
+  const summary = {
+    updatedCount: 0,
+    failedCount: 0,
+    failures: [],
+  };
+
+  for (const entry of updates) {
+    const productId = String(entry?.productId ?? '');
+    const productTitle = entry?.productTitle ?? '';
+    const variants = Array.isArray(entry?.variants) ? entry.variants : [];
+
+    for (const variant of variants) {
+      try {
+        await updateVariantPrice(variant);
+        summary.updatedCount += 1;
+      } catch (error) {
+        summary.failedCount += 1;
+        summary.failures.push({
+          productId,
+          productTitle,
+          variantId: variant?.id ? String(variant.id) : '',
+          reason: error.message,
+        });
+      }
+    }
+  }
+
+  const statusCode = summary.failedCount > 0 ? 207 : 200;
+  res.status(statusCode).json(summary);
 });
 
 app.listen(Number(SHOPIFY_PROXY_PORT), () => {

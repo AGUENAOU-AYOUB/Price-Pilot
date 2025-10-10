@@ -75,3 +75,27 @@ export async function fetchActiveProducts() {
     .map(normalizeProduct)
     .filter((product) => product !== null);
 }
+
+export async function pushVariantUpdates(updates) {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { updatedCount: 0, failedCount: 0, failures: [] };
+  }
+
+  const baseEndpoint = buildProxyEndpoint();
+  const response = await fetch(`${baseEndpoint}/variants/bulk-update`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ updates }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Failed to push Shopify variant updates: ${response.status} ${response.statusText} - ${body}`,
+    );
+  }
+
+  return response.json();
+}
