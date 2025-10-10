@@ -2,12 +2,12 @@ import { Card } from '../components/Card';
 import { LogPanel } from '../components/LogPanel';
 import { usePricingStore } from '../store/pricingStore';
 import { useTranslation } from '../i18n/useTranslation';
-import { hasShopifyCredentials } from '../config/shopify';
+import { hasShopifyProxy } from '../config/shopify';
 
 export function DashboardPage() {
   const products = usePricingStore((state) => state.products);
   const { t } = useTranslation();
-  const credentialsReady = hasShopifyCredentials();
+  const credentialsReady = hasShopifyProxy();
 
   const activeCount = products.filter((product) => product.status === 'active').length;
 
