@@ -117,6 +117,22 @@ const determineCollection = (product) => {
   return null;
 };
 
+const extractVariantOptions = (variant) => {
+  const options = [];
+
+  if (variant.option1) {
+    options.push(String(variant.option1));
+  }
+  if (variant.option2) {
+    options.push(String(variant.option2));
+  }
+  if (variant.option3) {
+    options.push(String(variant.option3));
+  }
+
+  return options.map((option) => option.trim()).filter(Boolean);
+};
+
 const normalizeVariants = (variants = []) => {
   const normalized = variants.map((variant) => ({
     id: String(variant.id),
@@ -124,6 +140,7 @@ const normalizeVariants = (variants = []) => {
     price: parseNumber(variant.price),
     compareAtPrice: parseNumber(variant.compare_at_price, parseNumber(variant.price)),
     position: Number.isFinite(variant.position) ? variant.position : Number.MAX_SAFE_INTEGER,
+    options: extractVariantOptions(variant),
   }));
 
   const sortedByPosition = [...normalized].sort((a, b) => a.position - b.position);
