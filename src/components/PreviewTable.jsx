@@ -1,90 +1,214 @@
+import { useMemo, useState } from 'react';
+import { clsx } from 'clsx';
+
 import { useTranslation } from '../i18n/useTranslation';
 
-const variantCardClasses = [
-  'flex flex-col',
-  'rounded-xl',
-  'border border-platinum/70',
-  'bg-white/80',
-  'px-4 py-3',
-  'text-xs',
-  'shadow-inner',
-].join(' ');
+import './PreviewTable.css';
+
+const MAD = new Intl.NumberFormat('fr-MA', {
+  style: 'currency',
+  currency: 'MAD',
+  minimumFractionDigits: 2,
+});
+
+const formatMoney = (value) => {
+  if (value === null || value === undefined) {
+    return '—';
+  }
+
+  const parsed = typeof value === 'string' ? Number(value) : value;
+  if (!Number.isFinite(parsed)) {
+    return '—';
+  }
+
+  return MAD.format(parsed).replace('MAD', 'dh').trim();
+};
+
+const buildSummaryRow = (label, previous, next) => ({
+  label,
+  previous,
+  next,
+  changed: Number(previous ?? 0) !== Number(next ?? 0),
+});
 
 export function PreviewTable({ previews }) {
   const { t } = useTranslation();
+  const [expansionState, setExpansionState] = useState(() => new Map());
 
-  if (!previews?.length) {
-    return (
-      <div className="rounded-2xl border border-diamond bg-white/60 p-8 text-center text-sm text-slategray shadow-soft">
-        {t('table.noPreviews')}
-      </div>
-    );
+  const hasPreviews = Array.isArray(previews) && previews.length > 0;
+
+  const changeLabels = useMemo(
+    () => ({
+      price: t('table.changePrice'),
+      compare: t('table.changeCompareAt'),
+      'price-compare': t('table.changePriceAndCompare'),
+    }),
+    [t],
+  );
+
+  const toggleCard = (productId, defaultOpen) => {
+    setExpansionState((current) => {
+      const next = new Map(current);
+      const existing = next.get(productId);
+      const currentlyOpen = existing ?? Boolean(defaultOpen);
+      next.set(productId, !currentlyOpen);
+      return next;
+    });
+  };
+
+  const renderedCards = useMemo(() => {
+    if (!hasPreviews) {
+      return null;
+    }
+
+    return previews.map(({ product, updatedBasePrice, updatedCompareAtPrice, variants = [] }) => {
+      const summaryRows = [
+        buildSummaryRow(t('table.basePrice'), product.basePrice, updatedBasePrice),
+        buildSummaryRow(t('table.compareAt'), product.baseCompareAtPrice, updatedCompareAtPrice),
+      ];
+
+      const changedVariants = variants.filter((variant) => variant.status === 'changed');
+      const missingVariants = variants.filter((variant) => variant.status === 'missing');
+
+      const hasVariantChanges = changedVariants.length > 0;
+      const hasSummaryChanges = summaryRows.some((row) => row.changed);
+      const hasMissingVariants = missingVariants.length > 0;
+      const hasChanges = hasVariantChanges || hasSummaryChanges || hasMissingVariants;
+      const expansionPreference = expansionState.get(product.id);
+      const isExpanded = expansionPreference ?? hasChanges;
+
+      const summaryBadges = [];
+      if (hasVariantChanges) {
+        summaryBadges.push({
+          key: 'pending',
+          label: t('table.pendingChanges', { count: changedVariants.length }),
+          tone: 'pending',
+        });
+      }
+      if (hasMissingVariants) {
+        summaryBadges.push({
+          key: 'missing',
+          label: t('table.missingVariants', { count: missingVariants.length }),
+          tone: 'error',
+        });
+      }
+      if (!hasVariantChanges && hasSummaryChanges) {
+        summaryBadges.push({
+          key: 'product',
+          label: t('table.pendingProductChanges'),
+          tone: 'info',
+        });
+      }
+
+      const cardClassName = clsx('preview-gallery__card', isExpanded ? 'is-expanded' : 'is-collapsed');
+
+      return (
+        <article key={product.id} className={cardClassName} data-product-id={product.id}>
+          <button
+            type="button"
+            className="preview-gallery__header"
+            onClick={() => toggleCard(product.id, hasChanges)}
+            aria-expanded={isExpanded}
+          >
+            <div className="preview-gallery__meta">
+              <h3 className="preview-gallery__title">{product.title}</h3>
+              <p className="preview-gallery__handle">#{product.handle ?? product.id}</p>
+            </div>
+            <div className="preview-gallery__summary">
+              {summaryRows.map((row) => (
+                <div key={row.label} className="preview-gallery__summary-item">
+                  <span className="preview-gallery__summary-label">{row.label}</span>
+                  <div className="preview-gallery__summary-values">
+                    <span className="preview-gallery__summary-old">{formatMoney(row.previous)}</span>
+                    <span aria-hidden="true">→</span>
+                    <span
+                      className={clsx('preview-gallery__summary-new', {
+                        'text-success-600': row.changed,
+                      })}
+                    >
+                      {formatMoney(row.next)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="preview-gallery__chevron" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          </button>
+
+          <section className="preview-gallery__variants">
+            {summaryBadges.length > 0 && (
+              <div className="preview-gallery__flags" role="status">
+                {summaryBadges.map((badge) => (
+                  <span key={badge.key} className={clsx('preview-gallery__badge', `is-${badge.tone}`)}>
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {variants.length === 0 ? (
+              <div className="preview-gallery__empty-variants">{t('table.noVariants')}</div>
+            ) : (
+              <div className="preview-gallery__variant-list">
+                {variants.map((variant) => {
+                  const status = variant.status ?? 'unchanged';
+                  const isChanged = status === 'changed';
+                  const isMissing = status === 'missing';
+                  const changeType = variant.changeType;
+                  const changeBadgeTone =
+                    changeType === 'compare'
+                      ? 'is-info'
+                      : changeType === 'price-compare'
+                        ? 'is-pending'
+                        : 'is-pending';
+                  const changeBadgeLabel = changeType
+                    ? changeLabels[changeType] ?? t('table.pendingBadge')
+                    : t('table.pendingBadge');
+
+                  return (
+                    <div
+                      key={variant.id}
+                      className={clsx('preview-gallery__variant-row', {
+                        'is-unchanged': !isChanged && !isMissing,
+                        'is-missing': isMissing,
+                      })}
+                    >
+                      <span className="preview-gallery__variant-title">{variant.title}</span>
+                      <div className="preview-gallery__variant-prices">
+                        <span className="preview-gallery__variant-old">{formatMoney(variant.previousPrice)}</span>
+                        <span aria-hidden="true">→</span>
+                        <span className="preview-gallery__variant-new">{formatMoney(variant.price)}</span>
+                        <span aria-hidden="true">/</span>
+                        <span className="preview-gallery__variant-old">{formatMoney(variant.previousCompareAtPrice)}</span>
+                        <span aria-hidden="true">→</span>
+                        <span className="preview-gallery__variant-new">{formatMoney(variant.compareAtPrice)}</span>
+                      </div>
+                      {isChanged && (
+                        <span className={clsx('preview-gallery__badge', changeBadgeTone)}>{changeBadgeLabel}</span>
+                      )}
+                      {isMissing && (
+                        <span className={clsx('preview-gallery__badge', 'is-error')}>
+                          {t('table.missingBadge')}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </article>
+      );
+    });
+  }, [expansionState, hasPreviews, previews, t]);
+
+  if (!hasPreviews) {
+    return <div className="preview-gallery__empty">{t('table.noPreviews')}</div>;
   }
 
-  return (
-    <div className="rounded-2xl border border-diamond bg-gradient-to-br from-white via-pearl to-white p-6 shadow-soft">
-      <div className="overflow-hidden rounded-2xl border border-platinum/70">
-        <table className="min-w-full table-fixed border-separate border-spacing-0">
-          <thead>
-            <tr className="bg-pearl/80 text-left text-xs font-semibold uppercase tracking-[0.15em] text-slategray">
-              <th className="px-6 py-4 text-slategray/90">{t('table.product')}</th>
-              <th className="px-6 py-4 text-slategray/90">{t('table.basePrice')}</th>
-              <th className="px-6 py-4 text-rosegold">{t('table.newBasePrice')}</th>
-              <th className="px-6 py-4 text-slategray/90">{t('table.compareAt')}</th>
-              <th className="px-6 py-4 text-rosegold">{t('table.newCompareAt')}</th>
-              <th className="px-6 py-4 text-slategray/90">{t('table.variants')}</th>
-            </tr>
-          </thead>
-          <tbody className="text-sm">
-            {previews.map(({ product, updatedBasePrice, updatedCompareAtPrice, variants }, index) => (
-              <tr
-                key={product.id}
-                className={`transition-colors duration-200 ${
-                  index % 2 === 0 ? 'bg-white' : 'bg-white/80'
-                } hover:bg-blush/70`}
-              >
-                <td className="px-6 py-5 align-top">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-base font-semibold text-charcoal">{product.title}</span>
-                    <span className="text-xs uppercase tracking-wide text-slategray/70">#{product.handle}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-5 align-top text-slategray">{product.basePrice.toFixed(2)} dh</td>
-                <td className="px-6 py-5 align-top text-lg font-semibold text-rosegold">
-                  {updatedBasePrice.toFixed(2)} dh
-                </td>
-                <td className="px-6 py-5 align-top text-slategray">{product.baseCompareAtPrice.toFixed(2)} dh</td>
-                <td className="px-6 py-5 align-top text-lg font-semibold text-rosegold">
-                  {updatedCompareAtPrice.toFixed(2)} dh
-                </td>
-                <td className="px-6 py-5 align-top">
-                  {variants.length === 0 ? (
-                    <span className="inline-flex rounded-full bg-platinum/60 px-4 py-2 text-xs font-medium text-slategray">
-                      {t('table.noVariants')}
-                    </span>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {variants.map((variant) => (
-                        <div key={variant.id} className={variantCardClasses}>
-                          <span className="text-[0.7rem] uppercase tracking-wide text-slategray/70">
-                            {variant.title}
-                          </span>
-                          <span className="text-sm font-semibold text-charcoal">
-                            {variant.price.toFixed(2)} dh
-                          </span>
-                          <span className="text-[0.7rem] text-slategray">
-                            {t('table.compareAt')} {variant.compareAtPrice.toFixed(2)} dh
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  return <div className="preview-gallery">{renderedCards}</div>;
 }
