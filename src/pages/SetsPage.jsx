@@ -24,12 +24,13 @@ export function SetsPage() {
     setPreviews(previewSets());
   };
 
-  const handleApply = () => {
+  const handleApply = async () => {
     toggleLoading('sets', true);
-    setTimeout(() => {
-      applySets();
+    try {
+      await applySets();
+    } finally {
       toggleLoading('sets', false);
-    }, 450);
+    }
   };
 
   return (

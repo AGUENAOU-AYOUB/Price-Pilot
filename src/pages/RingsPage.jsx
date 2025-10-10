@@ -27,12 +27,13 @@ export function RingsPage() {
     setPreviews(previewRings());
   };
 
-  const handleApply = () => {
+  const handleApply = async () => {
     toggleLoading('rings', true);
-    setTimeout(() => {
-      applyRings();
+    try {
+      await applyRings();
+    } finally {
       toggleLoading('rings', false);
-    }, 450);
+    }
   };
 
   return (

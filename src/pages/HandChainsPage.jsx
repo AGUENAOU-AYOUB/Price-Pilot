@@ -26,12 +26,13 @@ export function HandChainsPage() {
     setPreviews(previewHandChains());
   };
 
-  const handleApply = () => {
+  const handleApply = async () => {
     toggleLoading('handchains', true);
-    setTimeout(() => {
-      applyHandChains();
+    try {
+      await applyHandChains();
+    } finally {
       toggleLoading('handchains', false);
-    }, 450);
+    }
   };
 
   return (
