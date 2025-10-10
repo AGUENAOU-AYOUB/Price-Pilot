@@ -1,0 +1,179 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
+.preview-table__wrapper {
+  font-family: 'Poppins', 'Futura', 'Inter', sans-serif;
+  border: 1px solid rgba(198, 204, 210, 0.6);
+  background: linear-gradient(135deg, #ffffff 0%, #f6f7fb 100%);
+  border-radius: 1.75rem;
+  padding: 2rem;
+  box-shadow: 0 20px 45px -24px rgba(26, 27, 35, 0.35);
+}
+
+.preview-table {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.preview-table--empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-table__empty {
+  width: 100%;
+  border-radius: 1.5rem;
+  border: 1px dashed rgba(198, 204, 210, 0.9);
+  background: rgba(255, 255, 255, 0.6);
+  padding: 3rem;
+  text-align: center;
+  font-size: 0.95rem;
+  color: #6b7280;
+  letter-spacing: 0.04em;
+}
+
+.preview-table__card {
+  background: #ffffff;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(214, 218, 224, 0.7);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.preview-table__header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.75rem;
+  flex-wrap: wrap;
+}
+
+.preview-table__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2a2f38;
+}
+
+.preview-table__meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(104, 111, 122, 0.75);
+}
+
+.preview-table__price-summary {
+  display: grid;
+  gap: 0.9rem;
+  min-width: 260px;
+}
+
+.preview-table__price-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.preview-table__price-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: rgba(104, 111, 122, 0.8);
+}
+
+.preview-table__price-values {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.preview-table__price-old {
+  color: rgba(120, 125, 136, 0.75);
+  text-decoration: line-through;
+  font-weight: 500;
+}
+
+.preview-table__price-arrow {
+  font-size: 0.85rem;
+  color: rgba(158, 120, 95, 0.75);
+}
+
+.preview-table__price-new {
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: #c58a63;
+}
+
+.preview-table__variants {
+  border-top: 1px solid rgba(226, 229, 234, 0.9);
+  padding-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.preview-table__variants-header {
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(104, 111, 122, 0.85);
+}
+
+.preview-table__variant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.9rem;
+}
+
+.preview-table__variant-card {
+  border-radius: 1rem;
+  border: 1px solid rgba(214, 218, 224, 0.8);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(247, 248, 251, 0.95) 100%);
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.preview-table__variant-title {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(104, 111, 122, 0.85);
+}
+
+.preview-table__variant-price {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #2a2f38;
+}
+
+.preview-table__variant-compare {
+  font-size: 0.75rem;
+  color: rgba(104, 111, 122, 0.85);
+}
+
+.preview-table__variant-compare-value {
+  margin-left: 0.3rem;
+  font-weight: 500;
+  color: #c58a63;
+}
+
+.preview-table__empty-variants {
+  border-radius: 9999px;
+  background: rgba(214, 218, 224, 0.25);
+  padding: 0.75rem 1.5rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(104, 111, 122, 0.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

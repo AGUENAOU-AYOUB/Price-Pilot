@@ -9,15 +9,15 @@ import {
 
 const {
   VITE_SHOPIFY_STORE_DOMAIN,
-  VITE_SHOPIFY_ACCESS_TOKEN,
+  SHOPIFY_ACCESS_TOKEN,
   SHOPIFY_WEBHOOK_SECRET,
   SHOPIFY_API_VERSION = '2024-04',
   PORT = 3000,
 } = process.env;
 
-if (!VITE_SHOPIFY_STORE_DOMAIN || !VITE_SHOPIFY_ACCESS_TOKEN || !SHOPIFY_WEBHOOK_SECRET) {
+if (!VITE_SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN || !SHOPIFY_WEBHOOK_SECRET) {
   console.error(
-    'Missing Shopify environment variables. Ensure VITE_SHOPIFY_STORE_DOMAIN, VITE_SHOPIFY_ACCESS_TOKEN, and SHOPIFY_WEBHOOK_SECRET are set.',
+    'Missing Shopify environment variables. Ensure VITE_SHOPIFY_STORE_DOMAIN, SHOPIFY_ACCESS_TOKEN, and SHOPIFY_WEBHOOK_SECRET are set.',
   );
   process.exit(1);
 }
@@ -177,7 +177,7 @@ const updateShopifyVariant = async (variant) => {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': VITE_SHOPIFY_ACCESS_TOKEN,
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
       },
       body: JSON.stringify({
         variant: {
