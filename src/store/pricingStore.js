@@ -5,6 +5,7 @@ import {
   braceletChainTypes,
   HAND_CHAIN_MULTIPLIER,
   necklaceChainTypes,
+  necklaceSizes,
   ringBandSupplements,
   ringSizes,
 } from '../data/supplements';
@@ -19,6 +20,12 @@ import {
   buildRingVariants,
   buildSetVariants,
 } from '../utils/pricing';
+import {
+  parseBandType,
+  parseChainName,
+  parseNecklaceSize,
+  parseRingSize,
+} from '../utils/variantParsers';
 
 const defaultSupplements = {
   bracelets: { ...braceletChainTypes },
@@ -33,8 +40,6 @@ const defaultSupplements = {
 };
 
 const cloneSupplements = () => JSON.parse(JSON.stringify(defaultSupplements));
-
-const escapeRegExp = (value) => value.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
 
 const SCOPE_COLLECTIONS = {
   global: [],
@@ -97,16 +102,6 @@ const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) =
   return merged;
 };
 
-const RING_BAND_PATTERNS = Object.keys(ringBandSupplements).map((band) => ({
-  canonical: band,
-  regex: new RegExp(`\\b${escapeRegExp(band)}\\b`, 'i'),
-}));
-
-const RING_SIZE_PATTERNS = ringSizes.map((size) => ({
-  canonical: size,
-  regex: new RegExp(`\\b${escapeRegExp(size)}\\b`, 'i'),
-}));
-
 const buildRingKey = (band, size) => {
   if (!band || !size) {
     return null;
@@ -129,48 +124,144 @@ const sanitizeVariantKey = (value) => {
   return normalized ? normalized : null;
 };
 
-const collectVariantKeyCandidates = (variant) => {
-  const candidates = new Set();
+const hasDigits = (value) => /[0-9]/.test(String(value));
 
-  if (variant?.title) {
-    const key = sanitizeVariantKey(variant.title);
-    if (key) {
-      candidates.add(key);
-    }
+const UNIQUE_CHAIN_NAMES = Array.from(
+  new Set([...Object.keys(braceletChainTypes), ...Object.keys(necklaceChainTypes)]),
+);
+
+const CHAIN_LOOKUP = new Map(
+  UNIQUE_CHAIN_NAMES.map((name) => [sanitizeVariantKey(name), name]),
+);
+
+const RING_BAND_NAMES = Object.keys(ringBandSupplements);
+
+const RING_BAND_LOOKUP = new Map(
+  RING_BAND_NAMES.map((name) => [sanitizeVariantKey(name), name]),
+);
+
+const CHAIN_NAME_CACHE = new Map();
+const NECKLACE_SIZE_CACHE = new Map();
+const RING_BAND_CACHE = new Map();
+const RING_SIZE_CACHE = new Map();
+
+const canonicalChainName = (value, contextLabel = 'chain types') => {
+  if (value === null || value === undefined) {
+    return null;
   }
 
-  if (Array.isArray(variant?.options) && variant.options.length > 0) {
-    const combined = sanitizeVariantKey(variant.options.join(' '));
-    if (combined) {
-      candidates.add(combined);
-    }
-
-    if (variant.options.length >= 2) {
-      const firstTwo = sanitizeVariantKey(variant.options.slice(0, 2).join(' '));
-      if (firstTwo) {
-        candidates.add(firstTwo);
-      }
-    }
-
-    for (const option of variant.options) {
-      const optionKey = sanitizeVariantKey(option);
-      if (optionKey) {
-        candidates.add(optionKey);
-      }
-    }
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
   }
 
-  return Array.from(candidates);
+  if (CHAIN_NAME_CACHE.has(raw)) {
+    return CHAIN_NAME_CACHE.get(raw);
+  }
+
+  const parsed = parseChainName(raw);
+  const normalized = parsed ? sanitizeVariantKey(parsed) : null;
+  const canonical = normalized ? CHAIN_LOOKUP.get(normalized) : null;
+
+  if (!canonical) {
+    console.warn(
+      `Chain option "${raw}" doesn't match expected ${contextLabel}:`,
+      UNIQUE_CHAIN_NAMES,
+    );
+  }
+
+  CHAIN_NAME_CACHE.set(raw, canonical ?? null);
+  return canonical ?? null;
 };
 
-const matchVariantKey = (variant, targetByKey) => {
-  for (const candidate of collectVariantKeyCandidates(variant)) {
-    if (targetByKey.has(candidate)) {
-      return candidate;
-    }
+const canonicalNecklaceSize = (value, contextLabel = 'necklace') => {
+  if (value === null || value === undefined) {
+    return null;
   }
 
-  return null;
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  if (NECKLACE_SIZE_CACHE.has(raw)) {
+    return NECKLACE_SIZE_CACHE.get(raw);
+  }
+
+  if (!/[0-9]/.test(raw)) {
+    NECKLACE_SIZE_CACHE.set(raw, null);
+    return null;
+  }
+
+  const parsed = parseNecklaceSize(raw);
+  const canonical = Number.isFinite(parsed) && necklaceSizes.includes(parsed) ? parsed : null;
+
+  if (!canonical) {
+    console.warn(
+      `${contextLabel} size "${raw}" doesn't match expected format or values:`,
+      necklaceSizes,
+    );
+  }
+
+  NECKLACE_SIZE_CACHE.set(raw, canonical ?? null);
+  return canonical ?? null;
+};
+
+const canonicalRingBand = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  if (RING_BAND_CACHE.has(raw)) {
+    return RING_BAND_CACHE.get(raw);
+  }
+
+  const parsed = parseBandType(raw);
+  const normalized = parsed ? sanitizeVariantKey(parsed) : null;
+  const canonical = normalized ? RING_BAND_LOOKUP.get(normalized) : null;
+
+  if (!canonical) {
+    console.warn(
+      `Ring band "${raw}" doesn't match expected format or values:`,
+      RING_BAND_NAMES,
+    );
+  }
+
+  RING_BAND_CACHE.set(raw, canonical ?? null);
+  return canonical ?? null;
+};
+
+const canonicalRingSize = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  if (RING_SIZE_CACHE.has(raw)) {
+    return RING_SIZE_CACHE.get(raw);
+  }
+
+  const parsed = parseRingSize(raw);
+  const canonical = parsed && ringSizes.includes(parsed) ? parsed : null;
+
+  if (!canonical) {
+    console.warn(
+      `Ring size "${raw}" doesn't match expected format or values:`,
+      ringSizes,
+    );
+  }
+
+  RING_SIZE_CACHE.set(raw, canonical ?? null);
+  return canonical ?? null;
 };
 
 const commitShopifyVariantUpdates = async ({
@@ -283,44 +374,6 @@ const commitShopifyVariantUpdates = async ({
   }
 };
 
-const findRingBand = (value) => {
-  if (!value) {
-    return null;
-  }
-
-  const text = String(value).trim();
-  if (!text) {
-    return null;
-  }
-
-  for (const pattern of RING_BAND_PATTERNS) {
-    if (pattern.regex.test(text)) {
-      return pattern.canonical;
-    }
-  }
-
-  return null;
-};
-
-const findRingSize = (value) => {
-  if (!value) {
-    return null;
-  }
-
-  const text = String(value).trim();
-  if (!text) {
-    return null;
-  }
-
-  for (const pattern of RING_SIZE_PATTERNS) {
-    if (pattern.regex.test(text)) {
-      return pattern.canonical;
-    }
-  }
-
-  return null;
-};
-
 const splitVariantDescriptor = (value) => {
   if (!value) {
     return [];
@@ -332,16 +385,34 @@ const splitVariantDescriptor = (value) => {
     .filter(Boolean);
 };
 
+const collectVariantParts = (variant) => {
+  const parts = [];
+
+  if (Array.isArray(variant?.options) && variant.options.length > 0) {
+    parts.push(...variant.options);
+  }
+
+  if (typeof variant?.title === 'string' && variant.title.trim()) {
+    parts.push(...splitVariantDescriptor(variant.title));
+  }
+
+  return parts;
+};
+
 const deriveRingIdentity = (variant) => {
   if (!variant || typeof variant !== 'object') {
     return { key: null, band: null, size: null };
   }
 
-  if (variant.band && variant.size) {
-    const key = buildRingKey(variant.band, variant.size);
-    if (key) {
-      return { key, band: variant.band, size: variant.size };
-    }
+  let band = null;
+  let size = null;
+
+  if (variant.band) {
+    band = canonicalRingBand(variant.band) ?? band;
+  }
+
+  if (variant.size) {
+    size = canonicalRingSize(variant.size) ?? size;
   }
 
   const candidateGroups = [];
@@ -359,25 +430,135 @@ const deriveRingIdentity = (variant) => {
       continue;
     }
 
-    let band = null;
-    let size = null;
-
     for (const part of parts) {
-      if (!band) {
-        band = findRingBand(part);
+      const fragment = String(part).trim();
+      if (!fragment) {
+        continue;
       }
+
+      if (!band && !hasDigits(fragment)) {
+        const parsedBand = canonicalRingBand(fragment);
+        if (parsedBand) {
+          band = parsedBand;
+          continue;
+        }
+      }
+
       if (!size) {
-        size = findRingSize(part);
+        const parsedSize = canonicalRingSize(fragment);
+        if (parsedSize) {
+          size = parsedSize;
+          if (band) {
+            break;
+          }
+          continue;
+        }
+      }
+
+      if (!band && !hasDigits(fragment)) {
+        const parsedBand = canonicalRingBand(fragment);
+        if (parsedBand) {
+          band = parsedBand;
+        }
       }
     }
 
     if (band && size) {
-      return { key: buildRingKey(band, size), band, size };
+      break;
     }
   }
 
-  return { key: null, band: null, size: null };
+  if (band && size) {
+    return { key: buildRingKey(band, size), band, size };
+  }
+
+  return { key: null, band, size };
 };
+
+const buildChainSizeKey = (chain, size) =>
+  chain && Number.isFinite(size) ? `${chain}::${size}` : null;
+
+const deriveBraceletKey = (variant, contextLabel = 'bracelet chain options') => {
+  if (!variant || typeof variant !== 'object') {
+    return null;
+  }
+
+  if (variant.chainType) {
+    const canonical = canonicalChainName(variant.chainType, contextLabel);
+    if (canonical) {
+      return canonical;
+    }
+  }
+
+  for (const part of collectVariantParts(variant)) {
+    const fragment = String(part).trim();
+    if (!fragment || hasDigits(fragment)) {
+      continue;
+    }
+
+    const canonical = canonicalChainName(fragment, contextLabel);
+    if (canonical) {
+      return canonical;
+    }
+  }
+
+  return null;
+};
+
+const deriveHandChainKey = (variant) =>
+  deriveBraceletKey(variant, 'hand chain options');
+
+const deriveNecklaceSignature = (variant, contextLabel = 'necklace') => {
+  if (!variant || typeof variant !== 'object') {
+    return { key: null, chain: null, size: null };
+  }
+
+  let chain = null;
+  let size = null;
+
+  if (variant.chainType) {
+    chain = canonicalChainName(variant.chainType, `${contextLabel} chain options`) ?? chain;
+  }
+
+  if (Number.isFinite(variant.size)) {
+    if (necklaceSizes.includes(variant.size)) {
+      size = variant.size;
+    } else {
+      console.warn(
+        `${contextLabel} size "${variant.size}" doesn't match expected format or values:`,
+        necklaceSizes,
+      );
+    }
+  } else if (variant.size) {
+    size = canonicalNecklaceSize(variant.size, contextLabel) ?? size;
+  }
+
+  for (const part of collectVariantParts(variant)) {
+    const fragment = String(part).trim();
+    if (!fragment) {
+      continue;
+    }
+
+    if (!size) {
+      const parsedSize = canonicalNecklaceSize(fragment, contextLabel);
+      if (Number.isFinite(parsedSize)) {
+        size = parsedSize;
+        continue;
+      }
+    }
+
+    if (!chain && !hasDigits(fragment)) {
+      const parsedChain = canonicalChainName(fragment, `${contextLabel} chain options`);
+      if (parsedChain) {
+        chain = parsedChain;
+      }
+    }
+  }
+
+  return { key: buildChainSizeKey(chain, size), chain, size };
+};
+
+const deriveSetSignature = (variant) => deriveNecklaceSignature(variant, 'set');
 
 export const usePricingStore = create(
   devtools((set, get) => ({
@@ -686,7 +867,7 @@ export const usePricingStore = create(
           const targetByKey = new Map();
 
           for (const target of targetVariants) {
-            const key = sanitizeVariantKey(target.title);
+            const key = deriveBraceletKey(target);
             if (key) {
               targetByKey.set(key, target);
             }
@@ -700,8 +881,8 @@ export const usePricingStore = create(
               originalVariantLookup.set(String(variant.id), variant);
             }
 
-            const key = matchVariantKey(variant, targetByKey);
-            if (key) {
+            const key = deriveBraceletKey(variant);
+            if (key && targetByKey.has(key)) {
               availableKeys.add(key);
               variantKeyLookup.set(variant, key);
             }
@@ -745,8 +926,8 @@ export const usePricingStore = create(
           });
 
           const missingVariants = targetVariants.filter((variant) => {
-            const key = sanitizeVariantKey(variant.title);
-            return key ? !availableKeys.has(key) : false;
+            const key = deriveBraceletKey(variant);
+            return key ? !availableKeys.has(key) : true;
           });
 
           if (missingVariants.length > 0) {
@@ -820,9 +1001,9 @@ export const usePricingStore = create(
           const targetByKey = new Map();
 
           for (const target of targetVariants) {
-            const key = sanitizeVariantKey(target.title);
-            if (key) {
-              targetByKey.set(key, target);
+            const signature = deriveNecklaceSignature(target);
+            if (signature.key) {
+              targetByKey.set(signature.key, target);
             }
           }
 
@@ -834,10 +1015,10 @@ export const usePricingStore = create(
               originalVariantLookup.set(String(variant.id), variant);
             }
 
-            const key = matchVariantKey(variant, targetByKey);
-            if (key) {
-              availableKeys.add(key);
-              variantKeyLookup.set(variant, key);
+            const signature = deriveNecklaceSignature(variant);
+            if (signature.key && targetByKey.has(signature.key)) {
+              availableKeys.add(signature.key);
+              variantKeyLookup.set(variant, signature.key);
             }
           }
 
@@ -879,8 +1060,8 @@ export const usePricingStore = create(
           });
 
           const missingVariants = targetVariants.filter((variant) => {
-            const key = sanitizeVariantKey(variant.title);
-            return key ? !availableKeys.has(key) : false;
+            const signature = deriveNecklaceSignature(variant);
+            return signature.key ? !availableKeys.has(signature.key) : true;
           });
 
           if (missingVariants.length > 0) {
@@ -1092,7 +1273,7 @@ export const usePricingStore = create(
           const targetByKey = new Map();
 
           for (const target of targetVariants) {
-            const key = sanitizeVariantKey(target.title);
+            const key = deriveHandChainKey(target);
             if (key) {
               targetByKey.set(key, target);
             }
@@ -1106,8 +1287,8 @@ export const usePricingStore = create(
               originalVariantLookup.set(String(variant.id), variant);
             }
 
-            const key = matchVariantKey(variant, targetByKey);
-            if (key) {
+            const key = deriveHandChainKey(variant);
+            if (key && targetByKey.has(key)) {
               availableKeys.add(key);
               variantKeyLookup.set(variant, key);
             }
@@ -1151,8 +1332,8 @@ export const usePricingStore = create(
           });
 
           const missingVariants = targetVariants.filter((variant) => {
-            const key = sanitizeVariantKey(variant.title);
-            return key ? !availableKeys.has(key) : false;
+            const key = deriveHandChainKey(variant);
+            return key ? !availableKeys.has(key) : true;
           });
 
           if (missingVariants.length > 0) {
@@ -1231,9 +1412,9 @@ export const usePricingStore = create(
           const targetByKey = new Map();
 
           for (const target of targetVariants) {
-            const key = sanitizeVariantKey(target.title);
-            if (key) {
-              targetByKey.set(key, target);
+            const signature = deriveSetSignature(target);
+            if (signature.key) {
+              targetByKey.set(signature.key, target);
             }
           }
 
@@ -1245,10 +1426,10 @@ export const usePricingStore = create(
               originalVariantLookup.set(String(variant.id), variant);
             }
 
-            const key = matchVariantKey(variant, targetByKey);
-            if (key) {
-              availableKeys.add(key);
-              variantKeyLookup.set(variant, key);
+            const signature = deriveSetSignature(variant);
+            if (signature.key && targetByKey.has(signature.key)) {
+              availableKeys.add(signature.key);
+              variantKeyLookup.set(variant, signature.key);
             }
           }
 
@@ -1290,8 +1471,8 @@ export const usePricingStore = create(
           });
 
           const missingVariants = targetVariants.filter((variant) => {
-            const key = sanitizeVariantKey(variant.title);
-            return key ? !availableKeys.has(key) : false;
+            const signature = deriveSetSignature(variant);
+            return signature.key ? !availableKeys.has(signature.key) : true;
           });
 
           if (missingVariants.length > 0) {

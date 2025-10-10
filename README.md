@@ -132,31 +132,40 @@ that each product in Shopify meets the following requirements:
    - Sets: tag with `set`/`ensemble` or a product type containing “set” or
      “ensemble”.
 
-2. **Variant naming**
-   - Bracelet and hand chain variants must include the chain name defined in
-     `src/data/supplements.js` (e.g. `Forçat S`, `Gourmette`, `Serpent`) in the
-     variant title or option fields.
-   - Necklace and set variants must include both the chain name and size (e.g.
-     `Forçat S • 41cm`).
-   - Ring variants must expose both the band and size either in their title or
-     in option values. The app recognises the canonical band names from
-     `ringBandSupplements` (e.g. `Slim`, `Big`, `Twist`) and the ring sizes
-     listed in `ringSizes` (e.g. `XS`, `M`, `XL`).
-
-3. **Variant metadata**
+2. **Variant metadata**
    - Variant IDs must be stable—updates are sent directly to each `variant.id`.
    - SKUs are optional and ignored by the matching algorithm.
    - Compare-at prices should be populated if you want the UI to render the
      before/after comparison; missing values default to the variant’s current
      `price`.
 
-4. **Status**
+3. **Status**
    - Only `active` Shopify products are loaded into the dashboard. Archive or
      draft items are skipped automatically.
 
 Review this checklist when introducing new SKUs to Shopify to guarantee the UI
 generates previews, applies updates, and restores backups without manual
 intervention.
+
+### Shopify Metafield Format Requirements
+
+Your Shopify products must have these metafield values configured:
+
+**Chain Options** (for bracelets, necklaces, hand chains):
+- `Forsat S`, `Forsat M`, `Forsat L`
+- `Gourmette S`, `Gourmette M`
+- `Chopard S`, `Chopard M`
+
+**Chaine Size** (for necklaces):
+- `41 cm`, `45 cm`, `50 cm`, `55 cm`, `60 cm`, `70 cm`, `80 cm`
+
+**Ring Sizes**:
+- `XL (60 - 65)`, `L (55 - 59)`, `S (50 - 54)`, `XS (46 - 49)`
+
+**Band Type** (for rings):
+- `Big`, `Light`, `Small`
+
+The app automatically parses these formats to match against pricing data.
 
 ## Key concepts
 
