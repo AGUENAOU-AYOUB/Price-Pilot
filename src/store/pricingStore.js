@@ -235,19 +235,170 @@ export const usePricingStore = create(
       get().log('Backup completed successfully.', scope);
     },
 
-    restoreScope: (scope) => {
+    restoreScope: async (scope) => {
       const backup = get().backups[scope];
       if (!backup) {
         get().log('No backup available to restore.', scope);
         return;
       }
-      set({
-        products: backup.map((product) => ({
-          ...product,
-          variants: product.variants.map((variant) => ({ ...variant })),
-        })),
-      });
-      get().log('Backup restored successfully.', scope);
+
+      const clonedBackup = backup.map((product) => ({
+        ...product,
+        variants: Array.isArray(product.variants)
+          ? product.variants.map((variant) => ({ ...variant }))
+          : [],
+      }));
+
+      if (scope !== 'rings') {
+        set({ products: clonedBackup });
+        get().log('Backup restored successfully.', scope);
+        return;
+      }
+
+      if (!hasShopifyProxy()) {
+        set({ products: clonedBackup });
+        get().log('Shopify proxy missing; ring backup restored locally only.', 'rings');
+        get().log('Backup restored successfully.', scope);
+        return;
+      }
+
+      const currentProducts = get().products;
+      const currentProductsById = new Map(currentProducts.map((product) => [product.id, product]));
+      const updatesByProduct = new Map();
+      const currentVariantsByProduct = new Map();
+
+      for (const product of clonedBackup) {
+        if (product.collection !== 'bague') {
+          continue;
+        }
+
+        const currentProduct = currentProductsById.get(product.id);
+        if (!currentProduct) {
+          continue;
+        }
+
+        const currentVariantLookup = new Map(
+          (Array.isArray(currentProduct.variants) ? currentProduct.variants : []).map((variant) => [
+            String(variant?.id ?? ''),
+            { ...variant },
+          ]),
+        );
+
+        currentVariantsByProduct.set(product.id, currentVariantLookup);
+
+        for (const targetVariant of Array.isArray(product.variants) ? product.variants : []) {
+          const variantId = String(targetVariant?.id ?? '');
+          if (!variantId) {
+            continue;
+          }
+
+          const currentVariant = currentVariantLookup.get(variantId);
+          if (!currentVariant) {
+            continue;
+          }
+
+          const priceChanged = currentVariant.price !== targetVariant.price;
+          const compareChanged =
+            currentVariant.compareAtPrice !== targetVariant.compareAtPrice;
+
+          if (!priceChanged && !compareChanged) {
+            continue;
+          }
+
+          if (!updatesByProduct.has(product.id)) {
+            updatesByProduct.set(product.id, {
+              productId: product.id,
+              productTitle: product.title,
+              variants: [],
+            });
+          }
+
+          updatesByProduct.get(product.id).variants.push({
+            id: variantId,
+            price: targetVariant.price,
+            compareAtPrice: targetVariant.compareAtPrice,
+          });
+        }
+      }
+
+      const updatesPayload = Array.from(updatesByProduct.values());
+
+      if (updatesPayload.length === 0) {
+        set({ products: clonedBackup });
+        get().log('Ring variants already match the backup; no Shopify update sent.', 'rings');
+        get().log('Backup restored successfully.', scope);
+        return;
+      }
+
+      get().toggleLoading('rings', true);
+
+      try {
+        const result = await pushVariantUpdates(updatesPayload);
+        const failures = Array.isArray(result?.failures) ? result.failures : [];
+        const failedVariantIds = new Set(
+          failures
+            .map((failure) => (failure?.variantId ? String(failure.variantId) : ''))
+            .filter(Boolean),
+        );
+        const attemptedCount = updatesPayload.reduce(
+          (total, entry) => total + entry.variants.length,
+          0,
+        );
+
+        const finalProducts = clonedBackup.map((product) => {
+          if (product.collection !== 'bague' || failedVariantIds.size === 0) {
+            return product;
+          }
+
+          const currentVariantLookup = currentVariantsByProduct.get(product.id);
+          if (!currentVariantLookup) {
+            return product;
+          }
+
+          const nextVariants = product.variants.map((variant) => {
+            const variantId = String(variant?.id ?? '');
+            if (!variantId || !failedVariantIds.has(variantId)) {
+              return variant;
+            }
+
+            const fallback = currentVariantLookup.get(variantId);
+            return fallback ? { ...fallback } : variant;
+          });
+
+          return { ...product, variants: nextVariants };
+        });
+
+        set({ products: finalProducts });
+
+        const failedCount = Number.isFinite(result?.failedCount)
+          ? result.failedCount
+          : failedVariantIds.size;
+        const updatedCount = Number.isFinite(result?.updatedCount)
+          ? result.updatedCount
+          : Math.max(attemptedCount - failedVariantIds.size, 0);
+
+        if (failedCount > 0) {
+          get().log(
+            `Restored ${updatedCount} Shopify ring variants with ${failedCount} failures.`,
+            'rings',
+          );
+          for (const failure of failures) {
+            get().log(
+              `Failed to restore variant ${failure.variantId} for ${failure.productTitle}: ${failure.reason}`,
+              'rings',
+            );
+          }
+        } else {
+          get().log(`Restored ${updatedCount} Shopify ring variants.`, 'rings');
+        }
+
+        get().log('Backup restored successfully.', scope);
+      } catch (error) {
+        console.error('Failed to restore ring backup to Shopify', error);
+        get().log('Failed to restore ring backup on Shopify.', 'rings');
+      } finally {
+        get().toggleLoading('rings', false);
+      }
     },
 
     previewGlobalChange: (percent) => {
