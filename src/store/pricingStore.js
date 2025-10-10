@@ -10,7 +10,7 @@ import {
 } from '../data/supplements';
 import { mockProducts } from '../data/products';
 import { hasShopifyProxy } from '../config/shopify';
-import { fetchActiveProducts, pushVariantUpdates } from '../services/shopify';
+import { fetchActiveProducts, fetchProductsByCollections, pushVariantUpdates } from '../services/shopify';
 import {
   applyPercentage,
   buildBraceletVariants,
@@ -35,6 +35,67 @@ const defaultSupplements = {
 const cloneSupplements = () => JSON.parse(JSON.stringify(defaultSupplements));
 
 const escapeRegExp = (value) => value.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+
+const SCOPE_COLLECTIONS = {
+  global: [],
+  bracelets: ['bracelet'],
+  necklaces: ['collier'],
+  rings: ['bague'],
+  handchains: ['handchain'],
+  sets: ['ensemble'],
+};
+
+const cloneVariant = (variant) => ({ ...variant });
+
+const cloneProduct = (product) => ({
+  ...product,
+  variants: Array.isArray(product?.variants)
+    ? product.variants.map((variant) => cloneVariant({ ...variant }))
+    : [],
+});
+
+const cloneProducts = (products = []) => products.map((product) => cloneProduct(product));
+
+const buildCollectionSet = (scope) => {
+  const collections = SCOPE_COLLECTIONS[scope] ?? [];
+  return new Set(collections.map((collection) => collection.toLowerCase()));
+};
+
+const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) => {
+  const remoteClones = cloneProducts(remoteProducts);
+
+  if (!(collectionSet instanceof Set) || collectionSet.size === 0) {
+    return remoteClones;
+  }
+
+  const remoteById = new Map(remoteClones.map((product) => [product.id, product]));
+  const synchronizedIds = new Set();
+
+  const merged = currentProducts.map((product) => {
+    const collectionKey =
+      typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
+
+    if (!collectionSet.has(collectionKey)) {
+      return cloneProduct(product);
+    }
+
+    const remote = remoteById.get(product.id);
+    if (remote) {
+      synchronizedIds.add(product.id);
+      return remote;
+    }
+
+    return cloneProduct(product);
+  });
+
+  for (const [productId, remote] of remoteById.entries()) {
+    if (!synchronizedIds.has(productId)) {
+      merged.push(remote);
+    }
+  }
+
+  return merged;
+};
 
 const RING_BAND_PATTERNS = Object.keys(ringBandSupplements).map((band) => ({
   canonical: band,
@@ -126,19 +187,26 @@ const commitShopifyVariantUpdates = async ({
   get,
 }) => {
   const updatesPayload = Array.from(updatesByProduct.values());
-  const proxyMissingMessage = `Shopify proxy missing; ${updateLabel} changes applied locally only.`;
+  const proxyMissingMessage = `Shopify proxy missing; unable to push ${updateLabel} changes. Start the proxy server and try again.`;
+  const normalizedCollections = Array.isArray(collection)
+    ? collection.filter(Boolean)
+    : collection
+    ? [collection]
+    : [];
+  const collectionSet =
+    normalizedCollections.length > 0
+      ? new Set(normalizedCollections.map((entry) => entry.toLowerCase()))
+      : null;
 
   if (!hasShopifyProxy()) {
     get().log(proxyMissingMessage, scope);
-    set({ products: updatedProducts });
-    get().log(successLogMessage, scope);
-    return;
+    return { success: false, reason: 'missing-proxy' };
   }
 
   if (updatesPayload.length === 0) {
     set({ products: updatedProducts });
     get().log(noChangesMessage, scope);
-    return;
+    return { success: true, updatedCount: 0, failedCount: 0 };
   }
 
   try {
@@ -153,7 +221,13 @@ const commitShopifyVariantUpdates = async ({
     );
 
     const finalProducts = updatedProducts.map((product) => {
-      if (product.collection !== collection || failedVariantIds.size === 0) {
+      if (!collectionSet || failedVariantIds.size === 0) {
+        return product;
+      }
+
+      const productCollection =
+        typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
+      if (!collectionSet.has(productCollection)) {
         return product;
       }
 
@@ -192,12 +266,20 @@ const commitShopifyVariantUpdates = async ({
       get().log(`Updated ${updatedCount} Shopify ${updateLabel} variants.`, scope);
     }
 
-    if (updatedCount > 0) {
+    if (updatedCount > 0 && failedCount === 0) {
       get().log(successLogMessage, scope);
     }
+
+    return {
+      success: failedCount === 0,
+      updatedCount,
+      failedCount,
+      failures,
+    };
   } catch (error) {
     console.error(failureLogMessage, error);
     get().log(failureLogMessage, scope);
+    return { success: false, reason: 'request-failed', error };
   }
 };
 
@@ -368,73 +450,109 @@ export const usePricingStore = create(
       }
     },
 
-    backupScope: (scope) => {
-      const products = get().products.map((product) => ({
-        ...product,
-        variants: product.variants.map((variant) => ({ ...variant })),
-      }));
-      set((state) => ({
-        backups: {
-          ...state.backups,
-          [scope]: products,
-        },
-      }));
-      get().log('Backup completed successfully.', scope);
-    },
-
-    restoreScope: async (scope) => {
-      const backup = get().backups[scope];
-      if (!backup) {
-        get().log('No backup available to restore.', scope);
-        return;
-      }
-
-      const clonedBackup = backup.map((product) => ({
-        ...product,
-        variants: Array.isArray(product.variants)
-          ? product.variants.map((variant) => ({ ...variant }))
-          : [],
-      }));
-
-      if (scope !== 'rings') {
-        set({ products: clonedBackup });
-        get().log('Backup restored successfully.', scope);
+    backupScope: async (scope) => {
+      if (!(scope in SCOPE_COLLECTIONS)) {
+        get().log('Unknown backup scope requested.', scope);
         return;
       }
 
       if (!hasShopifyProxy()) {
-        set({ products: clonedBackup });
-        get().log('Shopify proxy missing; ring backup restored locally only.', 'rings');
-        get().log('Backup restored successfully.', scope);
+        get().log('Shopify proxy missing; unable to capture live backup.', scope);
         return;
       }
 
-      const currentProducts = get().products;
-      const currentProductsById = new Map(currentProducts.map((product) => [product.id, product]));
-      const updatesByProduct = new Map();
-      const currentVariantsByProduct = new Map();
+      get().toggleLoading(scope, true);
 
-      for (const product of clonedBackup) {
-        if (product.collection !== 'bague') {
+      try {
+        const collections = SCOPE_COLLECTIONS[scope] ?? [];
+        const remoteProducts = await fetchProductsByCollections(collections);
+        const collectionSet = buildCollectionSet(scope);
+        const currentProducts = get().products;
+        const mergedProducts = mergeProductsForScope(currentProducts, remoteProducts, collectionSet);
+        const backupPayload = {
+          timestamp: new Date().toISOString(),
+          products: cloneProducts(remoteProducts),
+        };
+
+        set((state) => ({
+          products: mergedProducts,
+          backups: {
+            ...state.backups,
+            [scope]: backupPayload,
+          },
+        }));
+
+        const count = remoteProducts.length;
+        const plural = count === 1 ? '' : 's';
+        get().log(
+          `Captured Shopify backup with ${count} product${plural} for ${scope}.`,
+          scope,
+        );
+      } catch (error) {
+        console.error('Failed to capture Shopify backup', error);
+        get().log('Failed to capture Shopify backup. Verify proxy connection.', scope);
+      } finally {
+        get().toggleLoading(scope, false);
+      }
+    },
+
+    restoreScope: async (scope) => {
+      if (!(scope in SCOPE_COLLECTIONS)) {
+        get().log('Unknown restore scope requested.', scope);
+        return;
+      }
+
+      const backupEntry = get().backups[scope];
+      if (!backupEntry?.products) {
+        get().log('No backup available to restore.', scope);
+        return;
+      }
+
+      if (!hasShopifyProxy()) {
+        get().log('Shopify proxy missing; unable to restore backup to Shopify.', scope);
+        return;
+      }
+
+      const backupProducts = cloneProducts(backupEntry.products);
+      const backupById = new Map(backupProducts.map((product) => [product.id, product]));
+      const collectionSet = buildCollectionSet(scope);
+      const includeAllCollections = collectionSet.size === 0;
+      const currentProducts = get().products;
+      const updatesByProduct = new Map();
+      const originalVariantLookup = new Map();
+      const updatedProducts = [];
+
+      for (const product of currentProducts) {
+        const productCollection =
+          typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
+        const collectionMatches = includeAllCollections || collectionSet.has(productCollection);
+
+        if (!collectionMatches) {
+          updatedProducts.push(product);
           continue;
         }
 
-        const currentProduct = currentProductsById.get(product.id);
-        if (!currentProduct) {
+        const backupProduct = backupById.get(product.id);
+        if (!backupProduct) {
+          updatedProducts.push(product);
           continue;
+        }
+
+        const clonedBackup = cloneProduct(backupProduct);
+        const currentVariants = Array.isArray(product.variants) ? product.variants : [];
+
+        for (const variant of currentVariants) {
+          if (variant?.id) {
+            originalVariantLookup.set(String(variant.id), { ...variant });
+          }
         }
 
         const currentVariantLookup = new Map(
-          (Array.isArray(currentProduct.variants) ? currentProduct.variants : []).map((variant) => [
-            String(variant?.id ?? ''),
-            { ...variant },
-          ]),
+          currentVariants.map((variant) => [String(variant?.id ?? ''), variant]),
         );
 
-        currentVariantsByProduct.set(product.id, currentVariantLookup);
-
-        for (const targetVariant of Array.isArray(product.variants) ? product.variants : []) {
-          const variantId = String(targetVariant?.id ?? '');
+        for (const variant of clonedBackup.variants) {
+          const variantId = String(variant?.id ?? '');
           if (!variantId) {
             continue;
           }
@@ -444,140 +562,97 @@ export const usePricingStore = create(
             continue;
           }
 
-          const priceChanged = currentVariant.price !== targetVariant.price;
-          const compareChanged =
-            currentVariant.compareAtPrice !== targetVariant.compareAtPrice;
+          if (
+            currentVariant.price !== variant.price ||
+            currentVariant.compareAtPrice !== variant.compareAtPrice
+          ) {
+            if (!updatesByProduct.has(clonedBackup.id)) {
+              updatesByProduct.set(clonedBackup.id, {
+                productId: clonedBackup.id,
+                productTitle: clonedBackup.title,
+                variants: [],
+              });
+            }
 
-          if (!priceChanged && !compareChanged) {
+            updatesByProduct.get(clonedBackup.id).variants.push({
+              id: variantId,
+              price: variant.price,
+              compareAtPrice: variant.compareAtPrice,
+            });
+          }
+        }
+
+        updatedProducts.push(clonedBackup);
+        backupById.delete(product.id);
+      }
+
+      for (const backupProduct of backupById.values()) {
+        const clonedBackup = cloneProduct(backupProduct);
+        updatedProducts.push(clonedBackup);
+
+        if (!updatesByProduct.has(clonedBackup.id)) {
+          updatesByProduct.set(clonedBackup.id, {
+            productId: clonedBackup.id,
+            productTitle: clonedBackup.title,
+            variants: [],
+          });
+        }
+
+        const entry = updatesByProduct.get(clonedBackup.id);
+        for (const variant of clonedBackup.variants) {
+          const variantId = String(variant?.id ?? '');
+          if (!variantId) {
             continue;
           }
 
-          if (!updatesByProduct.has(product.id)) {
-            updatesByProduct.set(product.id, {
-              productId: product.id,
-              productTitle: product.title,
-              variants: [],
-            });
-          }
-
-          updatesByProduct.get(product.id).variants.push({
+          entry.variants.push({
             id: variantId,
-            price: targetVariant.price,
-            compareAtPrice: targetVariant.compareAtPrice,
+            price: variant.price,
+            compareAtPrice: variant.compareAtPrice,
           });
         }
       }
 
-      const updatesPayload = Array.from(updatesByProduct.values());
+      for (const [productId, entry] of updatesByProduct.entries()) {
+        entry.variants = entry.variants
+          .map((variant) => ({
+            id: variant?.id ? String(variant.id) : '',
+            price: variant?.price,
+            compareAtPrice: variant?.compareAtPrice,
+          }))
+          .filter((variant) => variant.id);
 
-      if (updatesPayload.length === 0) {
-        set({ products: clonedBackup });
-        get().log('Ring variants already match the backup; no Shopify update sent.', 'rings');
-        get().log('Backup restored successfully.', scope);
-        return;
+        if (entry.variants.length === 0) {
+          updatesByProduct.delete(productId);
+        }
       }
 
-      get().toggleLoading('rings', true);
+      get().toggleLoading(scope, true);
 
       try {
-        const result = await pushVariantUpdates(updatesPayload);
-        const failures = Array.isArray(result?.failures) ? result.failures : [];
-        const failedVariantIds = new Set(
-          failures
-            .map((failure) => (failure?.variantId ? String(failure.variantId) : ''))
-            .filter(Boolean),
-        );
-        const attemptedCount = updatesPayload.reduce(
-          (total, entry) => total + entry.variants.length,
-          0,
-        );
-
-        const finalProducts = clonedBackup.map((product) => {
-          if (product.collection !== 'bague' || failedVariantIds.size === 0) {
-            return product;
-          }
-
-          const currentVariantLookup = currentVariantsByProduct.get(product.id);
-          if (!currentVariantLookup) {
-            return product;
-          }
-
-          const nextVariants = product.variants.map((variant) => {
-            const variantId = String(variant?.id ?? '');
-            if (!variantId || !failedVariantIds.has(variantId)) {
-              return variant;
-            }
-
-            const fallback = currentVariantLookup.get(variantId);
-            return fallback ? { ...fallback } : variant;
-          });
-
-          return { ...product, variants: nextVariants };
+        const result = await commitShopifyVariantUpdates({
+          scope,
+          collection: SCOPE_COLLECTIONS[scope],
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage: 'Shopify already matches the stored backup.',
+          successLogMessage: 'Shopify variants aligned with backup values.',
+          updateLabel: 'product',
+          failureLogMessage: 'Failed to push backup restore to Shopify.',
+          set,
+          get,
         });
 
-        set({ products: finalProducts });
-
-        const failedCount = Number.isFinite(result?.failedCount)
-          ? result.failedCount
-          : failedVariantIds.size;
-        const updatedCount = Number.isFinite(result?.updatedCount)
-          ? result.updatedCount
-          : Math.max(attemptedCount - failedVariantIds.size, 0);
-
-        if (failedCount > 0) {
-          get().log(
-            `Restored ${updatedCount} Shopify ring variants with ${failedCount} failures.`,
-            'rings',
-          );
-          for (const failure of failures) {
-            get().log(
-              `Failed to restore variant ${failure.variantId} for ${failure.productTitle}: ${failure.reason}`,
-              'rings',
-            );
-          }
-        } else {
-          get().log(`Restored ${updatedCount} Shopify ring variants.`, 'rings');
+        if (result.success) {
+          get().log('Backup restored successfully.', scope);
+        } else if (result.failedCount > 0) {
+          get().log('Backup restore completed with Shopify errors. Review logs for details.', scope);
         }
-
-        get().log('Backup restored successfully.', scope);
-      } catch (error) {
-        console.error('Failed to restore ring backup to Shopify', error);
-        get().log('Failed to restore ring backup on Shopify.', 'rings');
       } finally {
-        get().toggleLoading('rings', false);
+        get().toggleLoading(scope, false);
       }
     },
-
-    previewGlobalChange: (percent) => {
-      const { products } = get();
-      return products.map((product) => ({
-        product,
-        updatedBasePrice: applyPercentage(product.basePrice, percent),
-        updatedCompareAtPrice: applyPercentage(product.baseCompareAtPrice, percent),
-        variants: product.variants.map((variant) => ({
-          ...variant,
-          price: applyPercentage(variant.price, percent),
-          compareAtPrice: applyPercentage(variant.compareAtPrice, percent),
-        })),
-      }));
-    },
-
-    applyGlobalChange: (percent) => {
-      const { products } = get();
-      const updated = products.map((product) => ({
-        ...product,
-        basePrice: applyPercentage(product.basePrice, percent),
-        baseCompareAtPrice: applyPercentage(product.baseCompareAtPrice, percent),
-        variants: product.variants.map((variant) => ({
-          ...variant,
-          price: applyPercentage(variant.price, percent),
-          compareAtPrice: applyPercentage(variant.compareAtPrice, percent),
-        })),
-      }));
-      set({ products: updated });
-      get().log(`Applied global ${percent}% adjustment.`, 'global');
-    },
-
     previewBracelets: () => {
       const { products, supplements } = get();
       return products
@@ -591,119 +666,125 @@ export const usePricingStore = create(
     },
 
     applyBracelets: async () => {
-      const { products, supplements } = get();
+      get().toggleLoading('bracelets', true);
 
-      const updatedProducts = [];
-      const updatesByProduct = new Map();
-      const originalVariantLookup = new Map();
-      const missingSummaries = [];
+      try {
+        const { products, supplements } = get();
 
-      for (const product of products) {
-        if (product.collection !== 'bracelet') {
-          updatedProducts.push(product);
-          continue;
-        }
+        const updatedProducts = [];
+        const updatesByProduct = new Map();
+        const originalVariantLookup = new Map();
+        const missingSummaries = [];
 
-        const targetVariants = buildBraceletVariants(product, supplements.bracelets);
-        const targetByKey = new Map();
-
-        for (const target of targetVariants) {
-          const key = sanitizeVariantKey(target.title);
-          if (key) {
-            targetByKey.set(key, target);
-          }
-        }
-
-        const availableKeys = new Set();
-        const variantKeyLookup = new Map();
-
-        for (const variant of product.variants) {
-          if (variant?.id) {
-            originalVariantLookup.set(String(variant.id), variant);
+        for (const product of products) {
+          if (product.collection !== 'bracelet') {
+            updatedProducts.push(product);
+            continue;
           }
 
-          const key = matchVariantKey(variant, targetByKey);
-          if (key) {
-            availableKeys.add(key);
-            variantKeyLookup.set(variant, key);
-          }
-        }
+          const targetVariants = buildBraceletVariants(product, supplements.bracelets);
+          const targetByKey = new Map();
 
-        const nextVariants = product.variants.map((variant) => {
-          const key = variantKeyLookup.get(variant);
-          if (!key) {
-            return variant;
+          for (const target of targetVariants) {
+            const key = sanitizeVariantKey(target.title);
+            if (key) {
+              targetByKey.set(key, target);
+            }
           }
 
-          const target = targetByKey.get(key);
-          if (!target) {
-            return variant;
+          const availableKeys = new Set();
+          const variantKeyLookup = new Map();
+
+          for (const variant of product.variants) {
+            if (variant?.id) {
+              originalVariantLookup.set(String(variant.id), variant);
+            }
+
+            const key = matchVariantKey(variant, targetByKey);
+            if (key) {
+              availableKeys.add(key);
+              variantKeyLookup.set(variant, key);
+            }
           }
 
-          if (
-            variant.id &&
-            (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
-          ) {
-            if (!updatesByProduct.has(product.id)) {
-              updatesByProduct.set(product.id, {
-                productId: product.id,
-                productTitle: product.title,
-                variants: [],
+          const nextVariants = product.variants.map((variant) => {
+            const key = variantKeyLookup.get(variant);
+            if (!key) {
+              return variant;
+            }
+
+            const target = targetByKey.get(key);
+            if (!target) {
+              return variant;
+            }
+
+            if (
+              variant.id &&
+              (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
+            ) {
+              if (!updatesByProduct.has(product.id)) {
+                updatesByProduct.set(product.id, {
+                  productId: product.id,
+                  productTitle: product.title,
+                  variants: [],
+                });
+              }
+
+              updatesByProduct.get(product.id).variants.push({
+                id: variant.id,
+                price: target.price,
+                compareAtPrice: target.compareAtPrice,
               });
             }
 
-            updatesByProduct.get(product.id).variants.push({
-              id: variant.id,
+            return {
+              ...variant,
               price: target.price,
               compareAtPrice: target.compareAtPrice,
+            };
+          });
+
+          const missingVariants = targetVariants.filter((variant) => {
+            const key = sanitizeVariantKey(variant.title);
+            return key ? !availableKeys.has(key) : false;
+          });
+
+          if (missingVariants.length > 0) {
+            missingSummaries.push({
+              product,
+              titles: missingVariants.map((variant) => variant.title),
             });
           }
 
-          return {
-            ...variant,
-            price: target.price,
-            compareAtPrice: target.compareAtPrice,
-          };
-        });
-
-        const missingVariants = targetVariants.filter((variant) => {
-          const key = sanitizeVariantKey(variant.title);
-          return key ? !availableKeys.has(key) : false;
-        });
-
-        if (missingVariants.length > 0) {
-          missingSummaries.push({
-            product,
-            titles: missingVariants.map((variant) => variant.title),
-          });
+          updatedProducts.push({ ...product, variants: nextVariants });
         }
 
-        updatedProducts.push({ ...product, variants: nextVariants });
-      }
+        for (const { product, titles } of missingSummaries) {
+          const plural = titles.length === 1 ? '' : 's';
+          const combinationSummary = titles.join(', ');
+          get().log(
+            `Skipped ${titles.length} bracelet variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
+            'bracelets',
+          );
+        }
 
-      for (const { product, titles } of missingSummaries) {
-        const plural = titles.length === 1 ? '' : 's';
-        const combinationSummary = titles.join(', ');
-        get().log(
-          `Skipped ${titles.length} bracelet variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
-          'bracelets',
-        );
+        await commitShopifyVariantUpdates({
+          scope: 'bracelets',
+          collection: 'bracelet',
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage:
+            'Bracelet variants already aligned with supplements; no Shopify update sent.',
+          successLogMessage: 'Bracelet variants updated.',
+          updateLabel: 'bracelet',
+          failureLogMessage: 'Failed to push bracelet variant updates to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        get().toggleLoading('bracelets', false);
       }
-
-      await commitShopifyVariantUpdates({
-        scope: 'bracelets',
-        collection: 'bracelet',
-        updatedProducts,
-        updatesByProduct,
-        originalVariantLookup,
-        noChangesMessage:
-          'Bracelet variants already aligned with supplements; no Shopify update sent.',
-        successLogMessage: 'Bracelet variants updated.',
-        updateLabel: 'bracelet',
-        failureLogMessage: 'Failed to push bracelet variant updates to Shopify.',
-        set,
-        get,
-      });
     },
 
     previewNecklaces: () => {
@@ -719,119 +800,125 @@ export const usePricingStore = create(
     },
 
     applyNecklaces: async () => {
-      const { products, supplements } = get();
+      get().toggleLoading('necklaces', true);
 
-      const updatedProducts = [];
-      const updatesByProduct = new Map();
-      const originalVariantLookup = new Map();
-      const missingSummaries = [];
+      try {
+        const { products, supplements } = get();
 
-      for (const product of products) {
-        if (product.collection !== 'collier') {
-          updatedProducts.push(product);
-          continue;
-        }
+        const updatedProducts = [];
+        const updatesByProduct = new Map();
+        const originalVariantLookup = new Map();
+        const missingSummaries = [];
 
-        const targetVariants = buildNecklaceVariants(product, supplements.necklaces);
-        const targetByKey = new Map();
-
-        for (const target of targetVariants) {
-          const key = sanitizeVariantKey(target.title);
-          if (key) {
-            targetByKey.set(key, target);
-          }
-        }
-
-        const availableKeys = new Set();
-        const variantKeyLookup = new Map();
-
-        for (const variant of product.variants) {
-          if (variant?.id) {
-            originalVariantLookup.set(String(variant.id), variant);
+        for (const product of products) {
+          if (product.collection !== 'collier') {
+            updatedProducts.push(product);
+            continue;
           }
 
-          const key = matchVariantKey(variant, targetByKey);
-          if (key) {
-            availableKeys.add(key);
-            variantKeyLookup.set(variant, key);
-          }
-        }
+          const targetVariants = buildNecklaceVariants(product, supplements.necklaces);
+          const targetByKey = new Map();
 
-        const nextVariants = product.variants.map((variant) => {
-          const key = variantKeyLookup.get(variant);
-          if (!key) {
-            return variant;
+          for (const target of targetVariants) {
+            const key = sanitizeVariantKey(target.title);
+            if (key) {
+              targetByKey.set(key, target);
+            }
           }
 
-          const target = targetByKey.get(key);
-          if (!target) {
-            return variant;
+          const availableKeys = new Set();
+          const variantKeyLookup = new Map();
+
+          for (const variant of product.variants) {
+            if (variant?.id) {
+              originalVariantLookup.set(String(variant.id), variant);
+            }
+
+            const key = matchVariantKey(variant, targetByKey);
+            if (key) {
+              availableKeys.add(key);
+              variantKeyLookup.set(variant, key);
+            }
           }
 
-          if (
-            variant.id &&
-            (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
-          ) {
-            if (!updatesByProduct.has(product.id)) {
-              updatesByProduct.set(product.id, {
-                productId: product.id,
-                productTitle: product.title,
-                variants: [],
+          const nextVariants = product.variants.map((variant) => {
+            const key = variantKeyLookup.get(variant);
+            if (!key) {
+              return variant;
+            }
+
+            const target = targetByKey.get(key);
+            if (!target) {
+              return variant;
+            }
+
+            if (
+              variant.id &&
+              (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
+            ) {
+              if (!updatesByProduct.has(product.id)) {
+                updatesByProduct.set(product.id, {
+                  productId: product.id,
+                  productTitle: product.title,
+                  variants: [],
+                });
+              }
+
+              updatesByProduct.get(product.id).variants.push({
+                id: variant.id,
+                price: target.price,
+                compareAtPrice: target.compareAtPrice,
               });
             }
 
-            updatesByProduct.get(product.id).variants.push({
-              id: variant.id,
+            return {
+              ...variant,
               price: target.price,
               compareAtPrice: target.compareAtPrice,
+            };
+          });
+
+          const missingVariants = targetVariants.filter((variant) => {
+            const key = sanitizeVariantKey(variant.title);
+            return key ? !availableKeys.has(key) : false;
+          });
+
+          if (missingVariants.length > 0) {
+            missingSummaries.push({
+              product,
+              titles: missingVariants.map((variant) => variant.title),
             });
           }
 
-          return {
-            ...variant,
-            price: target.price,
-            compareAtPrice: target.compareAtPrice,
-          };
-        });
-
-        const missingVariants = targetVariants.filter((variant) => {
-          const key = sanitizeVariantKey(variant.title);
-          return key ? !availableKeys.has(key) : false;
-        });
-
-        if (missingVariants.length > 0) {
-          missingSummaries.push({
-            product,
-            titles: missingVariants.map((variant) => variant.title),
-          });
+          updatedProducts.push({ ...product, variants: nextVariants });
         }
 
-        updatedProducts.push({ ...product, variants: nextVariants });
-      }
+        for (const { product, titles } of missingSummaries) {
+          const plural = titles.length === 1 ? '' : 's';
+          const combinationSummary = titles.join(', ');
+          get().log(
+            `Skipped ${titles.length} necklace variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
+            'necklaces',
+          );
+        }
 
-      for (const { product, titles } of missingSummaries) {
-        const plural = titles.length === 1 ? '' : 's';
-        const combinationSummary = titles.join(', ');
-        get().log(
-          `Skipped ${titles.length} necklace variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
-          'necklaces',
-        );
+        await commitShopifyVariantUpdates({
+          scope: 'necklaces',
+          collection: 'collier',
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage:
+            'Necklace variants already aligned with supplements; no Shopify update sent.',
+          successLogMessage: 'Necklace variants updated.',
+          updateLabel: 'necklace',
+          failureLogMessage: 'Failed to push necklace variant updates to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        get().toggleLoading('necklaces', false);
       }
-
-      await commitShopifyVariantUpdates({
-        scope: 'necklaces',
-        collection: 'collier',
-        updatedProducts,
-        updatesByProduct,
-        originalVariantLookup,
-        noChangesMessage:
-          'Necklace variants already aligned with supplements; no Shopify update sent.',
-        successLogMessage: 'Necklace variants updated.',
-        updateLabel: 'necklace',
-        failureLogMessage: 'Failed to push necklace variant updates to Shopify.',
-        set,
-        get,
-      });
     },
 
     previewRings: () => {
@@ -847,122 +934,129 @@ export const usePricingStore = create(
     },
 
     applyRings: async () => {
-      const { products, supplements } = get();
+      get().toggleLoading('rings', true);
 
-      const updatedProducts = [];
-      const updatesByProduct = new Map();
-      const missingMappings = [];
-      const originalVariantLookup = new Map();
+      try {
+        const { products, supplements } = get();
 
-      for (const product of products) {
-        if (product.collection !== 'bague') {
-          updatedProducts.push(product);
-          continue;
-        }
+        const updatedProducts = [];
+        const updatesByProduct = new Map();
+        const missingMappings = [];
+        const originalVariantLookup = new Map();
 
-        const targetVariants = buildRingVariants(product, supplements.rings);
-        const targetByKey = new Map();
-        for (const target of targetVariants) {
-          const key = buildRingKey(target.band, target.size);
-          if (key) {
-            targetByKey.set(key, target);
-          }
-        }
-
-        const availableRingKeys = new Set();
-        const variantIdentityLookup = new Map();
-
-        for (const variant of product.variants) {
-          if (variant?.id) {
-            const variantId = String(variant.id);
-            originalVariantLookup.set(variantId, variant);
+        for (const product of products) {
+          if (product.collection !== 'bague') {
+            updatedProducts.push(product);
+            continue;
           }
 
-          const identity = deriveRingIdentity(variant);
-          if (identity.key) {
-            availableRingKeys.add(identity.key);
-          }
-          variantIdentityLookup.set(variant, identity);
-        }
-
-        const nextVariants = product.variants.map((variant) => {
-          const identity = variantIdentityLookup.get(variant) ?? deriveRingIdentity(variant);
-          if (!identity.key) {
-            return variant;
+          const targetVariants = buildRingVariants(product, supplements.rings);
+          const targetByKey = new Map();
+          for (const target of targetVariants) {
+            const key = buildRingKey(target.band, target.size);
+            if (key) {
+              targetByKey.set(key, target);
+            }
           }
 
-          const target = targetByKey.get(identity.key);
-          if (!target) {
-            return variant;
+          const availableRingKeys = new Set();
+          const variantIdentityLookup = new Map();
+
+          for (const variant of product.variants) {
+            if (variant?.id) {
+              const variantId = String(variant.id);
+              originalVariantLookup.set(variantId, variant);
+            }
+
+            const identity = deriveRingIdentity(variant);
+            if (identity.key) {
+              availableRingKeys.add(identity.key);
+            }
+            variantIdentityLookup.set(variant, identity);
           }
 
-          if (
-            variant.id &&
-            (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
-          ) {
-            if (!updatesByProduct.has(product.id)) {
-              updatesByProduct.set(product.id, {
-                productId: product.id,
-                productTitle: product.title,
-                variants: [],
+          const nextVariants = product.variants.map((variant) => {
+            const identity = variantIdentityLookup.get(variant) ?? deriveRingIdentity(variant);
+            if (!identity.key) {
+              return variant;
+            }
+
+            const target = targetByKey.get(identity.key);
+            if (!target) {
+              return variant;
+            }
+
+            if (
+              variant.id &&
+              (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
+            ) {
+              if (!updatesByProduct.has(product.id)) {
+                updatesByProduct.set(product.id, {
+                  productId: product.id,
+                  productTitle: product.title,
+                  variants: [],
+                });
+              }
+
+              updatesByProduct.get(product.id).variants.push({
+                id: variant.id,
+                price: target.price,
+                compareAtPrice: target.compareAtPrice,
               });
             }
 
-            updatesByProduct.get(product.id).variants.push({
-              id: variant.id,
+            return {
+              ...variant,
               price: target.price,
               compareAtPrice: target.compareAtPrice,
-            });
+              band: identity.band ?? target.band,
+              size: identity.size ?? target.size,
+            };
+          });
+
+          const missingVariants = targetVariants.filter((variant) => {
+            const key = buildRingKey(variant.band, variant.size);
+            return key ? !availableRingKeys.has(key) : false;
+          });
+
+          const missingTitles = missingVariants.map((variant) => `${variant.band} • ${variant.size}`);
+
+          if (missingTitles.length > 0) {
+            missingMappings.push({ product, titles: missingTitles });
           }
 
-          return {
-            ...variant,
-            price: target.price,
-            compareAtPrice: target.compareAtPrice,
-            band: identity.band ?? target.band,
-            size: identity.size ?? target.size,
-          };
-        });
-
-        const missingVariants = targetVariants.filter((variant) => {
-          const key = buildRingKey(variant.band, variant.size);
-          return key ? !availableRingKeys.has(key) : false;
-        });
-
-        const missingTitles = missingVariants.map((variant) => `${variant.band} • ${variant.size}`);
-
-        if (missingTitles.length > 0) {
-          missingMappings.push({ product, titles: missingTitles });
+          updatedProducts.push({ ...product, variants: nextVariants });
         }
 
-        updatedProducts.push({ ...product, variants: nextVariants });
-      }
-
-      if (missingMappings.length > 0) {
-        for (const { product, titles } of missingMappings) {
-          const combinationSummary = titles.join(', ');
-          const plural = titles.length === 1 ? '' : 's';
-          get().log(
-            `Skipped ${titles.length} ring variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
-            'rings',
-          );
+        if (missingMappings.length > 0) {
+          for (const { product, titles } of missingMappings) {
+            const combinationSummary = titles.join(', ');
+            const plural = titles.length === 1 ? '' : 's';
+            get().log(
+              `Skipped ${titles.length} ring variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
+              'rings',
+            );
+          }
         }
+
+        await commitShopifyVariantUpdates({
+          scope: 'rings',
+          collection: 'bague',
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage:
+            'Ring variants already aligned with supplements; no Shopify update sent.',
+          successLogMessage: 'Ring variants updated.',
+          updateLabel: 'ring',
+          failureLogMessage: 'Failed to push ring variant updates to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        get().toggleLoading('rings', false);
       }
 
-      await commitShopifyVariantUpdates({
-        scope: 'rings',
-        collection: 'bague',
-        updatedProducts,
-        updatesByProduct,
-        originalVariantLookup,
-        noChangesMessage:
-          'Ring variants already aligned with supplements; no Shopify update sent.',
-        successLogMessage: 'Ring variants updated.',
-        updateLabel: 'ring',
-        failureLogMessage: 'Failed to push ring variant updates to Shopify.',
-        set,
-        get,
-      });
     },
 
     previewHandChains: () => {
@@ -978,119 +1072,126 @@ export const usePricingStore = create(
     },
 
     applyHandChains: async () => {
-      const { products, supplements } = get();
+      get().toggleLoading('handchains', true);
 
-      const updatedProducts = [];
-      const updatesByProduct = new Map();
-      const originalVariantLookup = new Map();
-      const missingSummaries = [];
+      try {
+        const { products, supplements } = get();
 
-      for (const product of products) {
-        if (product.collection !== 'handchain') {
-          updatedProducts.push(product);
-          continue;
-        }
+        const updatedProducts = [];
+        const updatesByProduct = new Map();
+        const originalVariantLookup = new Map();
+        const missingSummaries = [];
 
-        const targetVariants = buildHandChainVariants(product, supplements.handChains);
-        const targetByKey = new Map();
-
-        for (const target of targetVariants) {
-          const key = sanitizeVariantKey(target.title);
-          if (key) {
-            targetByKey.set(key, target);
-          }
-        }
-
-        const availableKeys = new Set();
-        const variantKeyLookup = new Map();
-
-        for (const variant of product.variants) {
-          if (variant?.id) {
-            originalVariantLookup.set(String(variant.id), variant);
+        for (const product of products) {
+          if (product.collection !== 'handchain') {
+            updatedProducts.push(product);
+            continue;
           }
 
-          const key = matchVariantKey(variant, targetByKey);
-          if (key) {
-            availableKeys.add(key);
-            variantKeyLookup.set(variant, key);
-          }
-        }
+          const targetVariants = buildHandChainVariants(product, supplements.handChains);
+          const targetByKey = new Map();
 
-        const nextVariants = product.variants.map((variant) => {
-          const key = variantKeyLookup.get(variant);
-          if (!key) {
-            return variant;
+          for (const target of targetVariants) {
+            const key = sanitizeVariantKey(target.title);
+            if (key) {
+              targetByKey.set(key, target);
+            }
           }
 
-          const target = targetByKey.get(key);
-          if (!target) {
-            return variant;
+          const availableKeys = new Set();
+          const variantKeyLookup = new Map();
+
+          for (const variant of product.variants) {
+            if (variant?.id) {
+              originalVariantLookup.set(String(variant.id), variant);
+            }
+
+            const key = matchVariantKey(variant, targetByKey);
+            if (key) {
+              availableKeys.add(key);
+              variantKeyLookup.set(variant, key);
+            }
           }
 
-          if (
-            variant.id &&
-            (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
-          ) {
-            if (!updatesByProduct.has(product.id)) {
-              updatesByProduct.set(product.id, {
-                productId: product.id,
-                productTitle: product.title,
-                variants: [],
+          const nextVariants = product.variants.map((variant) => {
+            const key = variantKeyLookup.get(variant);
+            if (!key) {
+              return variant;
+            }
+
+            const target = targetByKey.get(key);
+            if (!target) {
+              return variant;
+            }
+
+            if (
+              variant.id &&
+              (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
+            ) {
+              if (!updatesByProduct.has(product.id)) {
+                updatesByProduct.set(product.id, {
+                  productId: product.id,
+                  productTitle: product.title,
+                  variants: [],
+                });
+              }
+
+              updatesByProduct.get(product.id).variants.push({
+                id: variant.id,
+                price: target.price,
+                compareAtPrice: target.compareAtPrice,
               });
             }
 
-            updatesByProduct.get(product.id).variants.push({
-              id: variant.id,
+            return {
+              ...variant,
               price: target.price,
               compareAtPrice: target.compareAtPrice,
+            };
+          });
+
+          const missingVariants = targetVariants.filter((variant) => {
+            const key = sanitizeVariantKey(variant.title);
+            return key ? !availableKeys.has(key) : false;
+          });
+
+          if (missingVariants.length > 0) {
+            missingSummaries.push({
+              product,
+              titles: missingVariants.map((variant) => variant.title),
             });
           }
 
-          return {
-            ...variant,
-            price: target.price,
-            compareAtPrice: target.compareAtPrice,
-          };
-        });
-
-        const missingVariants = targetVariants.filter((variant) => {
-          const key = sanitizeVariantKey(variant.title);
-          return key ? !availableKeys.has(key) : false;
-        });
-
-        if (missingVariants.length > 0) {
-          missingSummaries.push({
-            product,
-            titles: missingVariants.map((variant) => variant.title),
-          });
+          updatedProducts.push({ ...product, variants: nextVariants });
         }
 
-        updatedProducts.push({ ...product, variants: nextVariants });
+        for (const { product, titles } of missingSummaries) {
+          const plural = titles.length === 1 ? '' : 's';
+          const combinationSummary = titles.join(', ');
+          get().log(
+            `Skipped ${titles.length} hand chain variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
+            'handchains',
+          );
+        }
+
+        await commitShopifyVariantUpdates({
+          scope: 'handchains',
+          collection: 'handchain',
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage:
+            'Hand chain variants already aligned with supplements; no Shopify update sent.',
+          successLogMessage: 'Hand chain variants updated.',
+          updateLabel: 'hand chain',
+          failureLogMessage: 'Failed to push hand chain variant updates to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        get().toggleLoading('handchains', false);
       }
 
-      for (const { product, titles } of missingSummaries) {
-        const plural = titles.length === 1 ? '' : 's';
-        const combinationSummary = titles.join(', ');
-        get().log(
-          `Skipped ${titles.length} hand chain variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
-          'handchains',
-        );
-      }
-
-      await commitShopifyVariantUpdates({
-        scope: 'handchains',
-        collection: 'handchain',
-        updatedProducts,
-        updatesByProduct,
-        originalVariantLookup,
-        noChangesMessage:
-          'Hand chain variants already aligned with supplements; no Shopify update sent.',
-        successLogMessage: 'Hand chain variants updated.',
-        updateLabel: 'hand chain',
-        failureLogMessage: 'Failed to push hand chain variant updates to Shopify.',
-        set,
-        get,
-      });
     },
 
     previewSets: () => {
@@ -1106,122 +1207,129 @@ export const usePricingStore = create(
     },
 
     applySets: async () => {
-      const { products, supplements } = get();
+      get().toggleLoading('sets', true);
 
-      const updatedProducts = [];
-      const updatesByProduct = new Map();
-      const originalVariantLookup = new Map();
-      const missingSummaries = [];
+      try {
+        const { products, supplements } = get();
 
-      for (const product of products) {
-        if (product.collection !== 'ensemble') {
-          updatedProducts.push(product);
-          continue;
-        }
+        const updatedProducts = [];
+        const updatesByProduct = new Map();
+        const originalVariantLookup = new Map();
+        const missingSummaries = [];
 
-        const targetVariants = buildSetVariants(
-          product,
-          supplements.bracelets,
-          supplements.necklaces,
-        );
-        const targetByKey = new Map();
-
-        for (const target of targetVariants) {
-          const key = sanitizeVariantKey(target.title);
-          if (key) {
-            targetByKey.set(key, target);
-          }
-        }
-
-        const availableKeys = new Set();
-        const variantKeyLookup = new Map();
-
-        for (const variant of product.variants) {
-          if (variant?.id) {
-            originalVariantLookup.set(String(variant.id), variant);
+        for (const product of products) {
+          if (product.collection !== 'ensemble') {
+            updatedProducts.push(product);
+            continue;
           }
 
-          const key = matchVariantKey(variant, targetByKey);
-          if (key) {
-            availableKeys.add(key);
-            variantKeyLookup.set(variant, key);
-          }
-        }
+          const targetVariants = buildSetVariants(
+            product,
+            supplements.bracelets,
+            supplements.necklaces,
+          );
+          const targetByKey = new Map();
 
-        const nextVariants = product.variants.map((variant) => {
-          const key = variantKeyLookup.get(variant);
-          if (!key) {
-            return variant;
-          }
-
-          const target = targetByKey.get(key);
-          if (!target) {
-            return variant;
+          for (const target of targetVariants) {
+            const key = sanitizeVariantKey(target.title);
+            if (key) {
+              targetByKey.set(key, target);
+            }
           }
 
-          if (
-            variant.id &&
-            (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
-          ) {
-            if (!updatesByProduct.has(product.id)) {
-              updatesByProduct.set(product.id, {
-                productId: product.id,
-                productTitle: product.title,
-                variants: [],
+          const availableKeys = new Set();
+          const variantKeyLookup = new Map();
+
+          for (const variant of product.variants) {
+            if (variant?.id) {
+              originalVariantLookup.set(String(variant.id), variant);
+            }
+
+            const key = matchVariantKey(variant, targetByKey);
+            if (key) {
+              availableKeys.add(key);
+              variantKeyLookup.set(variant, key);
+            }
+          }
+
+          const nextVariants = product.variants.map((variant) => {
+            const key = variantKeyLookup.get(variant);
+            if (!key) {
+              return variant;
+            }
+
+            const target = targetByKey.get(key);
+            if (!target) {
+              return variant;
+            }
+
+            if (
+              variant.id &&
+              (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
+            ) {
+              if (!updatesByProduct.has(product.id)) {
+                updatesByProduct.set(product.id, {
+                  productId: product.id,
+                  productTitle: product.title,
+                  variants: [],
+                });
+              }
+
+              updatesByProduct.get(product.id).variants.push({
+                id: variant.id,
+                price: target.price,
+                compareAtPrice: target.compareAtPrice,
               });
             }
 
-            updatesByProduct.get(product.id).variants.push({
-              id: variant.id,
+            return {
+              ...variant,
               price: target.price,
               compareAtPrice: target.compareAtPrice,
+            };
+          });
+
+          const missingVariants = targetVariants.filter((variant) => {
+            const key = sanitizeVariantKey(variant.title);
+            return key ? !availableKeys.has(key) : false;
+          });
+
+          if (missingVariants.length > 0) {
+            missingSummaries.push({
+              product,
+              titles: missingVariants.map((variant) => variant.title),
             });
           }
 
-          return {
-            ...variant,
-            price: target.price,
-            compareAtPrice: target.compareAtPrice,
-          };
-        });
-
-        const missingVariants = targetVariants.filter((variant) => {
-          const key = sanitizeVariantKey(variant.title);
-          return key ? !availableKeys.has(key) : false;
-        });
-
-        if (missingVariants.length > 0) {
-          missingSummaries.push({
-            product,
-            titles: missingVariants.map((variant) => variant.title),
-          });
+          updatedProducts.push({ ...product, variants: nextVariants });
         }
 
-        updatedProducts.push({ ...product, variants: nextVariants });
+        for (const { product, titles } of missingSummaries) {
+          const plural = titles.length === 1 ? '' : 's';
+          const combinationSummary = titles.join(', ');
+          get().log(
+            `Skipped ${titles.length} set variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
+            'sets',
+          );
+        }
+
+        await commitShopifyVariantUpdates({
+          scope: 'sets',
+          collection: 'ensemble',
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage: 'Set variants already aligned with supplements; no Shopify update sent.',
+          successLogMessage: 'Set variants updated.',
+          updateLabel: 'set',
+          failureLogMessage: 'Failed to push set variant updates to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        get().toggleLoading('sets', false);
       }
 
-      for (const { product, titles } of missingSummaries) {
-        const plural = titles.length === 1 ? '' : 's';
-        const combinationSummary = titles.join(', ');
-        get().log(
-          `Skipped ${titles.length} set variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
-          'sets',
-        );
-      }
-
-      await commitShopifyVariantUpdates({
-        scope: 'sets',
-        collection: 'ensemble',
-        updatedProducts,
-        updatesByProduct,
-        originalVariantLookup,
-        noChangesMessage: 'Set variants already aligned with supplements; no Shopify update sent.',
-        successLogMessage: 'Set variants updated.',
-        updateLabel: 'set',
-        failureLogMessage: 'Failed to push set variant updates to Shopify.',
-        set,
-        get,
-      });
     },
 
     updateBraceletSupplement: (title, value) => {

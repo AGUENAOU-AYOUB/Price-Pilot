@@ -62,9 +62,17 @@ const buildProxyEndpoint = () => {
   return trimTrailingSlash(SHOPIFY_PROXY_URL);
 };
 
-export async function fetchActiveProducts() {
+const fetchProducts = async ({ status = 'active' } = {}) => {
   const baseEndpoint = buildProxyEndpoint();
-  const response = await fetch(`${baseEndpoint}/products?status=active`);
+  const searchParams = new URLSearchParams();
+  if (status) {
+    searchParams.set('status', status);
+  }
+
+  const query = searchParams.toString();
+  const response = await fetch(
+    query ? `${baseEndpoint}/products?${query}` : `${baseEndpoint}/products`,
+  );
 
   if (!response.ok) {
     const body = await response.text();
@@ -79,6 +87,29 @@ export async function fetchActiveProducts() {
   return products
     .map(normalizeProduct)
     .filter((product) => product !== null);
+};
+
+export async function fetchActiveProducts() {
+  return fetchProducts({ status: 'active' });
+}
+
+const normalizeCollectionKey = (collection) =>
+  typeof collection === 'string' ? collection.trim().toLowerCase() : '';
+
+export async function fetchProductsByCollections(collections = [], options = {}) {
+  const normalizedCollections = Array.isArray(collections)
+    ? collections
+        .map(normalizeCollectionKey)
+        .filter(Boolean)
+    : [];
+
+  const universe = await fetchProducts(options);
+  if (normalizedCollections.length === 0) {
+    return universe;
+  }
+
+  const collectionSet = new Set(normalizedCollections);
+  return universe.filter((product) => collectionSet.has(normalizeCollectionKey(product.collection)));
 }
 
 export async function pushVariantUpdates(updates) {

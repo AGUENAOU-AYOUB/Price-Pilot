@@ -1,89 +1,77 @@
 import { useTranslation } from '../i18n/useTranslation';
 
-const variantCardClasses = [
-  'flex flex-col',
-  'rounded-xl',
-  'border border-platinum/70',
-  'bg-white/80',
-  'px-4 py-3',
-  'text-xs',
-  'shadow-inner',
-].join(' ');
+import './PreviewTable.css';
+
+const formatMoney = (value) => {
+  const amount = Number.isFinite(value) ? value : 0;
+  return `${amount.toFixed(2)} dh`;
+};
+
+const renderPriceRow = (label, oldValue, newValue) => (
+  <div className="preview-table__price-row">
+    <span className="preview-table__price-label">{label}</span>
+    <div className="preview-table__price-values">
+      <span className="preview-table__price-old">{formatMoney(oldValue)}</span>
+      <span className="preview-table__price-arrow" aria-hidden="true">
+        →
+      </span>
+      <span className="preview-table__price-new">{formatMoney(newValue)}</span>
+    </div>
+  </div>
+);
 
 export function PreviewTable({ previews }) {
   const { t } = useTranslation();
 
   if (!previews?.length) {
     return (
-      <div className="rounded-2xl border border-diamond bg-white/60 p-8 text-center text-sm text-slategray shadow-soft">
-        {t('table.noPreviews')}
+      <div className="preview-table__wrapper">
+        <div className="preview-table preview-table--empty">
+          <div className="preview-table__empty">{t('table.noPreviews')}</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-diamond bg-gradient-to-br from-white via-pearl to-white p-6 shadow-soft">
-      <div className="overflow-hidden rounded-2xl border border-platinum/70">
-        <table className="min-w-full table-fixed border-separate border-spacing-0">
-          <thead>
-            <tr className="bg-pearl/80 text-left text-xs font-semibold uppercase tracking-[0.15em] text-slategray">
-              <th className="px-6 py-4 text-slategray/90">{t('table.product')}</th>
-              <th className="px-6 py-4 text-slategray/90">{t('table.basePrice')}</th>
-              <th className="px-6 py-4 text-rosegold">{t('table.newBasePrice')}</th>
-              <th className="px-6 py-4 text-slategray/90">{t('table.compareAt')}</th>
-              <th className="px-6 py-4 text-rosegold">{t('table.newCompareAt')}</th>
-              <th className="px-6 py-4 text-slategray/90">{t('table.variants')}</th>
-            </tr>
-          </thead>
-          <tbody className="text-sm">
-            {previews.map(({ product, updatedBasePrice, updatedCompareAtPrice, variants }, index) => (
-              <tr
-                key={product.id}
-                className={`transition-colors duration-200 ${
-                  index % 2 === 0 ? 'bg-white' : 'bg-white/80'
-                } hover:bg-blush/70`}
-              >
-                <td className="px-6 py-5 align-top">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-base font-semibold text-charcoal">{product.title}</span>
-                    <span className="text-xs uppercase tracking-wide text-slategray/70">#{product.handle ?? product.id}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-5 align-top text-slategray">{product.basePrice.toFixed(2)} dh</td>
-                <td className="px-6 py-5 align-top text-lg font-semibold text-rosegold">
-                  {updatedBasePrice.toFixed(2)} dh
-                </td>
-                <td className="px-6 py-5 align-top text-slategray">{product.baseCompareAtPrice.toFixed(2)} dh</td>
-                <td className="px-6 py-5 align-top text-lg font-semibold text-rosegold">
-                  {updatedCompareAtPrice.toFixed(2)} dh
-                </td>
-                <td className="px-6 py-5 align-top">
-                  {variants.length === 0 ? (
-                    <span className="inline-flex rounded-full bg-platinum/60 px-4 py-2 text-xs font-medium text-slategray">
-                      {t('table.noVariants')}
-                    </span>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {variants.map((variant) => (
-                        <div key={variant.id} className={variantCardClasses}>
-                          <span className="text-[0.7rem] uppercase tracking-wide text-slategray/70">
-                            {variant.title}
-                          </span>
-                          <span className="text-sm font-semibold text-charcoal">
-                            {variant.price.toFixed(2)} dh
-                          </span>
-                          <span className="text-[0.7rem] text-slategray">
-                            {t('table.compareAt')} {variant.compareAtPrice.toFixed(2)} dh
-                          </span>
-                        </div>
-                      ))}
+    <div className="preview-table__wrapper">
+      <div className="preview-table">
+        {previews.map(({ product, updatedBasePrice, updatedCompareAtPrice, variants }) => (
+          <article key={product.id} className="preview-table__card">
+            <header className="preview-table__header">
+              <div>
+                <h3 className="preview-table__title">{product.title}</h3>
+                <p className="preview-table__meta">#{product.handle ?? product.id}</p>
+              </div>
+              <div className="preview-table__price-summary">
+                {renderPriceRow(t('table.basePrice'), product.basePrice, updatedBasePrice)}
+                {renderPriceRow(t('table.compareAt'), product.baseCompareAtPrice, updatedCompareAtPrice)}
+              </div>
+            </header>
+
+            <section className="preview-table__variants">
+              <div className="preview-table__variants-header">{t('table.variants')}</div>
+              {variants.length === 0 ? (
+                <div className="preview-table__empty-variants">{t('table.noVariants')}</div>
+              ) : (
+                <div className="preview-table__variant-grid">
+                  {variants.map((variant) => (
+                    <div key={variant.id} className="preview-table__variant-card">
+                      <span className="preview-table__variant-title">{variant.title}</span>
+                      <span className="preview-table__variant-price">{formatMoney(variant.price)}</span>
+                      <span className="preview-table__variant-compare">
+                        {t('table.compareAt')}
+                        <span className="preview-table__variant-compare-value">
+                          {formatMoney(variant.compareAtPrice)}
+                        </span>
+                      </span>
                     </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  ))}
+                </div>
+              )}
+            </section>
+          </article>
+        ))}
       </div>
     </div>
   );
