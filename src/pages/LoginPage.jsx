@@ -54,11 +54,11 @@ export function LoginPage() {
             autoComplete="current-password"
             required
           />
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-base font-medium text-error-500">{error}</p>}
           <Button type="submit" className="w-full">
             {t('action.login')}
           </Button>
-          <p className="text-xs text-slategray">{t('login.tip')}</p>
+          <p className="text-sm text-neutral-500">{t('login.tip')}</p>
         </form>
       </Card>
     </div>
