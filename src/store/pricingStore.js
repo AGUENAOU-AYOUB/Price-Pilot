@@ -26,6 +26,7 @@ import {
   parseNecklaceSize,
   parseRingSize,
 } from '../utils/variantParsers';
+import { toast } from '../utils/toast';
 
 const defaultSupplements = {
   bracelets: { ...braceletChainTypes },
@@ -290,13 +291,15 @@ const commitShopifyVariantUpdates = async ({
       : null;
 
   if (!hasShopifyProxy()) {
-    get().log(proxyMissingMessage, scope);
+    get().log(proxyMissingMessage, scope, 'error');
     return { success: false, reason: 'missing-proxy' };
   }
 
   if (updatesPayload.length === 0) {
     set({ products: updatedProducts });
-    get().log(noChangesMessage, scope);
+    if (noChangesMessage) {
+      get().log(noChangesMessage, scope, 'silent');
+    }
     return { success: true, updatedCount: 0, failedCount: 0 };
   }
 
@@ -346,19 +349,24 @@ const commitShopifyVariantUpdates = async ({
     const updatedCount = Number.isFinite(result?.updatedCount) ? result.updatedCount : 0;
 
     if (failedCount > 0) {
-      get().log(`Updated ${updatedCount} Shopify ${updateLabel} variants with ${failedCount} failures.`, scope);
+      get().log(
+        `Updated ${updatedCount} Shopify ${updateLabel} variants with ${failedCount} failures.`,
+        scope,
+        'warning',
+      );
       for (const failure of failures) {
         get().log(
           `Failed to update variant ${failure.variantId} for ${failure.productTitle}: ${failure.reason}`,
           scope,
+          'silent',
         );
       }
-    } else {
-      get().log(`Updated ${updatedCount} Shopify ${updateLabel} variants.`, scope);
+    } else if (updatedCount > 0) {
+      get().log(`Updated ${updatedCount} Shopify ${updateLabel} variants.`, scope, 'success');
     }
 
     if (updatedCount > 0 && failedCount === 0) {
-      get().log(successLogMessage, scope);
+      get().log(successLogMessage, scope, 'success');
     }
 
     return {
@@ -369,7 +377,7 @@ const commitShopifyVariantUpdates = async ({
     };
   } catch (error) {
     console.error(failureLogMessage, error);
-    get().log(failureLogMessage, scope);
+    get().log(failureLogMessage, scope, 'error');
     return { success: false, reason: 'request-failed', error };
   }
 };
@@ -575,7 +583,7 @@ export const usePricingStore = create(
     setUsername: (username) => set({ username }),
     setLanguage: (language) => set({ language }),
 
-    log: (message, scope) => {
+    log: (message, scope, level = 'info') => {
       const entry = {
         id: (typeof crypto !== 'undefined' && crypto.randomUUID
           ? crypto.randomUUID()
@@ -583,8 +591,29 @@ export const usePricingStore = create(
         message,
         variantScope: scope,
         timestamp: new Date().toISOString(),
+        level,
       };
       set((state) => ({ logs: [entry, ...state.logs].slice(0, 200) }));
+
+      if (level === 'silent') {
+        return;
+      }
+
+      switch (level) {
+        case 'success':
+          toast.success(message);
+          break;
+        case 'error':
+          toast.error(message);
+          break;
+        case 'warning':
+          toast.warning(message);
+          break;
+        case 'info':
+        default:
+          toast.info(message);
+          break;
+      }
     },
 
     toggleLoading: (scope, loading) => {
@@ -605,7 +634,7 @@ export const usePricingStore = create(
       }
 
       if (!hasShopifyProxy()) {
-        get().log('Shopify proxy missing; using local mock catalog.', 'catalog');
+        get().log('Shopify proxy missing; using local mock catalog.', 'catalog', 'warning');
         set({ productsInitialized: true });
         return;
       }
@@ -617,13 +646,13 @@ export const usePricingStore = create(
         const products = await fetchActiveProducts();
         set({ products });
         if (products.length === 0) {
-          get().log('No active Shopify products found for this store.', 'catalog');
+          get().log('No active Shopify products found for this store.', 'catalog', 'warning');
         } else {
-          get().log(`Loaded ${products.length} Shopify products.`, 'catalog');
+          get().log(`Loaded ${products.length} Shopify products.`, 'catalog', 'success');
         }
       } catch (error) {
         console.error('Failed to synchronize Shopify products', error);
-        get().log('Failed to load Shopify products. Using mock catalog.', 'catalog');
+        get().log('Failed to load Shopify products. Using mock catalog.', 'catalog', 'error');
         set({ products: mockProducts });
       } finally {
         get().toggleLoading('catalog', false);
@@ -633,16 +662,17 @@ export const usePricingStore = create(
 
     backupScope: async (scope) => {
       if (!(scope in SCOPE_COLLECTIONS)) {
-        get().log('Unknown backup scope requested.', scope);
+        get().log('Unknown backup scope requested.', scope, 'error');
         return;
       }
 
       if (!hasShopifyProxy()) {
-        get().log('Shopify proxy missing; unable to capture live backup.', scope);
+        get().log('Shopify proxy missing; unable to capture live backup.', scope, 'error');
         return;
       }
 
       get().toggleLoading(scope, true);
+      const loadingToastId = toast.loading('Creating backup...');
 
       try {
         const collections = SCOPE_COLLECTIONS[scope] ?? [];
@@ -668,32 +698,35 @@ export const usePricingStore = create(
         get().log(
           `Captured Shopify backup with ${count} product${plural} for ${scope}.`,
           scope,
+          'success',
         );
       } catch (error) {
         console.error('Failed to capture Shopify backup', error);
-        get().log('Failed to capture Shopify backup. Verify proxy connection.', scope);
+        get().log('Failed to capture Shopify backup. Verify proxy connection.', scope, 'error');
       } finally {
+        toast.dismiss(loadingToastId);
         get().toggleLoading(scope, false);
       }
     },
 
     restoreScope: async (scope) => {
       if (!(scope in SCOPE_COLLECTIONS)) {
-        get().log('Unknown restore scope requested.', scope);
+        get().log('Unknown restore scope requested.', scope, 'error');
         return;
       }
 
       const backupEntry = get().backups[scope];
       if (!backupEntry?.products) {
-        get().log('No backup available to restore.', scope);
+        get().log('No backup available to restore.', scope, 'warning');
         return;
       }
 
       if (!hasShopifyProxy()) {
-        get().log('Shopify proxy missing; unable to restore backup to Shopify.', scope);
+        get().log('Shopify proxy missing; unable to restore backup to Shopify.', scope, 'error');
         return;
       }
 
+      const restoreToastId = toast.loading('Restoring backup...');
       const backupProducts = cloneProducts(backupEntry.products);
       const backupById = new Map(backupProducts.map((product) => [product.id, product]));
       const collectionSet = buildCollectionSet(scope);
@@ -826,28 +859,186 @@ export const usePricingStore = create(
         });
 
         if (result.success) {
-          get().log('Backup restored successfully.', scope);
+          get().log('Backup restored successfully.', scope, 'success');
         } else if (result.failedCount > 0) {
-          get().log('Backup restore completed with Shopify errors. Review logs for details.', scope);
+          get().log(
+            'Backup restore completed with Shopify errors. Review logs for details.',
+            scope,
+            'warning',
+          );
         }
       } finally {
+        toast.dismiss(restoreToastId);
         get().toggleLoading(scope, false);
+      }
+    },
+
+    previewGlobalChange: (percent = 0) => {
+      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+      const { products } = get();
+
+      return products
+        .filter((product) => product.status === 'active')
+        .map((product) => {
+          const basePrice = Number(product.basePrice ?? 0);
+          const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
+          const updatedBasePrice = applyPercentage(basePrice, adjustment);
+          const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment);
+
+          const variants = (Array.isArray(product.variants) ? product.variants : []).map(
+            (variant) => {
+              const currentPrice = Number(variant?.price ?? basePrice);
+              const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
+
+              return {
+                ...variant,
+                id: variant?.id ? String(variant.id) : `${product.id}-${variant?.title ?? 'variant'}`,
+                title: variant?.title ?? 'Variant',
+                price: applyPercentage(currentPrice, adjustment),
+                compareAtPrice: applyPercentage(currentCompare, adjustment),
+                previousPrice: currentPrice,
+                previousCompareAtPrice: currentCompare,
+              };
+            },
+          );
+
+          return {
+            product,
+            updatedBasePrice,
+            updatedCompareAtPrice,
+            variants,
+          };
+        });
+    },
+
+    applyGlobalChange: async (percent = 0) => {
+      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+
+      get().toggleLoading('global', true);
+      const loadingToastId = toast.loading('Applying global pricing...');
+
+      try {
+        if (!hasShopifyProxy()) {
+          get().log('Shopify proxy missing; unable to push global pricing updates.', 'global', 'error');
+          return;
+        }
+
+        const products = get().products;
+        const updatedProducts = [];
+        const updatesByProduct = new Map();
+        const originalVariantLookup = new Map();
+
+        for (const product of products) {
+          if (product.status !== 'active') {
+            updatedProducts.push(product);
+            continue;
+          }
+
+          const basePrice = Number(product.basePrice ?? 0);
+          const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
+          const updatedBasePrice = applyPercentage(basePrice, adjustment);
+          const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment);
+
+          const currentVariants = Array.isArray(product.variants) ? product.variants : [];
+          const nextVariants = currentVariants.map((variant) => {
+            const variantId = variant?.id ? String(variant.id) : null;
+            if (variantId) {
+              originalVariantLookup.set(variantId, variant);
+            }
+
+            const currentPrice = Number(variant?.price ?? basePrice);
+            const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
+            const updatedPrice = applyPercentage(currentPrice, adjustment);
+            const updatedCompare = applyPercentage(currentCompare, adjustment);
+
+            if (
+              variantId &&
+              (updatedPrice !== currentPrice || updatedCompare !== currentCompare)
+            ) {
+              if (!updatesByProduct.has(product.id)) {
+                updatesByProduct.set(product.id, {
+                  productId: product.id,
+                  productTitle: product.title,
+                  variants: [],
+                });
+              }
+
+              updatesByProduct.get(product.id).variants.push({
+                id: variantId,
+                price: updatedPrice,
+                compareAtPrice: updatedCompare,
+              });
+            }
+
+            return {
+              ...variant,
+              price: updatedPrice,
+              compareAtPrice: updatedCompare,
+            };
+          });
+
+          updatedProducts.push({
+            ...product,
+            basePrice: updatedBasePrice,
+            baseCompareAtPrice: updatedCompareAtPrice,
+            variants: nextVariants,
+          });
+        }
+
+        await commitShopifyVariantUpdates({
+          scope: 'global',
+          collection: [],
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage:
+            'No Shopify changes required; all variant prices already reflect this adjustment.',
+          successLogMessage: 'Global pricing update completed.',
+          updateLabel: 'global pricing',
+          failureLogMessage: 'Failed to apply global pricing update to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        toast.dismiss(loadingToastId);
+        get().toggleLoading('global', false);
       }
     },
     previewBracelets: () => {
       const { products, supplements } = get();
       return products
         .filter((product) => product.collection === 'bracelet' && product.status === 'active')
-        .map((product) => ({
-          product,
-          updatedBasePrice: product.basePrice,
-          updatedCompareAtPrice: product.baseCompareAtPrice,
-          variants: buildBraceletVariants(product, supplements.bracelets),
-        }));
+        .map((product) => {
+          const lookup = new Map();
+          for (const existingVariant of product.variants) {
+            const key = deriveBraceletKey(existingVariant);
+            if (key) {
+              lookup.set(key, existingVariant);
+            }
+          }
+
+          return {
+            product,
+            updatedBasePrice: product.basePrice,
+            updatedCompareAtPrice: product.baseCompareAtPrice,
+            variants: buildBraceletVariants(product, supplements.bracelets).map((variant) => {
+              const key = deriveBraceletKey(variant);
+              const currentVariant = key ? lookup.get(key) : null;
+
+              return {
+                ...variant,
+                previousPrice: currentVariant?.price ?? product.basePrice,
+                previousCompareAtPrice:
+                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+              };
+            }),
+          };
+        });
     },
 
     applyBracelets: async () => {
       get().toggleLoading('bracelets', true);
+      const loadingToastId = toast.loading('Applying bracelet pricing...');
 
       try {
         const { products, supplements } = get();
@@ -946,6 +1137,7 @@ export const usePricingStore = create(
           get().log(
             `Skipped ${titles.length} bracelet variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
             'bracelets',
+            'warning',
           );
         }
 
@@ -964,6 +1156,7 @@ export const usePricingStore = create(
           get,
         });
       } finally {
+        toast.dismiss(loadingToastId);
         get().toggleLoading('bracelets', false);
       }
     },
@@ -972,16 +1165,37 @@ export const usePricingStore = create(
       const { products, supplements } = get();
       return products
         .filter((product) => product.collection === 'collier' && product.status === 'active')
-        .map((product) => ({
-          product,
-          updatedBasePrice: product.basePrice,
-          updatedCompareAtPrice: product.baseCompareAtPrice,
-          variants: buildNecklaceVariants(product, supplements.necklaces),
-        }));
+        .map((product) => {
+          const lookup = new Map();
+          for (const existingVariant of product.variants) {
+            const signature = deriveNecklaceSignature(existingVariant);
+            if (signature.key) {
+              lookup.set(signature.key, existingVariant);
+            }
+          }
+
+          return {
+            product,
+            updatedBasePrice: product.basePrice,
+            updatedCompareAtPrice: product.baseCompareAtPrice,
+            variants: buildNecklaceVariants(product, supplements.necklaces).map((variant) => {
+              const signature = deriveNecklaceSignature(variant);
+              const currentVariant = signature.key ? lookup.get(signature.key) : null;
+
+              return {
+                ...variant,
+                previousPrice: currentVariant?.price ?? product.basePrice,
+                previousCompareAtPrice:
+                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+              };
+            }),
+          };
+        });
     },
 
     applyNecklaces: async () => {
       get().toggleLoading('necklaces', true);
+      const loadingToastId = toast.loading('Applying necklace pricing...');
 
       try {
         const { products, supplements } = get();
@@ -1080,6 +1294,7 @@ export const usePricingStore = create(
           get().log(
             `Skipped ${titles.length} necklace variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
             'necklaces',
+            'warning',
           );
         }
 
@@ -1098,6 +1313,7 @@ export const usePricingStore = create(
           get,
         });
       } finally {
+        toast.dismiss(loadingToastId);
         get().toggleLoading('necklaces', false);
       }
     },
@@ -1106,16 +1322,37 @@ export const usePricingStore = create(
       const { products, supplements } = get();
       return products
         .filter((product) => product.collection === 'bague' && product.status === 'active')
-        .map((product) => ({
-          product,
-          updatedBasePrice: product.basePrice,
-          updatedCompareAtPrice: product.baseCompareAtPrice,
-          variants: buildRingVariants(product, supplements.rings),
-        }));
+        .map((product) => {
+          const lookup = new Map();
+          for (const existingVariant of product.variants) {
+            const identity = deriveRingIdentity(existingVariant);
+            if (identity.key) {
+              lookup.set(identity.key, existingVariant);
+            }
+          }
+
+          return {
+            product,
+            updatedBasePrice: product.basePrice,
+            updatedCompareAtPrice: product.baseCompareAtPrice,
+            variants: buildRingVariants(product, supplements.rings).map((variant) => {
+              const key = buildRingKey(variant.band, variant.size);
+              const currentVariant = key ? lookup.get(key) : null;
+
+              return {
+                ...variant,
+                previousPrice: currentVariant?.price ?? product.basePrice,
+                previousCompareAtPrice:
+                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+              };
+            }),
+          };
+        });
     },
 
     applyRings: async () => {
       get().toggleLoading('rings', true);
+      const loadingToastId = toast.loading('Applying ring pricing...');
 
       try {
         const { products, supplements } = get();
@@ -1216,6 +1453,7 @@ export const usePricingStore = create(
             get().log(
               `Skipped ${titles.length} ring variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
               'rings',
+              'warning',
             );
           }
         }
@@ -1235,6 +1473,7 @@ export const usePricingStore = create(
           get,
         });
       } finally {
+        toast.dismiss(loadingToastId);
         get().toggleLoading('rings', false);
       }
 
@@ -1244,16 +1483,37 @@ export const usePricingStore = create(
       const { products, supplements } = get();
       return products
         .filter((product) => product.collection === 'handchain' && product.status === 'active')
-        .map((product) => ({
-          product,
-          updatedBasePrice: product.basePrice,
-          updatedCompareAtPrice: product.baseCompareAtPrice,
-          variants: buildHandChainVariants(product, supplements.handChains),
-        }));
+        .map((product) => {
+          const lookup = new Map();
+          for (const existingVariant of product.variants) {
+            const key = deriveHandChainKey(existingVariant);
+            if (key) {
+              lookup.set(key, existingVariant);
+            }
+          }
+
+          return {
+            product,
+            updatedBasePrice: product.basePrice,
+            updatedCompareAtPrice: product.baseCompareAtPrice,
+            variants: buildHandChainVariants(product, supplements.handChains).map((variant) => {
+              const key = deriveHandChainKey(variant);
+              const currentVariant = key ? lookup.get(key) : null;
+
+              return {
+                ...variant,
+                previousPrice: currentVariant?.price ?? product.basePrice,
+                previousCompareAtPrice:
+                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+              };
+            }),
+          };
+        });
     },
 
     applyHandChains: async () => {
       get().toggleLoading('handchains', true);
+      const loadingToastId = toast.loading('Applying hand chain pricing...');
 
       try {
         const { products, supplements } = get();
@@ -1352,6 +1612,7 @@ export const usePricingStore = create(
           get().log(
             `Skipped ${titles.length} hand chain variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
             'handchains',
+            'warning',
           );
         }
 
@@ -1370,6 +1631,7 @@ export const usePricingStore = create(
           get,
         });
       } finally {
+        toast.dismiss(loadingToastId);
         get().toggleLoading('handchains', false);
       }
 
@@ -1379,16 +1641,41 @@ export const usePricingStore = create(
       const { products, supplements } = get();
       return products
         .filter((product) => product.collection === 'ensemble' && product.status === 'active')
-        .map((product) => ({
-          product,
-          updatedBasePrice: product.basePrice,
-          updatedCompareAtPrice: product.baseCompareAtPrice,
-          variants: buildSetVariants(product, supplements.bracelets, supplements.necklaces),
-        }));
+        .map((product) => {
+          const lookup = new Map();
+          for (const existingVariant of product.variants) {
+            const signature = deriveSetSignature(existingVariant);
+            if (signature.key) {
+              lookup.set(signature.key, existingVariant);
+            }
+          }
+
+          return {
+            product,
+            updatedBasePrice: product.basePrice,
+            updatedCompareAtPrice: product.baseCompareAtPrice,
+            variants: buildSetVariants(
+              product,
+              supplements.bracelets,
+              supplements.necklaces,
+            ).map((variant) => {
+              const signature = deriveSetSignature(variant);
+              const currentVariant = signature.key ? lookup.get(signature.key) : null;
+
+              return {
+                ...variant,
+                previousPrice: currentVariant?.price ?? product.basePrice,
+                previousCompareAtPrice:
+                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+              };
+            }),
+          };
+        });
     },
 
     applySets: async () => {
       get().toggleLoading('sets', true);
+      const loadingToastId = toast.loading('Applying set pricing...');
 
       try {
         const { products, supplements } = get();
@@ -1491,6 +1778,7 @@ export const usePricingStore = create(
           get().log(
             `Skipped ${titles.length} set variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
             'sets',
+            'warning',
           );
         }
 
@@ -1508,6 +1796,7 @@ export const usePricingStore = create(
           get,
         });
       } finally {
+        toast.dismiss(loadingToastId);
         get().toggleLoading('sets', false);
       }
 
