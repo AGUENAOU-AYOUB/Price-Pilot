@@ -6,7 +6,6 @@ import {
   braceletChainTypes,
   necklaceChainTypes,
 } from '../src/data/supplements.js';
-import { roundToLuxuryStep } from '../src/utils/pricing.js';
 
 const {
   VITE_SHOPIFY_STORE_DOMAIN,
@@ -136,8 +135,8 @@ const buildVariantUpdates = (product, family) => {
     if (supplement === null) {
       continue;
     }
-    const price = roundToLuxuryStep(basePrice + supplement);
-    const compareAt = roundToLuxuryStep(baseCompare + supplement);
+    const price = basePrice + supplement;
+    const compareAt = baseCompare + supplement;
     const priceNumber = parseNumber(variant.price, 0);
     const compareNumber = parseNumber(variant.compare_at_price, priceNumber);
 

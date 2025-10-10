@@ -33,8 +33,8 @@ export const buildBraceletVariants = (product, supplements) => {
   return Object.entries(supplements).map(([title, supplement]) => ({
     id: `${product.id}-${title}`,
     title,
-    price: roundToLuxuryStep(product.basePrice + supplement),
-    compareAtPrice: roundToLuxuryStep(product.baseCompareAtPrice + supplement),
+    price: product.basePrice + supplement,
+    compareAtPrice: product.baseCompareAtPrice + supplement,
   }));
 };
 
@@ -50,8 +50,8 @@ export const buildNecklaceVariants = (product, chainTypeSupplements) => {
       variants.push({
         id: `${product.id}-${chainType}-${size}`,
         title,
-        price: roundToLuxuryStep(priceBase),
-        compareAtPrice: roundToLuxuryStep(compareBase),
+        price: priceBase,
+        compareAtPrice: compareBase,
       });
     }
   }
@@ -64,8 +64,8 @@ export const buildRingVariants = (product, ringSupplements = ringBandSupplements
     for (const size of ringSizes) {
       const supplement = ringSupplements[band][size];
       const title = `${band} • ${size}`;
-      const price = roundToLuxuryStep(product.basePrice + supplement);
-      const compareAtPrice = roundToLuxuryStep(product.baseCompareAtPrice + supplement);
+      const price = product.basePrice + supplement;
+      const compareAtPrice = product.baseCompareAtPrice + supplement;
       variants.push({
         id: `${product.id}-${band}-${size}`,
         title,
@@ -81,8 +81,8 @@ export const buildHandChainVariants = (product, chainTypeSupplements) => {
   return Object.entries(chainTypeSupplements).map(([chainType, supplement]) => ({
     id: `${product.id}-${chainType}`,
     title: chainType,
-    price: roundToLuxuryStep(product.basePrice + supplement),
-    compareAtPrice: roundToLuxuryStep(product.baseCompareAtPrice + supplement),
+    price: product.basePrice + supplement,
+    compareAtPrice: product.baseCompareAtPrice + supplement,
   }));
 };
 
@@ -100,8 +100,8 @@ export const buildSetVariants = (product, braceletSupplements, necklaceSupplemen
       variants.push({
         id: `${product.id}-${chainType}-${size}`,
         title,
-        price: roundToLuxuryStep(priceBase),
-        compareAtPrice: roundToLuxuryStep(compareBase),
+        price: priceBase,
+        compareAtPrice: compareBase,
       });
     }
   }
