@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -18,8 +18,11 @@ export function GlobalPricingPage() {
   const toggleLoading = usePricingStore((state) => state.toggleLoading);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
   const { t } = useTranslation();
+  const [previews, setPreviews] = useState([]);
 
-  const previews = useMemo(() => previewGlobalChange(percent), [percent, previewGlobalChange]);
+  const handlePreview = () => {
+    setPreviews(previewGlobalChange(percent));
+  };
 
   const handleApply = (event) => {
     event.preventDefault();
@@ -53,6 +56,9 @@ export function GlobalPricingPage() {
               adornment="%"
             />
             <div className="flex flex-wrap gap-3">
+              <Button type="button" onClick={handlePreview}>
+                {t('action.preview')}
+              </Button>
               <Button type="submit">{t('action.apply')}</Button>
               <Button type="button" variant="secondary" onClick={handleBackup}>
                 {t('action.backup')}

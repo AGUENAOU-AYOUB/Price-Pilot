@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -20,7 +20,11 @@ export function BraceletsPage() {
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
   const { t } = useTranslation();
 
-  const previews = useMemo(() => previewBracelets(), [previewBracelets, supplements]);
+  const [previews, setPreviews] = useState([]);
+
+  const handlePreview = () => {
+    setPreviews(previewBracelets());
+  };
 
   const handleApply = () => {
     toggleLoading('bracelets', true);
@@ -47,11 +51,16 @@ export function BraceletsPage() {
             ))}
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button onClick={handleApply}>{t('action.apply')}</Button>
-            <Button variant="secondary" onClick={() => backupScope('bracelets')}>
+            <Button type="button" onClick={handlePreview}>
+              {t('action.preview')}
+            </Button>
+            <Button type="button" onClick={handleApply}>
+              {t('action.apply')}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => backupScope('bracelets')}>
               {t('action.backup')}
             </Button>
-            <Button variant="ghost" onClick={() => restoreScope('bracelets')}>
+            <Button type="button" variant="ghost" onClick={() => restoreScope('bracelets')}>
               {t('action.restoreBackup')}
             </Button>
           </div>

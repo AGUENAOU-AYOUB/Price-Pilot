@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -18,7 +18,11 @@ export function SetsPage() {
   const supplements = usePricingStore((state) => state.supplements);
   const { t } = useTranslation();
 
-  const previews = useMemo(() => previewSets(), [previewSets, supplements]);
+  const [previews, setPreviews] = useState([]);
+
+  const handlePreview = () => {
+    setPreviews(previewSets());
+  };
 
   const handleApply = () => {
     toggleLoading('sets', true);
@@ -60,11 +64,16 @@ export function SetsPage() {
             </table>
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button onClick={handleApply}>{t('action.apply')}</Button>
-            <Button variant="secondary" onClick={() => backupScope('sets')}>
+            <Button type="button" onClick={handlePreview}>
+              {t('action.preview')}
+            </Button>
+            <Button type="button" onClick={handleApply}>
+              {t('action.apply')}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => backupScope('sets')}>
               {t('action.backup')}
             </Button>
-            <Button variant="ghost" onClick={() => restoreScope('sets')}>
+            <Button type="button" variant="ghost" onClick={() => restoreScope('sets')}>
               {t('action.restoreBackup')}
             </Button>
           </div>

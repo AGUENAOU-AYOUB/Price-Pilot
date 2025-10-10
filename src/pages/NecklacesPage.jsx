@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -20,7 +20,11 @@ export function NecklacesPage() {
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
   const { t } = useTranslation();
 
-  const previews = useMemo(() => previewNecklaces(), [previewNecklaces, supplements]);
+  const [previews, setPreviews] = useState([]);
+
+  const handlePreview = () => {
+    setPreviews(previewNecklaces());
+  };
 
   const handleApply = () => {
     toggleLoading('necklaces', true);
@@ -60,11 +64,16 @@ export function NecklacesPage() {
             ))}
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button onClick={handleApply}>{t('action.apply')}</Button>
-            <Button variant="secondary" onClick={() => backupScope('necklaces')}>
+            <Button type="button" onClick={handlePreview}>
+              {t('action.preview')}
+            </Button>
+            <Button type="button" onClick={handleApply}>
+              {t('action.apply')}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => backupScope('necklaces')}>
               {t('action.backup')}
             </Button>
-            <Button variant="ghost" onClick={() => restoreScope('necklaces')}>
+            <Button type="button" variant="ghost" onClick={() => restoreScope('necklaces')}>
               {t('action.restoreBackup')}
             </Button>
           </div>

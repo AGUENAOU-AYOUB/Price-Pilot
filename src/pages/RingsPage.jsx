@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -21,7 +21,11 @@ export function RingsPage() {
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
   const { t } = useTranslation();
 
-  const previews = useMemo(() => previewRings(), [previewRings, supplements]);
+  const [previews, setPreviews] = useState([]);
+
+  const handlePreview = () => {
+    setPreviews(previewRings());
+  };
 
   const handleApply = () => {
     toggleLoading('rings', true);
@@ -55,11 +59,16 @@ export function RingsPage() {
             ))}
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button onClick={handleApply}>{t('action.apply')}</Button>
-            <Button variant="secondary" onClick={() => backupScope('rings')}>
+            <Button type="button" onClick={handlePreview}>
+              {t('action.preview')}
+            </Button>
+            <Button type="button" onClick={handleApply}>
+              {t('action.apply')}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => backupScope('rings')}>
               {t('action.backup')}
             </Button>
-            <Button variant="ghost" onClick={() => restoreScope('rings')}>
+            <Button type="button" variant="ghost" onClick={() => restoreScope('rings')}>
               {t('action.restoreBackup')}
             </Button>
           </div>
