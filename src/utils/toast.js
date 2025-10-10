@@ -16,7 +16,7 @@ const emit = (event) => {
 
 const show = (variant, message, options = {}) => {
   const id = options.id ?? `toast-${Date.now()}-${counter++}`;
-  const duration = Number.isFinite(options.duration) ? options.duration : 4000;
+  const duration = Number.isFinite(options.duration) ? options.duration : 6000;
 
   const toast = {
     id,
