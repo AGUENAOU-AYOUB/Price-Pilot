@@ -37,14 +37,14 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
    | `VITE_APP_USERNAME` | Username required to sign in |
    | `VITE_APP_PASSWORD` | Password required to sign in |
    | `VITE_SHOPIFY_STORE_DOMAIN` | Your Shopify storefront domain (e.g. `azorjewelry.myshopify.com`) |
-   | `VITE_SHOPIFY_ACCESS_TOKEN` | Admin API access token used for authenticated requests |
+   | `SHOPIFY_ACCESS_TOKEN` | Admin API access token for server-side requests (never prefixed with `VITE_`) |
    | `VITE_SHOPIFY_PROXY_URL` | Base URL for the proxy server (e.g. `http://localhost:4000/api/shopify`) |
    | `SHOPIFY_WEBHOOK_SECRET` | Secret used to verify webhook signatures from Shopify |
    | `SHOPIFY_PROXY_PORT` | Port used by the product proxy server (defaults to `4000`) |
    | `SHOPIFY_PROXY_BASE_PATH` | URL path prefix for proxy routes (defaults to `/api/shopify`) |
    | `SHOPIFY_PROXY_ALLOWED_ORIGINS` | Comma-separated list of origins allowed to call the proxy |
 
-   The Shopify values are available in the app through `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN`, `import.meta.env.VITE_SHOPIFY_ACCESS_TOKEN`, and `import.meta.env.VITE_SHOPIFY_PROXY_URL` whenever you wire the API calls.
+   The frontend only reads `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN` and `import.meta.env.VITE_SHOPIFY_PROXY_URL`. The Admin API token stays server-side as `SHOPIFY_ACCESS_TOKEN`.
 
 3. **Generate a Shopify Admin API token**
 
@@ -59,7 +59,7 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
       - `read_product_listings`
       - `write_product_listings`
    5. Save, then go to **API credentials**, click **Install app**, and confirm.
-   6. Copy the **Admin API access token** (it is shown only once) and place it in your `.env` file as `VITE_SHOPIFY_ACCESS_TOKEN`.
+   6. Copy the **Admin API access token** (it is shown only once) and place it in your `.env` file as `SHOPIFY_ACCESS_TOKEN`.
    7. Copy your store domain (e.g. `azorjewelry.myshopify.com`) into `VITE_SHOPIFY_STORE_DOMAIN`.
 
 4. **Start the Shopify product proxy**

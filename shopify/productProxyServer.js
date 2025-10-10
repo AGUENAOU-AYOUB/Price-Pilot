@@ -3,16 +3,16 @@ import express from 'express';
 
 const {
   VITE_SHOPIFY_STORE_DOMAIN,
-  VITE_SHOPIFY_ACCESS_TOKEN,
+  SHOPIFY_ACCESS_TOKEN,
   SHOPIFY_API_VERSION = '2024-04',
   SHOPIFY_PROXY_PORT = 4000,
   SHOPIFY_PROXY_BASE_PATH = '/api/shopify',
   SHOPIFY_PROXY_ALLOWED_ORIGINS = '',
 } = process.env;
 
-if (!VITE_SHOPIFY_STORE_DOMAIN || !VITE_SHOPIFY_ACCESS_TOKEN) {
+if (!VITE_SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN) {
   console.error(
-    'Missing Shopify environment variables. Ensure VITE_SHOPIFY_STORE_DOMAIN and VITE_SHOPIFY_ACCESS_TOKEN are set.',
+    'Missing Shopify environment variables. Ensure VITE_SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN are set.',
   );
   process.exit(1);
 }
@@ -20,7 +20,7 @@ if (!VITE_SHOPIFY_STORE_DOMAIN || !VITE_SHOPIFY_ACCESS_TOKEN) {
 const PRODUCTS_ENDPOINT = `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products.json`;
 const REQUEST_HEADERS = {
   'Content-Type': 'application/json',
-  'X-Shopify-Access-Token': VITE_SHOPIFY_ACCESS_TOKEN,
+  'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
 };
 
 const parseAllowedOrigins = (value) => {
