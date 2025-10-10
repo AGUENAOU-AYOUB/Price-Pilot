@@ -1,21 +1,46 @@
+import { Link } from 'react-router-dom';
+
 import { Card } from '../components/Card';
 import { usePricingStore } from '../store/pricingStore';
 import { useTranslation } from '../i18n/useTranslation';
 import { hasShopifyProxy } from '../config/shopify';
 
-const MetricIcon = ({ children, tone }) => (
-  <div
-    className={`flex h-12 w-12 items-center justify-center rounded-xl ${
-      tone === 'primary'
-        ? 'bg-primary-100 text-primary-600'
-        : tone === 'success'
-        ? 'bg-success-500/10 text-success-600'
-        : 'bg-warning-500/10 text-warning-500'
-    }`}
-  >
-    {children}
-  </div>
-);
+const Metric = ({ icon, label, value, tone = 'neutral' }) => {
+  const toneClasses =
+    tone === 'success'
+      ? 'bg-success-500/10 text-success-600'
+      : tone === 'warning'
+      ? 'bg-warning-500/10 text-warning-600'
+      : 'bg-primary-100 text-primary-600';
+
+  return (
+    <div className="flex items-start gap-4 rounded-2xl border border-neutral-200 bg-white/80 p-5 shadow-sm">
+      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${toneClasses}`}>{icon}</div>
+      <div>
+        <p className="text-sm font-medium uppercase tracking-wide text-neutral-500">{label}</p>
+        <p className="mt-2 text-2xl font-semibold text-neutral-900">{value}</p>
+      </div>
+    </div>
+  );
+};
+
+const SectionIcon = ({ tone }) => {
+  const tones = {
+    primary: 'bg-primary-100 text-primary-600',
+    success: 'bg-success-500/10 text-success-600',
+    warning: 'bg-warning-500/10 text-warning-500',
+  };
+
+  const toneClass = tones[tone] ?? tones.primary;
+
+  return (
+    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${toneClass}`}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
+        <path d="M12 6v12M6 12h12" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+};
 
 export function DashboardPage() {
   const products = usePricingStore((state) => state.products);
@@ -30,86 +55,131 @@ export function DashboardPage() {
   );
   const collectionCount = collections.size;
 
-  const automationTone = credentialsReady ? 'success' : 'warning';
-  const automationLabel = credentialsReady
-    ? t('dashboard.automationStatus')
-    : t('dashboard.automationMissing');
+  const metrics = [
+    {
+      label: t('dashboard.activeProducts'),
+      value: activeCount,
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
+          <path d="M3 7h18M3 12h18M3 17h18" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      label: t('dashboard.collections'),
+      value: collectionCount,
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
+          <path d="M4 4h16v4H4zM4 10h10v10H4zM16 10h4v10h-4z" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    {
+      label: t('dashboard.automation'),
+      value: credentialsReady ? t('dashboard.automationStatus') : t('dashboard.automationMissing'),
+      tone: credentialsReady ? 'success' : 'warning',
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
+          <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="12" cy="12" r="9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+  ];
+
+  const sections = [
+    {
+      to: '/global-pricing',
+      tone: 'primary',
+      title: t('dashboard.section.globalTitle'),
+      description: t('dashboard.section.globalBody'),
+    },
+    {
+      to: '/bracelets',
+      tone: 'success',
+      title: t('dashboard.section.braceletsTitle'),
+      description: t('dashboard.section.braceletsBody'),
+    },
+    {
+      to: '/necklaces',
+      tone: 'primary',
+      title: t('dashboard.section.necklacesTitle'),
+      description: t('dashboard.section.necklacesBody'),
+    },
+    {
+      to: '/rings',
+      tone: 'warning',
+      title: t('dashboard.section.ringsTitle'),
+      description: t('dashboard.section.ringsBody'),
+    },
+    {
+      to: '/hand-chains',
+      tone: 'primary',
+      title: t('dashboard.section.handChainsTitle'),
+      description: t('dashboard.section.handChainsBody'),
+    },
+    {
+      to: '/sets',
+      tone: 'success',
+      title: t('dashboard.section.setsTitle'),
+      description: t('dashboard.section.setsBody'),
+    },
+  ];
 
   return (
-    <div className="space-y-8">
-      <Card title={t('dashboard.welcomeTitle')} subtitle={t('dashboard.welcomeSubtitle')}>
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="space-y-4">
-            <p className="text-base leading-relaxed text-neutral-600">{t('dashboard.welcomeBody')}</p>
-            <ul className="space-y-3 text-base text-neutral-600">
-              <li>• {t('dashboard.welcomeBullet1')}</li>
-              <li>• {t('dashboard.welcomeBullet2')}</li>
-              <li>• {t('dashboard.welcomeBullet3')}</li>
-            </ul>
-          </div>
-          <div className="rounded-3xl border border-neutral-200 bg-white/60 p-6 shadow-sm">
-            <h3 className="text-xl font-semibold text-neutral-900">{t('dashboard.checklistTitle')}</h3>
-            <ol className="mt-4 space-y-3 text-base text-neutral-600">
-              <li>1. {t('dashboard.checklistStep1')}</li>
-              <li>2. {t('dashboard.checklistStep2')}</li>
-              <li>3. {t('dashboard.checklistStep3')}</li>
-            </ol>
+    <div className="space-y-10">
+      <Card className="border-none bg-white/90 shadow-lg ring-1 ring-neutral-200" title={t('dashboard.heroTitle')}>
+        <div className="space-y-6 text-base text-neutral-600">
+          <p className="text-lg text-neutral-600">{t('dashboard.heroSubtitle')}</p>
+          <p>{t('dashboard.heroBody')}</p>
+          <div className="grid gap-4 md:grid-cols-3">
+            {metrics.map((metric) => (
+              <Metric key={metric.label} {...metric} />
+            ))}
           </div>
         </div>
       </Card>
 
-      <Card title={t('dashboard.catalogTitle')}>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <div className="flex items-start gap-4 rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm">
-            <MetricIcon tone="primary">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
-                <path d="M3 7h18M3 12h18M3 17h18" strokeLinecap="round" />
-              </svg>
-            </MetricIcon>
-            <div>
-              <p className="text-sm font-medium uppercase tracking-wide text-neutral-500">
-                {t('dashboard.activeProducts')}
-              </p>
-              <p className="mt-2 text-3xl font-semibold text-neutral-900">{activeCount}</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-4 rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm">
-            <MetricIcon tone="primary">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
-                <path d="M4 4h16v4H4zM4 10h10v10H4zM16 10h4v10h-4z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </MetricIcon>
-            <div>
-              <p className="text-sm font-medium uppercase tracking-wide text-neutral-500">
-                {t('dashboard.collections')}
-              </p>
-              <p className="mt-2 text-3xl font-semibold text-neutral-900">{collectionCount}</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-4 rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm">
-            <MetricIcon tone={automationTone}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
-                <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="12" cy="12" r="9" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </MetricIcon>
-            <div>
-              <p className="text-sm font-medium uppercase tracking-wide text-neutral-500">
-                {t('dashboard.automation')}
-              </p>
-              <p
-                className={`mt-2 text-lg font-semibold ${
-                  automationTone === 'success' ? 'text-success-600' : 'text-warning-500'
-                }`}
-              >
-                {automationLabel}
-              </p>
-            </div>
+      <section className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold text-neutral-900">{t('dashboard.sectionsTitle')}</h2>
+            <p className="text-base text-neutral-600">{t('dashboard.sectionsSubtitle')}</p>
           </div>
         </div>
-      </Card>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {sections.map((section) => (
+            <Link
+              key={section.to}
+              to={section.to}
+              className="group block h-full rounded-3xl border border-neutral-200 bg-white/90 p-8 shadow-sm transition hover:-translate-y-1 hover:border-primary-200 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <div className="flex h-full flex-col gap-6">
+                <div className="flex items-center gap-4">
+                  <SectionIcon tone={section.tone} />
+                  <span className="text-sm font-medium uppercase tracking-wide text-neutral-500">
+                    {section.title}
+                  </span>
+                </div>
+                <p className="text-lg font-semibold text-neutral-900">{section.title}</p>
+                <p className="text-base text-neutral-600">{section.description}</p>
+                <div className="mt-auto flex items-center gap-2 text-sm font-semibold text-primary-600">
+                  <span>{t('dashboard.openWorkspace')}</span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    className="h-4 w-4 transition group-hover:translate-x-1"
+                  >
+                    <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 
 import { usePricingStore } from '../store/pricingStore';
@@ -26,6 +26,9 @@ export function PageLayout({ children }) {
   const [hasScrolled, setHasScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const location = useLocation();
+
+  const isDashboard = location.pathname === '/';
 
   const toggleLanguage = () => {
     setLanguage(language === 'en' ? 'fr' : 'en');
@@ -75,24 +78,26 @@ export function PageLayout({ children }) {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <nav className="hidden items-center gap-2 lg:flex">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    clsx(
-                      'rounded-full px-4 py-2 text-sm font-medium transition-all duration-150',
-                      isActive
-                        ? 'bg-primary-600 text-white shadow-sm shadow-primary-200'
-                        : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900',
-                    )
-                  }
-                >
-                  {t(item.labelKey)}
-                </NavLink>
-              ))}
-            </nav>
+            {!isDashboard && (
+              <nav className="hidden items-center gap-2 lg:flex">
+                {navItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      clsx(
+                        'rounded-full px-4 py-2 text-sm font-medium transition-all duration-150',
+                        isActive
+                          ? 'bg-primary-600 text-white shadow-sm shadow-primary-200'
+                          : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900',
+                      )
+                    }
+                  >
+                    {t(item.labelKey)}
+                  </NavLink>
+                ))}
+              </nav>
+            )}
             <div className="relative" ref={menuRef}>
               <button
                 type="button"
@@ -150,26 +155,28 @@ export function PageLayout({ children }) {
             </div>
           </div>
         </div>
-        <div className="block border-t border-neutral-100 bg-white px-4 pb-4 pt-2 lg:hidden">
-          <div className="flex gap-2 overflow-x-auto">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  clsx(
-                    'whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all',
-                    isActive
-                      ? 'bg-primary-600 text-white shadow-sm'
-                      : 'border border-neutral-200 text-neutral-600 hover:border-primary-200 hover:text-neutral-900',
-                  )
-                }
-              >
-                {t(item.labelKey)}
-              </NavLink>
-            ))}
+        {!isDashboard && (
+          <div className="block border-t border-neutral-100 bg-white px-4 pb-4 pt-2 lg:hidden">
+            <div className="flex gap-2 overflow-x-auto">
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    clsx(
+                      'whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all',
+                      isActive
+                        ? 'bg-primary-600 text-white shadow-sm'
+                        : 'border border-neutral-200 text-neutral-600 hover:border-primary-200 hover:text-neutral-900',
+                    )
+                  }
+                >
+                  {t(item.labelKey)}
+                </NavLink>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </header>
       <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="space-y-8">{children}</div>

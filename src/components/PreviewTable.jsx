@@ -12,8 +12,16 @@ const MAD = new Intl.NumberFormat('fr-MA', {
 });
 
 const formatMoney = (value) => {
-  const amount = Number.isFinite(value) ? value : 0;
-  return MAD.format(amount).replace('MAD', 'dh').trim();
+  if (value === null || value === undefined) {
+    return '—';
+  }
+
+  const parsed = typeof value === 'string' ? Number(value) : value;
+  if (!Number.isFinite(parsed)) {
+    return '—';
+  }
+
+  return MAD.format(parsed).replace('MAD', 'dh').trim();
 };
 
 const buildSummaryRow = (label, previous, next) => ({
@@ -25,18 +33,16 @@ const buildSummaryRow = (label, previous, next) => ({
 
 export function PreviewTable({ previews }) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(() => new Set());
+  const [expansionState, setExpansionState] = useState(() => new Map());
 
   const hasPreviews = Array.isArray(previews) && previews.length > 0;
 
-  const toggleCard = (productId) => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(productId)) {
-        next.delete(productId);
-      } else {
-        next.add(productId);
-      }
+  const toggleCard = (productId, defaultOpen) => {
+    setExpansionState((current) => {
+      const next = new Map(current);
+      const existing = next.get(productId);
+      const currentlyOpen = existing ?? Boolean(defaultOpen);
+      next.set(productId, !currentlyOpen);
       return next;
     });
   };
@@ -52,16 +58,38 @@ export function PreviewTable({ previews }) {
         buildSummaryRow(t('table.compareAt'), product.baseCompareAtPrice, updatedCompareAtPrice),
       ];
 
-      const changedVariants = variants.filter((variant) => {
-        const prevPrice = Number(variant.previousPrice ?? variant.price);
-        const prevCompare = Number(variant.previousCompareAtPrice ?? variant.compareAtPrice);
-        return prevPrice !== Number(variant.price) || prevCompare !== Number(variant.compareAtPrice);
-      });
+      const changedVariants = variants.filter((variant) => variant.status === 'changed');
+      const missingVariants = variants.filter((variant) => variant.status === 'missing');
 
       const hasVariantChanges = changedVariants.length > 0;
       const hasSummaryChanges = summaryRows.some((row) => row.changed);
-      const hasChanges = hasVariantChanges || hasSummaryChanges;
-      const isExpanded = expanded.has(product.id) || hasChanges;
+      const hasMissingVariants = missingVariants.length > 0;
+      const hasChanges = hasVariantChanges || hasSummaryChanges || hasMissingVariants;
+      const expansionPreference = expansionState.get(product.id);
+      const isExpanded = expansionPreference ?? hasChanges;
+
+      const summaryBadges = [];
+      if (hasVariantChanges) {
+        summaryBadges.push({
+          key: 'pending',
+          label: t('table.pendingChanges', { count: changedVariants.length }),
+          tone: 'pending',
+        });
+      }
+      if (hasMissingVariants) {
+        summaryBadges.push({
+          key: 'missing',
+          label: t('table.missingVariants', { count: missingVariants.length }),
+          tone: 'error',
+        });
+      }
+      if (!hasVariantChanges && hasSummaryChanges) {
+        summaryBadges.push({
+          key: 'product',
+          label: t('table.pendingProductChanges'),
+          tone: 'info',
+        });
+      }
 
       const cardClassName = clsx('preview-gallery__card', isExpanded ? 'is-expanded' : 'is-collapsed');
 
@@ -69,13 +97,13 @@ export function PreviewTable({ previews }) {
         <article key={product.id} className={cardClassName} data-product-id={product.id}>
           <header
             className="preview-gallery__header"
-            onClick={() => toggleCard(product.id)}
+            onClick={() => toggleCard(product.id, hasChanges)}
             role="button"
             tabIndex={0}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                toggleCard(product.id);
+                toggleCard(product.id, hasChanges);
               }
             }}
           >
@@ -109,15 +137,14 @@ export function PreviewTable({ previews }) {
           </header>
 
           <section className="preview-gallery__variants">
-            {hasChanges && (
-              <span className="preview-gallery__badge" role="status">
-                <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                  <path d="M10 2a1 1 0 01.894.553l7 14A1 1 0 0117 18H3a1 1 0 01-.894-1.447l7-14A1 1 0 0110 2zm0 5a.75.75 0 00-.743.648L9.25 8v3.25a.75.75 0 001.493.102l.007-.102V8a.75.75 0 00-.75-.75zm0 6.5a1 1 0 100 2 1 1 0 000-2z" />
-                </svg>
-                {hasVariantChanges
-                  ? t('table.pendingChanges', { count: changedVariants.length })
-                  : t('table.pendingProductChanges')}
-              </span>
+            {summaryBadges.length > 0 && (
+              <div className="preview-gallery__flags" role="status">
+                {summaryBadges.map((badge) => (
+                  <span key={badge.key} className={clsx('preview-gallery__badge', `is-${badge.tone}`)}>
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
             )}
 
             {variants.length === 0 ? (
@@ -125,30 +152,37 @@ export function PreviewTable({ previews }) {
             ) : (
               <div className="preview-gallery__variant-list">
                 {variants.map((variant) => {
-                  const prevPrice = Number(variant.previousPrice ?? variant.price);
-                  const prevCompare = Number(variant.previousCompareAtPrice ?? variant.compareAtPrice);
-                  const pending =
-                    prevPrice !== Number(variant.price) || prevCompare !== Number(variant.compareAtPrice);
+                  const status = variant.status ?? 'unchanged';
+                  const isChanged = status === 'changed';
+                  const isMissing = status === 'missing';
 
                   return (
                     <div
                       key={variant.id}
                       className={clsx('preview-gallery__variant-row', {
-                        'is-unchanged': !pending,
+                        'is-unchanged': !isChanged && !isMissing,
+                        'is-missing': isMissing,
                       })}
                     >
                       <span className="preview-gallery__variant-title">{variant.title}</span>
                       <div className="preview-gallery__variant-prices">
-                        <span className="preview-gallery__variant-old">{formatMoney(prevPrice)}</span>
+                        <span className="preview-gallery__variant-old">{formatMoney(variant.previousPrice)}</span>
                         <span aria-hidden="true">→</span>
                         <span className="preview-gallery__variant-new">{formatMoney(variant.price)}</span>
                         <span aria-hidden="true">/</span>
-                        <span className="preview-gallery__variant-old">{formatMoney(prevCompare)}</span>
+                        <span className="preview-gallery__variant-old">{formatMoney(variant.previousCompareAtPrice)}</span>
                         <span aria-hidden="true">→</span>
                         <span className="preview-gallery__variant-new">{formatMoney(variant.compareAtPrice)}</span>
                       </div>
-                      {pending && (
-                        <span className="preview-gallery__badge">{t('table.pendingBadge')}</span>
+                      {isChanged && (
+                        <span className={clsx('preview-gallery__badge', 'is-pending')}>
+                          {t('table.pendingBadge')}
+                        </span>
+                      )}
+                      {isMissing && (
+                        <span className={clsx('preview-gallery__badge', 'is-error')}>
+                          {t('table.missingBadge')}
+                        </span>
                       )}
                     </div>
                   );
@@ -159,7 +193,7 @@ export function PreviewTable({ previews }) {
         </article>
       );
     });
-  }, [expanded, hasPreviews, previews, t]);
+  }, [expansionState, hasPreviews, previews, t]);
 
   if (!hasPreviews) {
     return <div className="preview-gallery__empty">{t('table.noPreviews')}</div>;

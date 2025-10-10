@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { PreviewTable } from '../components/PreviewTable';
+import { useToast } from '../components/ToastProvider';
 import { usePricingStore } from '../store/pricingStore';
 import { useTranslation } from '../i18n/useTranslation';
 
@@ -14,6 +15,7 @@ export function SetsPage() {
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
   const supplements = usePricingStore((state) => state.supplements);
   const { t } = useTranslation();
+  const toast = useToast();
 
   const [previews, setPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
@@ -21,7 +23,27 @@ export function SetsPage() {
   const isBusy = loadingScopes.has('sets');
 
   const handlePreview = () => {
-    setPreviews(previewSets());
+    const results = previewSets();
+    setPreviews(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(t('toast.previewEmpty', { scope: t('nav.sets') }));
+      return;
+    }
+
+    const missingCount = results.reduce((count, preview) => {
+      if (!preview?.variants) {
+        return count;
+      }
+      return count + preview.variants.filter((variant) => variant.status === 'missing').length;
+    }, 0);
+
+    if (missingCount > 0) {
+      toast.error(t('toast.previewMissing', { scope: t('nav.sets'), count: missingCount }));
+      return;
+    }
+
+    toast.success(t('toast.previewReady', { scope: t('nav.sets') }));
   };
 
   const runAction = async (action, handler) => {
