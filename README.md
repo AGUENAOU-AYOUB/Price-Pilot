@@ -38,9 +38,13 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
    | `VITE_APP_PASSWORD` | Password required to sign in |
    | `VITE_SHOPIFY_STORE_DOMAIN` | Your Shopify storefront domain (e.g. `azorjewelry.myshopify.com`) |
    | `VITE_SHOPIFY_ACCESS_TOKEN` | Admin API access token used for authenticated requests |
+   | `VITE_SHOPIFY_PROXY_URL` | Base URL for the proxy server (e.g. `http://localhost:4000/api/shopify`) |
    | `SHOPIFY_WEBHOOK_SECRET` | Secret used to verify webhook signatures from Shopify |
+   | `SHOPIFY_PROXY_PORT` | Port used by the product proxy server (defaults to `4000`) |
+   | `SHOPIFY_PROXY_BASE_PATH` | URL path prefix for proxy routes (defaults to `/api/shopify`) |
+   | `SHOPIFY_PROXY_ALLOWED_ORIGINS` | Comma-separated list of origins allowed to call the proxy |
 
-   The Shopify values are available in the app through `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN` and `import.meta.env.VITE_SHOPIFY_ACCESS_TOKEN` whenever you wire the API calls.
+   The Shopify values are available in the app through `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN`, `import.meta.env.VITE_SHOPIFY_ACCESS_TOKEN`, and `import.meta.env.VITE_SHOPIFY_PROXY_URL` whenever you wire the API calls.
 
 3. **Generate a Shopify Admin API token**
 
@@ -58,13 +62,38 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
    6. Copy the **Admin API access token** (it is shown only once) and place it in your `.env` file as `VITE_SHOPIFY_ACCESS_TOKEN`.
    7. Copy your store domain (e.g. `azorjewelry.myshopify.com`) into `VITE_SHOPIFY_STORE_DOMAIN`.
 
-4. **Run the development server**
+4. **Start the Shopify product proxy**
+
+   ```bash
+   npm run shopify:proxy
+   ```
+
+   The server listens on the port configured by `SHOPIFY_PROXY_PORT` (default
+   `4000`) and exposes REST endpoints under
+   `SHOPIFY_PROXY_BASE_PATH` (default `/api/shopify`). Keep this process running
+   so the frontend can load products. Set
+   `SHOPIFY_PROXY_ALLOWED_ORIGINS` to the URLs that should be able to call the
+   proxy (e.g. `http://localhost:5173`).
+
+5. **Run the development server**
 
    ```bash
    npm run dev
    ```
 
    Vite will print a local URL (usually `http://localhost:5173`).
+
+### How the proxy fixes the eight-product limit
+
+The React app no longer calls Shopify’s Admin REST API directly from the
+browser. Instead, `src/services/shopify.js` requests
+`<SHOPIFY_PROXY_URL>/products`, which is handled by the Express server in
+`shopify/productProxyServer.js`. The proxy injects the Admin API token from
+server-side environment variables, iterates through every page of products, and
+returns normalized results back to the UI. Because the API call originates from
+your backend, Shopify’s CORS restrictions no longer apply and the dashboard now
+receives the full active catalog instead of falling back to the bundled
+eight-item mock list.
 
 ## Key concepts
 
