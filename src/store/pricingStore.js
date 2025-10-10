@@ -6,6 +6,7 @@ import {
   HAND_CHAIN_MULTIPLIER,
   necklaceChainTypes,
   ringBandSupplements,
+  ringSizes,
 } from '../data/supplements';
 import { mockProducts } from '../data/products';
 import { hasShopifyProxy } from '../config/shopify';
@@ -32,6 +33,122 @@ const defaultSupplements = {
 };
 
 const cloneSupplements = () => JSON.parse(JSON.stringify(defaultSupplements));
+
+const escapeRegExp = (value) => value.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+
+const RING_BAND_PATTERNS = Object.keys(ringBandSupplements).map((band) => ({
+  canonical: band,
+  regex: new RegExp(`\\b${escapeRegExp(band)}\\b`, 'i'),
+}));
+
+const RING_SIZE_PATTERNS = ringSizes.map((size) => ({
+  canonical: size,
+  regex: new RegExp(`\\b${escapeRegExp(size)}\\b`, 'i'),
+}));
+
+const buildRingKey = (band, size) => {
+  if (!band || !size) {
+    return null;
+  }
+
+  return `${band.toLowerCase()}::${size.toUpperCase()}`;
+};
+
+const findRingBand = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return null;
+  }
+
+  for (const pattern of RING_BAND_PATTERNS) {
+    if (pattern.regex.test(text)) {
+      return pattern.canonical;
+    }
+  }
+
+  return null;
+};
+
+const findRingSize = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return null;
+  }
+
+  for (const pattern of RING_SIZE_PATTERNS) {
+    if (pattern.regex.test(text)) {
+      return pattern.canonical;
+    }
+  }
+
+  return null;
+};
+
+const splitVariantDescriptor = (value) => {
+  if (!value) {
+    return [];
+  }
+
+  return String(value)
+    .split(/[\/•|]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+};
+
+const deriveRingIdentity = (variant) => {
+  if (!variant || typeof variant !== 'object') {
+    return { key: null, band: null, size: null };
+  }
+
+  if (variant.band && variant.size) {
+    const key = buildRingKey(variant.band, variant.size);
+    if (key) {
+      return { key, band: variant.band, size: variant.size };
+    }
+  }
+
+  const candidateGroups = [];
+
+  if (Array.isArray(variant.options) && variant.options.length > 0) {
+    candidateGroups.push(variant.options);
+  }
+
+  if (typeof variant.title === 'string' && variant.title.trim()) {
+    candidateGroups.push(splitVariantDescriptor(variant.title));
+  }
+
+  for (const parts of candidateGroups) {
+    if (!Array.isArray(parts) || parts.length === 0) {
+      continue;
+    }
+
+    let band = null;
+    let size = null;
+
+    for (const part of parts) {
+      if (!band) {
+        band = findRingBand(part);
+      }
+      if (!size) {
+        size = findRingSize(part);
+      }
+    }
+
+    if (band && size) {
+      return { key: buildRingKey(band, size), band, size };
+    }
+  }
+
+  return { key: null, band: null, size: null };
+};
 
 export const usePricingStore = create(
   devtools((set, get) => ({
@@ -235,18 +352,38 @@ export const usePricingStore = create(
           continue;
         }
 
+        const targetVariants = buildRingVariants(product, supplements.rings);
+        const targetByKey = new Map();
+        for (const target of targetVariants) {
+          const key = buildRingKey(target.band, target.size);
+          if (key) {
+            targetByKey.set(key, target);
+          }
+        }
+
+        const availableRingKeys = new Set();
+        const variantIdentityLookup = new Map();
+
         for (const variant of product.variants) {
           if (variant?.id) {
             const variantId = String(variant.id);
             originalVariantLookup.set(variantId, variant);
           }
+
+          const identity = deriveRingIdentity(variant);
+          if (identity.key) {
+            availableRingKeys.add(identity.key);
+          }
+          variantIdentityLookup.set(variant, identity);
         }
 
-        const targetVariants = buildRingVariants(product, supplements.rings);
-        const targetByTitle = new Map(targetVariants.map((variant) => [variant.title, variant]));
-
         const nextVariants = product.variants.map((variant) => {
-          const target = targetByTitle.get(variant.title);
+          const identity = variantIdentityLookup.get(variant) ?? deriveRingIdentity(variant);
+          if (!identity.key) {
+            return variant;
+          }
+
+          const target = targetByKey.get(identity.key);
           if (!target) {
             return variant;
           }
@@ -274,12 +411,17 @@ export const usePricingStore = create(
             ...variant,
             price: target.price,
             compareAtPrice: target.compareAtPrice,
+            band: identity.band ?? target.band,
+            size: identity.size ?? target.size,
           };
         });
 
-        const missingTitles = targetVariants
-          .filter((variant) => !product.variants.some((existing) => existing.title === variant.title))
-          .map((variant) => variant.title);
+        const missingVariants = targetVariants.filter((variant) => {
+          const key = buildRingKey(variant.band, variant.size);
+          return key ? !availableRingKeys.has(key) : false;
+        });
+
+        const missingTitles = missingVariants.map((variant) => `${variant.band} • ${variant.size}`);
 
         if (missingTitles.length > 0) {
           missingMappings.push({ product, titles: missingTitles });
@@ -290,8 +432,10 @@ export const usePricingStore = create(
 
       if (missingMappings.length > 0) {
         for (const { product, titles } of missingMappings) {
+          const combinationSummary = titles.join(', ');
+          const plural = titles.length === 1 ? '' : 's';
           get().log(
-            `Skipped ${titles.length} ring variants for ${product.title} because matching Shopify variants were not found.`,
+            `Skipped ${titles.length} ring variant${plural} for ${product.title} because Shopify is missing: ${combinationSummary}.`,
             'rings',
           );
         }

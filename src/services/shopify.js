@@ -14,17 +14,22 @@ const normalizeVariant = (variant) => {
       title: '',
       price: 0,
       compareAtPrice: 0,
+      options: [],
     };
   }
 
   const price = parseNumber(variant.price, 0);
   const compareAtPrice = parseNumber(variant.compareAtPrice, price);
+  const options = Array.isArray(variant.options)
+    ? variant.options.map((option) => String(option ?? '').trim()).filter(Boolean)
+    : [];
 
   return {
     id: String(variant.id ?? ''),
     title: variant.title ?? '',
     price,
     compareAtPrice,
+    options,
   };
 };
 
