@@ -1,90 +1,169 @@
+import { useMemo, useState } from 'react';
+import { clsx } from 'clsx';
+
 import { useTranslation } from '../i18n/useTranslation';
 
-const variantCardClasses = [
-  'flex flex-col',
-  'rounded-xl',
-  'border border-platinum/70',
-  'bg-white/80',
-  'px-4 py-3',
-  'text-xs',
-  'shadow-inner',
-].join(' ');
+import './PreviewTable.css';
+
+const MAD = new Intl.NumberFormat('fr-MA', {
+  style: 'currency',
+  currency: 'MAD',
+  minimumFractionDigits: 2,
+});
+
+const formatMoney = (value) => {
+  const amount = Number.isFinite(value) ? value : 0;
+  return MAD.format(amount).replace('MAD', 'dh').trim();
+};
+
+const buildSummaryRow = (label, previous, next) => ({
+  label,
+  previous,
+  next,
+  changed: Number(previous ?? 0) !== Number(next ?? 0),
+});
 
 export function PreviewTable({ previews }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(() => new Set());
 
-  if (!previews?.length) {
-    return (
-      <div className="rounded-2xl border border-diamond bg-white/60 p-8 text-center text-sm text-slategray shadow-soft">
-        {t('table.noPreviews')}
-      </div>
-    );
+  const hasPreviews = Array.isArray(previews) && previews.length > 0;
+
+  const toggleCard = (productId) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  const renderedCards = useMemo(() => {
+    if (!hasPreviews) {
+      return null;
+    }
+
+    return previews.map(({ product, updatedBasePrice, updatedCompareAtPrice, variants = [] }) => {
+      const summaryRows = [
+        buildSummaryRow(t('table.basePrice'), product.basePrice, updatedBasePrice),
+        buildSummaryRow(t('table.compareAt'), product.baseCompareAtPrice, updatedCompareAtPrice),
+      ];
+
+      const changedVariants = variants.filter((variant) => {
+        const prevPrice = Number(variant.previousPrice ?? variant.price);
+        const prevCompare = Number(variant.previousCompareAtPrice ?? variant.compareAtPrice);
+        return prevPrice !== Number(variant.price) || prevCompare !== Number(variant.compareAtPrice);
+      });
+
+      const hasVariantChanges = changedVariants.length > 0;
+      const hasSummaryChanges = summaryRows.some((row) => row.changed);
+      const hasChanges = hasVariantChanges || hasSummaryChanges;
+      const isExpanded = expanded.has(product.id) || hasChanges;
+
+      const cardClassName = clsx('preview-gallery__card', isExpanded ? 'is-expanded' : 'is-collapsed');
+
+      return (
+        <article key={product.id} className={cardClassName} data-product-id={product.id}>
+          <header
+            className="preview-gallery__header"
+            onClick={() => toggleCard(product.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                toggleCard(product.id);
+              }
+            }}
+          >
+            <div className="preview-gallery__meta">
+              <h3 className="preview-gallery__title">{product.title}</h3>
+              <p className="preview-gallery__handle">#{product.handle ?? product.id}</p>
+            </div>
+            <div className="preview-gallery__summary">
+              {summaryRows.map((row) => (
+                <div key={row.label} className="preview-gallery__summary-item">
+                  <span className="preview-gallery__summary-label">{row.label}</span>
+                  <div className="preview-gallery__summary-values">
+                    <span className="preview-gallery__summary-old">{formatMoney(row.previous)}</span>
+                    <span aria-hidden="true">→</span>
+                    <span
+                      className={clsx('preview-gallery__summary-new', {
+                        'text-success-600': row.changed,
+                      })}
+                    >
+                      {formatMoney(row.next)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="preview-gallery__chevron" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          </header>
+
+          <section className="preview-gallery__variants">
+            {hasChanges && (
+              <span className="preview-gallery__badge" role="status">
+                <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                  <path d="M10 2a1 1 0 01.894.553l7 14A1 1 0 0117 18H3a1 1 0 01-.894-1.447l7-14A1 1 0 0110 2zm0 5a.75.75 0 00-.743.648L9.25 8v3.25a.75.75 0 001.493.102l.007-.102V8a.75.75 0 00-.75-.75zm0 6.5a1 1 0 100 2 1 1 0 000-2z" />
+                </svg>
+                {hasVariantChanges
+                  ? t('table.pendingChanges', { count: changedVariants.length })
+                  : t('table.pendingProductChanges')}
+              </span>
+            )}
+
+            {variants.length === 0 ? (
+              <div className="preview-gallery__empty-variants">{t('table.noVariants')}</div>
+            ) : (
+              <div className="preview-gallery__variant-list">
+                {variants.map((variant) => {
+                  const prevPrice = Number(variant.previousPrice ?? variant.price);
+                  const prevCompare = Number(variant.previousCompareAtPrice ?? variant.compareAtPrice);
+                  const pending =
+                    prevPrice !== Number(variant.price) || prevCompare !== Number(variant.compareAtPrice);
+
+                  return (
+                    <div
+                      key={variant.id}
+                      className={clsx('preview-gallery__variant-row', {
+                        'is-unchanged': !pending,
+                      })}
+                    >
+                      <span className="preview-gallery__variant-title">{variant.title}</span>
+                      <div className="preview-gallery__variant-prices">
+                        <span className="preview-gallery__variant-old">{formatMoney(prevPrice)}</span>
+                        <span aria-hidden="true">→</span>
+                        <span className="preview-gallery__variant-new">{formatMoney(variant.price)}</span>
+                        <span aria-hidden="true">/</span>
+                        <span className="preview-gallery__variant-old">{formatMoney(prevCompare)}</span>
+                        <span aria-hidden="true">→</span>
+                        <span className="preview-gallery__variant-new">{formatMoney(variant.compareAtPrice)}</span>
+                      </div>
+                      {pending && (
+                        <span className="preview-gallery__badge">{t('table.pendingBadge')}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </article>
+      );
+    });
+  }, [expanded, hasPreviews, previews, t]);
+
+  if (!hasPreviews) {
+    return <div className="preview-gallery__empty">{t('table.noPreviews')}</div>;
   }
 
-  return (
-    <div className="rounded-2xl border border-diamond bg-gradient-to-br from-white via-pearl to-white p-6 shadow-soft">
-      <div className="overflow-hidden rounded-2xl border border-platinum/70">
-        <table className="min-w-full table-fixed border-separate border-spacing-0">
-          <thead>
-            <tr className="bg-pearl/80 text-left text-xs font-semibold uppercase tracking-[0.15em] text-slategray">
-              <th className="px-6 py-4 text-slategray/90">{t('table.product')}</th>
-              <th className="px-6 py-4 text-slategray/90">{t('table.basePrice')}</th>
-              <th className="px-6 py-4 text-rosegold">{t('table.newBasePrice')}</th>
-              <th className="px-6 py-4 text-slategray/90">{t('table.compareAt')}</th>
-              <th className="px-6 py-4 text-rosegold">{t('table.newCompareAt')}</th>
-              <th className="px-6 py-4 text-slategray/90">{t('table.variants')}</th>
-            </tr>
-          </thead>
-          <tbody className="text-sm">
-            {previews.map(({ product, updatedBasePrice, updatedCompareAtPrice, variants }, index) => (
-              <tr
-                key={product.id}
-                className={`transition-colors duration-200 ${
-                  index % 2 === 0 ? 'bg-white' : 'bg-white/80'
-                } hover:bg-blush/70`}
-              >
-                <td className="px-6 py-5 align-top">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-base font-semibold text-charcoal">{product.title}</span>
-                    <span className="text-xs uppercase tracking-wide text-slategray/70">#{product.handle}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-5 align-top text-slategray">{product.basePrice.toFixed(2)} dh</td>
-                <td className="px-6 py-5 align-top text-lg font-semibold text-rosegold">
-                  {updatedBasePrice.toFixed(2)} dh
-                </td>
-                <td className="px-6 py-5 align-top text-slategray">{product.baseCompareAtPrice.toFixed(2)} dh</td>
-                <td className="px-6 py-5 align-top text-lg font-semibold text-rosegold">
-                  {updatedCompareAtPrice.toFixed(2)} dh
-                </td>
-                <td className="px-6 py-5 align-top">
-                  {variants.length === 0 ? (
-                    <span className="inline-flex rounded-full bg-platinum/60 px-4 py-2 text-xs font-medium text-slategray">
-                      {t('table.noVariants')}
-                    </span>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {variants.map((variant) => (
-                        <div key={variant.id} className={variantCardClasses}>
-                          <span className="text-[0.7rem] uppercase tracking-wide text-slategray/70">
-                            {variant.title}
-                          </span>
-                          <span className="text-sm font-semibold text-charcoal">
-                            {variant.price.toFixed(2)} dh
-                          </span>
-                          <span className="text-[0.7rem] text-slategray">
-                            {t('table.compareAt')} {variant.compareAtPrice.toFixed(2)} dh
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  return <div className="preview-gallery">{renderedCards}</div>;
 }

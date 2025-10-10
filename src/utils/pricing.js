@@ -33,6 +33,7 @@ export const buildBraceletVariants = (product, supplements) => {
   return Object.entries(supplements).map(([title, supplement]) => ({
     id: `${product.id}-${title}`,
     title,
+    chainType: title,
     price: product.basePrice + supplement,
     compareAtPrice: product.baseCompareAtPrice + supplement,
   }));
@@ -50,6 +51,8 @@ export const buildNecklaceVariants = (product, chainTypeSupplements) => {
       variants.push({
         id: `${product.id}-${chainType}-${size}`,
         title,
+        chainType,
+        size,
         price: priceBase,
         compareAtPrice: compareBase,
       });
@@ -69,6 +72,8 @@ export const buildRingVariants = (product, ringSupplements = ringBandSupplements
       variants.push({
         id: `${product.id}-${band}-${size}`,
         title,
+        band,
+        size,
         price,
         compareAtPrice,
       });
@@ -81,6 +86,7 @@ export const buildHandChainVariants = (product, chainTypeSupplements) => {
   return Object.entries(chainTypeSupplements).map(([chainType, supplement]) => ({
     id: `${product.id}-${chainType}`,
     title: chainType,
+    chainType,
     price: product.basePrice + supplement,
     compareAtPrice: product.baseCompareAtPrice + supplement,
   }));
@@ -100,6 +106,8 @@ export const buildSetVariants = (product, braceletSupplements, necklaceSupplemen
       variants.push({
         id: `${product.id}-${chainType}-${size}`,
         title,
+        chainType,
+        size,
         price: priceBase,
         compareAtPrice: compareBase,
       });
