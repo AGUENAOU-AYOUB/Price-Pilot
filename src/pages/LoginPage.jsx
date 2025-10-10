@@ -36,18 +36,18 @@ export function LoginPage() {
         <div className="absolute bottom-24 left-[-160px] h-[360px] w-[360px] rounded-full bg-success-200/35 blur-[140px]" />
       </div>
 
-      <div className="relative z-10 w-full max-w-md px-6">
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-10 rounded-full border border-white/60 bg-white/70 px-4 text-sm font-semibold text-neutral-600 shadow-sm backdrop-blur-md hover:bg-white"
-            onClick={() => setLanguage(language === 'en' ? 'fr' : 'en')}
-          >
-            {language === 'en' ? 'FR' : 'EN'}
-          </Button>
-        </div>
+      <div className="absolute right-6 top-6 z-20 sm:right-8 sm:top-8">
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-10 rounded-full border border-white/60 bg-white/70 px-4 text-sm font-semibold text-neutral-600 shadow-sm backdrop-blur-md hover:bg-white"
+          onClick={() => setLanguage(language === 'en' ? 'fr' : 'en')}
+        >
+          {language === 'en' ? 'FR' : 'EN'}
+        </Button>
+      </div>
 
+      <div className="relative z-10 w-full max-w-md px-6">
         <div className="mt-6 rounded-[32px] border border-white/60 bg-white/80 p-10 text-center shadow-[0_24px_60px_-24px_rgba(79,70,229,0.45)] backdrop-blur-xl">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/85 shadow-inner">
             <Logo />

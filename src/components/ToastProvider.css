@@ -21,8 +21,12 @@
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
   background-color: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  animation: toast-in 0.25s ease, toast-out 0.2s ease 1 forwards;
-  animation-fill-mode: forwards;
+  animation-name: toast-in, toast-out;
+  animation-duration: 0.25s, 0.2s;
+  animation-timing-function: ease, ease;
+  animation-fill-mode: forwards, forwards;
+  animation-delay: 0s, var(--toast-exit-delay, 5.8s);
+  will-change: transform, opacity;
 }
 
 .toast-card[data-variant='success'] .toast-icon {
