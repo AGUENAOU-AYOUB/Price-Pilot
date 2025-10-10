@@ -104,6 +104,60 @@ streams each change to Shopify’s Admin API using the private
 the proxy running before applying ring changes so the storefront is updated
 alongside the local dashboard state.
 
+### Live backups & restores
+
+The **Create backup** button now requests the latest product data from Shopify
+for the active workflow scope (bracelets, necklaces, rings, hand chains, sets,
+or the global dashboard). The proxy snapshots every variant’s `price` and
+`compare_at_price`, stores the payload locally with a timestamp, and refreshes
+the in-app state so the preview reflects Shopify’s current numbers. Restoring a
+backup diffs those saved values against Shopify and pushes the necessary
+updates—every accessory page now behaves like the Rings page and writes directly
+to Shopify instead of stopping at in-memory state. Start the proxy before
+backing up or restoring so each operation can reach Shopify.
+
+### Shopify product checklist
+
+To ensure the pricing engine can recognise and update your variants, confirm
+that each product in Shopify meets the following requirements:
+
+1. **Collections / tagging**
+   - Bracelets: tag the product with `brac` or set the product type to include
+     “bracelet”.
+   - Necklaces: tag with `nckl` or use a product type containing “necklace” or
+     “collier”.
+   - Rings: tag with `rng` or a product type containing “ring” or “bague”.
+   - Hand chains: tag with `hand`/`handchain` or a product type containing
+     “hand chain”.
+   - Sets: tag with `set`/`ensemble` or a product type containing “set” or
+     “ensemble”.
+
+2. **Variant naming**
+   - Bracelet and hand chain variants must include the chain name defined in
+     `src/data/supplements.js` (e.g. `Forçat S`, `Gourmette`, `Serpent`) in the
+     variant title or option fields.
+   - Necklace and set variants must include both the chain name and size (e.g.
+     `Forçat S • 41cm`).
+   - Ring variants must expose both the band and size either in their title or
+     in option values. The app recognises the canonical band names from
+     `ringBandSupplements` (e.g. `Slim`, `Big`, `Twist`) and the ring sizes
+     listed in `ringSizes` (e.g. `XS`, `M`, `XL`).
+
+3. **Variant metadata**
+   - Variant IDs must be stable—updates are sent directly to each `variant.id`.
+   - SKUs are optional and ignored by the matching algorithm.
+   - Compare-at prices should be populated if you want the UI to render the
+     before/after comparison; missing values default to the variant’s current
+     `price`.
+
+4. **Status**
+   - Only `active` Shopify products are loaded into the dashboard. Archive or
+     draft items are skipped automatically.
+
+Review this checklist when introducing new SKUs to Shopify to guarantee the UI
+generates previews, applies updates, and restores backups without manual
+intervention.
+
 ## Key concepts
 
 - **Luxury rounding** – All computed prices are rounded to the closest value ending in `00` or `90`.
