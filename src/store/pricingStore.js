@@ -162,7 +162,16 @@ const canonicalChainName = (value, contextLabel = 'chain types') => {
 
   const parsed = parseChainName(raw);
   const normalized = parsed ? sanitizeVariantKey(parsed) : null;
-  const canonical = normalized ? CHAIN_LOOKUP.get(normalized) : null;
+  let canonical = normalized ? CHAIN_LOOKUP.get(normalized) : null;
+
+  if (!canonical && normalized) {
+    for (const [candidateKey, candidateValue] of CHAIN_LOOKUP.entries()) {
+      if (normalized.startsWith(candidateKey)) {
+        canonical = candidateValue;
+        break;
+      }
+    }
+  }
 
   if (!canonical) {
     console.warn(
@@ -388,7 +397,7 @@ const splitVariantDescriptor = (value) => {
   }
 
   return String(value)
-    .split(/[\/•|]/)
+    .split(/[\/•|\-–]/)
     .map((part) => part.trim())
     .filter(Boolean);
 };
@@ -889,15 +898,19 @@ export const usePricingStore = create(
             (variant) => {
               const currentPrice = Number(variant?.price ?? basePrice);
               const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
+              const nextPrice = applyPercentage(currentPrice, adjustment);
+              const nextCompare = applyPercentage(currentCompare, adjustment);
+              const changed = currentPrice !== nextPrice || currentCompare !== nextCompare;
 
               return {
                 ...variant,
                 id: variant?.id ? String(variant.id) : `${product.id}-${variant?.title ?? 'variant'}`,
                 title: variant?.title ?? 'Variant',
-                price: applyPercentage(currentPrice, adjustment),
-                compareAtPrice: applyPercentage(currentCompare, adjustment),
+                price: nextPrice,
+                compareAtPrice: nextCompare,
                 previousPrice: currentPrice,
                 previousCompareAtPrice: currentCompare,
+                status: changed ? 'changed' : 'unchanged',
               };
             },
           );
@@ -1024,12 +1037,23 @@ export const usePricingStore = create(
             variants: buildBraceletVariants(product, supplements.bracelets).map((variant) => {
               const key = deriveBraceletKey(variant);
               const currentVariant = key ? lookup.get(key) : null;
+              const matched = Boolean(currentVariant);
+              const previousPrice = matched
+                ? Number(currentVariant?.price ?? product.basePrice)
+                : null;
+              const previousCompare = matched
+                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
+                : null;
+              const changed =
+                matched &&
+                (previousPrice !== Number(variant.price) ||
+                  previousCompare !== Number(variant.compareAtPrice));
 
               return {
                 ...variant,
-                previousPrice: currentVariant?.price ?? product.basePrice,
-                previousCompareAtPrice:
-                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+                previousPrice,
+                previousCompareAtPrice: previousCompare,
+                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
               };
             }),
           };
@@ -1181,12 +1205,23 @@ export const usePricingStore = create(
             variants: buildNecklaceVariants(product, supplements.necklaces).map((variant) => {
               const signature = deriveNecklaceSignature(variant);
               const currentVariant = signature.key ? lookup.get(signature.key) : null;
+              const matched = Boolean(currentVariant);
+              const previousPrice = matched
+                ? Number(currentVariant?.price ?? product.basePrice)
+                : null;
+              const previousCompare = matched
+                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
+                : null;
+              const changed =
+                matched &&
+                (previousPrice !== Number(variant.price) ||
+                  previousCompare !== Number(variant.compareAtPrice));
 
               return {
                 ...variant,
-                previousPrice: currentVariant?.price ?? product.basePrice,
-                previousCompareAtPrice:
-                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+                previousPrice,
+                previousCompareAtPrice: previousCompare,
+                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
               };
             }),
           };
@@ -1338,12 +1373,23 @@ export const usePricingStore = create(
             variants: buildRingVariants(product, supplements.rings).map((variant) => {
               const key = buildRingKey(variant.band, variant.size);
               const currentVariant = key ? lookup.get(key) : null;
+              const matched = Boolean(currentVariant);
+              const previousPrice = matched
+                ? Number(currentVariant?.price ?? product.basePrice)
+                : null;
+              const previousCompare = matched
+                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
+                : null;
+              const changed =
+                matched &&
+                (previousPrice !== Number(variant.price) ||
+                  previousCompare !== Number(variant.compareAtPrice));
 
               return {
                 ...variant,
-                previousPrice: currentVariant?.price ?? product.basePrice,
-                previousCompareAtPrice:
-                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+                previousPrice,
+                previousCompareAtPrice: previousCompare,
+                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
               };
             }),
           };
@@ -1499,12 +1545,23 @@ export const usePricingStore = create(
             variants: buildHandChainVariants(product, supplements.handChains).map((variant) => {
               const key = deriveHandChainKey(variant);
               const currentVariant = key ? lookup.get(key) : null;
+              const matched = Boolean(currentVariant);
+              const previousPrice = matched
+                ? Number(currentVariant?.price ?? product.basePrice)
+                : null;
+              const previousCompare = matched
+                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
+                : null;
+              const changed =
+                matched &&
+                (previousPrice !== Number(variant.price) ||
+                  previousCompare !== Number(variant.compareAtPrice));
 
               return {
                 ...variant,
-                previousPrice: currentVariant?.price ?? product.basePrice,
-                previousCompareAtPrice:
-                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+                previousPrice,
+                previousCompareAtPrice: previousCompare,
+                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
               };
             }),
           };
@@ -1661,12 +1718,23 @@ export const usePricingStore = create(
             ).map((variant) => {
               const signature = deriveSetSignature(variant);
               const currentVariant = signature.key ? lookup.get(signature.key) : null;
+              const matched = Boolean(currentVariant);
+              const previousPrice = matched
+                ? Number(currentVariant?.price ?? product.basePrice)
+                : null;
+              const previousCompare = matched
+                ? Number(currentVariant?.compareAtPrice ?? product.baseCompareAtPrice)
+                : null;
+              const changed =
+                matched &&
+                (previousPrice !== Number(variant.price) ||
+                  previousCompare !== Number(variant.compareAtPrice));
 
               return {
                 ...variant,
-                previousPrice: currentVariant?.price ?? product.basePrice,
-                previousCompareAtPrice:
-                  currentVariant?.compareAtPrice ?? product.baseCompareAtPrice,
+                previousPrice,
+                previousCompareAtPrice: previousCompare,
+                status: matched ? (changed ? 'changed' : 'unchanged') : 'missing',
               };
             }),
           };

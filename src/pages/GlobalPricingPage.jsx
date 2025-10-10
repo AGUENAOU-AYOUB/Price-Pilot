@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import { PreviewTable } from '../components/PreviewTable';
+import { useToast } from '../components/ToastProvider';
 import { usePricingStore } from '../store/pricingStore';
 import { useTranslation } from '../i18n/useTranslation';
 
@@ -15,13 +16,34 @@ export function GlobalPricingPage() {
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
   const { t } = useTranslation();
+  const toast = useToast();
   const [previews, setPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
 
   const isBusy = loadingScopes.has('global');
 
   const handlePreview = () => {
-    setPreviews(previewGlobalChange(percent));
+    const results = previewGlobalChange(percent);
+    setPreviews(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(t('toast.previewEmpty', { scope: t('nav.globalPricing') }));
+      return;
+    }
+
+    const missingCount = results.reduce((count, preview) => {
+      if (!preview?.variants) {
+        return count;
+      }
+      return count + preview.variants.filter((variant) => variant.status === 'missing').length;
+    }, 0);
+
+    if (missingCount > 0) {
+      toast.error(t('toast.previewMissing', { scope: t('nav.globalPricing'), count: missingCount }));
+      return;
+    }
+
+    toast.success(t('toast.previewReady', { scope: t('nav.globalPricing') }));
   };
 
   const runAction = async (action, handler) => {

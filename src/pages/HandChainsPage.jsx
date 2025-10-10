@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import { PreviewTable } from '../components/PreviewTable';
+import { useToast } from '../components/ToastProvider';
 import { usePricingStore } from '../store/pricingStore';
 import { useTranslation } from '../i18n/useTranslation';
 
@@ -16,6 +17,7 @@ export function HandChainsPage() {
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
   const { t } = useTranslation();
+  const toast = useToast();
 
   const [previews, setPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
@@ -23,7 +25,27 @@ export function HandChainsPage() {
   const isBusy = loadingScopes.has('handchains');
 
   const handlePreview = () => {
-    setPreviews(previewHandChains());
+    const results = previewHandChains();
+    setPreviews(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(t('toast.previewEmpty', { scope: t('nav.handChains') }));
+      return;
+    }
+
+    const missingCount = results.reduce((count, preview) => {
+      if (!preview?.variants) {
+        return count;
+      }
+      return count + preview.variants.filter((variant) => variant.status === 'missing').length;
+    }, 0);
+
+    if (missingCount > 0) {
+      toast.error(t('toast.previewMissing', { scope: t('nav.handChains'), count: missingCount }));
+      return;
+    }
+
+    toast.success(t('toast.previewReady', { scope: t('nav.handChains') }));
   };
 
   const runAction = async (action, handler) => {

@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import { PreviewTable } from '../components/PreviewTable';
+import { useToast } from '../components/ToastProvider';
 import { usePricingStore } from '../store/pricingStore';
 import { useTranslation } from '../i18n/useTranslation';
 import { ringSizes } from '../data/supplements';
@@ -17,6 +18,7 @@ export function RingsPage() {
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
   const { t } = useTranslation();
+  const toast = useToast();
 
   const [previews, setPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
@@ -24,7 +26,27 @@ export function RingsPage() {
   const isBusy = loadingScopes.has('rings');
 
   const handlePreview = () => {
-    setPreviews(previewRings());
+    const results = previewRings();
+    setPreviews(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(t('toast.previewEmpty', { scope: t('nav.rings') }));
+      return;
+    }
+
+    const missingCount = results.reduce((count, preview) => {
+      if (!preview?.variants) {
+        return count;
+      }
+      return count + preview.variants.filter((variant) => variant.status === 'missing').length;
+    }, 0);
+
+    if (missingCount > 0) {
+      toast.error(t('toast.previewMissing', { scope: t('nav.rings'), count: missingCount }));
+      return;
+    }
+
+    toast.success(t('toast.previewReady', { scope: t('nav.rings') }));
   };
 
   const runAction = async (action, handler) => {
