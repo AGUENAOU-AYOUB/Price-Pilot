@@ -8,17 +8,17 @@ import { hasShopifyProxy } from '../config/shopify';
 const Metric = ({ icon, label, value, tone = 'neutral' }) => {
   const toneClasses =
     tone === 'success'
-      ? 'bg-success-500/10 text-success-600'
+      ? 'bg-emerald-500/15 text-emerald-200 border border-emerald-400/30'
       : tone === 'warning'
-      ? 'bg-warning-500/10 text-warning-600'
-      : 'bg-primary-100 text-primary-600';
+      ? 'bg-amber-500/15 text-amber-200 border border-amber-400/30'
+      : 'bg-rose-500/15 text-rose-200 border border-rose-400/30';
 
   return (
-    <div className="flex items-start gap-4 rounded-2xl border border-neutral-200 bg-white/80 p-5 shadow-sm">
+    <div className="flex items-start gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 text-gray-200 shadow-2xl backdrop-blur-xl">
       <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${toneClasses}`}>{icon}</div>
       <div>
-        <p className="text-sm font-medium uppercase tracking-wide text-neutral-500">{label}</p>
-        <p className="mt-2 text-2xl font-semibold text-neutral-900">{value}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">{label}</p>
+        <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
       </div>
     </div>
   );
@@ -26,9 +26,9 @@ const Metric = ({ icon, label, value, tone = 'neutral' }) => {
 
 const SectionIcon = ({ tone }) => {
   const tones = {
-    primary: 'bg-primary-100 text-primary-600',
-    success: 'bg-success-500/10 text-success-600',
-    warning: 'bg-warning-500/10 text-warning-500',
+    primary: 'bg-rose-500/20 text-rose-200 border border-rose-400/30',
+    success: 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30',
+    warning: 'bg-amber-500/20 text-amber-200 border border-amber-400/30',
   };
 
   const toneClass = tones[tone] ?? tones.primary;
@@ -124,13 +124,19 @@ export function DashboardPage() {
       title: t('dashboard.section.setsTitle'),
       description: t('dashboard.section.setsBody'),
     },
+    {
+      to: '/spec-sets',
+      tone: 'warning',
+      title: t('dashboard.section.specSetsTitle'),
+      description: t('dashboard.section.specSetsBody'),
+    },
   ];
 
   return (
     <div className="space-y-10">
-      <Card className="border-none bg-white/90 shadow-lg ring-1 ring-neutral-200" title={t('dashboard.heroTitle')}>
-        <div className="space-y-6 text-base text-neutral-600">
-          <p className="text-lg text-neutral-600">{t('dashboard.heroSubtitle')}</p>
+      <Card className="border-white/10 bg-black/70" title={t('dashboard.heroTitle')}>
+        <div className="space-y-6 text-base text-gray-300">
+          <p className="text-lg text-gray-200">{t('dashboard.heroSubtitle')}</p>
           <p>{t('dashboard.heroBody')}</p>
           <div className="grid gap-4 md:grid-cols-3">
             {metrics.map((metric) => (
@@ -143,8 +149,8 @@ export function DashboardPage() {
       <section className="space-y-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold text-neutral-900">{t('dashboard.sectionsTitle')}</h2>
-            <p className="text-base text-neutral-600">{t('dashboard.sectionsSubtitle')}</p>
+            <h2 className="text-2xl font-semibold text-white">{t('dashboard.sectionsTitle')}</h2>
+            <p className="text-base text-gray-300">{t('dashboard.sectionsSubtitle')}</p>
           </div>
         </div>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -152,18 +158,18 @@ export function DashboardPage() {
             <Link
               key={section.to}
               to={section.to}
-              className="group block h-full rounded-3xl border border-neutral-200 bg-white/90 p-8 shadow-sm transition hover:-translate-y-1 hover:border-primary-200 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="group block h-full rounded-3xl border border-white/10 bg-white/5 p-8 text-gray-200 shadow-2xl transition duration-200 hover:-translate-y-1 hover:border-white/30 hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-red-500/40"
             >
               <div className="flex h-full flex-col gap-6">
                 <div className="flex items-center gap-4">
                   <SectionIcon tone={section.tone} />
-                  <span className="text-sm font-medium uppercase tracking-wide text-neutral-500">
+                  <span className="text-sm font-medium uppercase tracking-[0.2em] text-gray-400">
                     {section.title}
                   </span>
                 </div>
-                <p className="text-lg font-semibold text-neutral-900">{section.title}</p>
-                <p className="text-base text-neutral-600">{section.description}</p>
-                <div className="mt-auto flex items-center gap-2 text-sm font-semibold text-primary-600">
+                <p className="text-lg font-semibold text-white">{section.title}</p>
+                <p className="text-base text-gray-300">{section.description}</p>
+                <div className="mt-auto flex items-center gap-2 text-sm font-semibold text-rose-200">
                   <span>{t('dashboard.openWorkspace')}</span>
                   <svg
                     viewBox="0 0 24 24"

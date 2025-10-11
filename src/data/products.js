@@ -108,4 +108,40 @@ export const mockProducts = [
       'Taille de chaine': ['41cm', '45cm', '50cm'],
     },
   },
+  {
+    id: 'spec-set-1',
+    title: 'Fusion Spec Ensemble',
+    collection: 'ensemble',
+    tags: ['spec'],
+    basePrice: 4200,
+    baseCompareAtPrice: 4600,
+    status: 'active',
+    variants: [
+      {
+        id: 'spec-set-1-gourmette-forsat',
+        title: 'Gourmette • Forsat S',
+        price: 4300,
+        compareAtPrice: 4700,
+        options: ['Gourmette', 'Forsat S'],
+      },
+      {
+        id: 'spec-set-1-collier-forsat-41',
+        title: 'Collier • Forsat S • 41cm',
+        price: 4450,
+        compareAtPrice: 4850,
+        options: ['Collier', 'Forsat S', '41cm'],
+      },
+      {
+        id: 'spec-set-1-ensemble-forsat-41',
+        title: 'Ensemble • Forsat S • 41cm',
+        price: 4550,
+        compareAtPrice: 4950,
+        options: ['Ensemble', 'Forsat S', '41cm'],
+      },
+    ],
+    metafields: {
+      'Chain Variants': ['Forsat S', 'Gourmette M'],
+      'Taille de chaine': ['41cm', '45cm', '50cm'],
+    },
+  },
 ];
