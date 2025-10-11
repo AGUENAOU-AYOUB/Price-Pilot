@@ -126,12 +126,32 @@ export const buildSpecSetVariants = (
     setModeLabel = 'Ensemble',
   } = {},
 ) => {
+  const modeLabels = {
+    gourmette: braceletModeLabel,
+    collier: necklaceModeLabel,
+    ensemble: setModeLabel,
+  };
+
+  const buildOptions = (mode, chainType, size) => {
+    const modeDisplay = modeLabels[mode] ?? mode;
+    const chainDisplay = chainType ?? '';
+
+    if (mode === 'gourmette') {
+      return [modeDisplay, chainDisplay].filter(Boolean);
+    }
+
+    const sizeDisplay = Number.isFinite(size) ? `${size}cm` : '';
+    return [modeDisplay, chainDisplay, sizeDisplay].filter(Boolean);
+  };
+
   const braceletVariants = buildBraceletVariants(product, braceletSupplements).map((variant) => ({
     ...variant,
     id: `${product.id}-gourmette-${variant.chainType}`,
     specMode: 'gourmette',
     title: `${braceletModeLabel} • ${variant.title}`,
     size: null,
+    options: buildOptions('gourmette', variant.chainType, null),
+    sizeVisible: false,
   }));
 
   const necklaceVariants = buildNecklaceVariants(product, necklaceSupplements).map((variant) => ({
@@ -139,6 +159,8 @@ export const buildSpecSetVariants = (
     id: `${product.id}-collier-${variant.chainType}-${variant.size}`,
     specMode: 'collier',
     title: `${necklaceModeLabel} • ${variant.title}`,
+    options: buildOptions('collier', variant.chainType, variant.size),
+    sizeVisible: true,
   }));
 
   const setVariants = buildSetVariants(
@@ -150,6 +172,8 @@ export const buildSpecSetVariants = (
     id: `${product.id}-ensemble-${variant.chainType}-${variant.size}`,
     specMode: 'ensemble',
     title: `${setModeLabel} • ${variant.title}`,
+    options: buildOptions('ensemble', variant.chainType, variant.size),
+    sizeVisible: true,
   }));
 
   return [...braceletVariants, ...necklaceVariants, ...setVariants];

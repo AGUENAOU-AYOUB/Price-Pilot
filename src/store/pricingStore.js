@@ -1344,9 +1344,11 @@ const alignSpecSetVariantOptions = (product) => {
     }
 
     let nextOptions = null;
+    let expectedSize = null;
 
     if (mode === 'gourmette') {
       nextOptions = [modeDisplay, chainDisplay];
+      expectedSize = null;
     } else {
       if (!Number.isFinite(size)) {
         return variant;
@@ -1358,6 +1360,7 @@ const alignSpecSetVariantOptions = (product) => {
       }
 
       nextOptions = [modeDisplay, chainDisplay, sizeDisplay];
+      expectedSize = size;
     }
 
     if (!nextOptions) {
@@ -1366,9 +1369,36 @@ const alignSpecSetVariantOptions = (product) => {
 
     applied = true;
 
-    if (!arraysEqual(variant.options, nextOptions)) {
+    const optionsChanged = !arraysEqual(variant.options, nextOptions);
+    const normalizedCurrentSize = Number.isFinite(variant.size)
+      ? variant.size
+      : toNumberOrNull(variant.size);
+    const sizeChanged =
+      mode === 'gourmette'
+        ? variant.size !== null && variant.size !== undefined
+        : normalizedCurrentSize !== expectedSize;
+    const specModeChanged = variant.specMode !== mode;
+
+    if (optionsChanged || sizeChanged || specModeChanged) {
       changed = true;
-      return { ...variant, options: nextOptions };
+      const nextVariant = {
+        ...variant,
+        options: nextOptions,
+        specMode: mode,
+        sizeVisible: mode !== 'gourmette',
+      };
+
+      if (chain) {
+        nextVariant.chainType = chain;
+      }
+
+      if (mode === 'gourmette') {
+        nextVariant.size = null;
+      } else if (Number.isFinite(expectedSize)) {
+        nextVariant.size = expectedSize;
+      }
+
+      return nextVariant;
     }
 
     return variant;
@@ -3034,11 +3064,36 @@ export const usePricingStore = create(
               });
             }
 
-            return {
+            const nextVariant = {
               ...variant,
               price: target.price,
               compareAtPrice: target.compareAtPrice,
+              specMode: target.specMode ?? variant.specMode,
             };
+
+            if (Array.isArray(target.options) && target.options.length > 0) {
+              nextVariant.options = target.options;
+            }
+
+            if (target.chainType) {
+              nextVariant.chainType = target.chainType;
+            }
+
+            if (typeof target.sizeVisible === 'boolean') {
+              nextVariant.sizeVisible = target.sizeVisible;
+            } else if (target.specMode === 'gourmette') {
+              nextVariant.sizeVisible = false;
+            } else if (target.specMode === 'collier' || target.specMode === 'ensemble') {
+              nextVariant.sizeVisible = true;
+            }
+
+            if (target.specMode === 'gourmette') {
+              nextVariant.size = null;
+            } else if (Number.isFinite(target.size)) {
+              nextVariant.size = target.size;
+            }
+
+            return nextVariant;
           });
 
           const missingVariants = targetVariants.filter((target) => {
