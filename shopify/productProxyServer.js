@@ -23,6 +23,63 @@ const REQUEST_HEADERS = {
   'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
 };
 
+const MIN_SHOPIFY_INTERVAL_MS = 600;
+const MAX_SHOPIFY_RETRIES = 3;
+
+const delay = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+let lastShopifyRequestTime = 0;
+let shopifyRequestQueue = Promise.resolve();
+
+const scheduleShopifyRequest = (runner) => {
+  const execute = async () => {
+    const now = Date.now();
+    const wait = Math.max(0, MIN_SHOPIFY_INTERVAL_MS - (now - lastShopifyRequestTime));
+
+    if (wait > 0) {
+      await delay(wait);
+    }
+
+    lastShopifyRequestTime = Date.now();
+    return runner();
+  };
+
+  shopifyRequestQueue = shopifyRequestQueue.then(execute, execute);
+  return shopifyRequestQueue;
+};
+
+const parseRetryAfter = (value) => {
+  if (!value) return MIN_SHOPIFY_INTERVAL_MS;
+
+  const seconds = Number.parseFloat(value);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.ceil(seconds * 1000);
+  }
+
+  return MIN_SHOPIFY_INTERVAL_MS;
+};
+
+const shopifyFetch = (url, options) =>
+  scheduleShopifyRequest(async () => {
+    let attempt = 0;
+
+    while (true) {
+      attempt += 1;
+      const response = await fetch(url, options);
+
+      if (response.status !== 429 || attempt >= MAX_SHOPIFY_RETRIES) {
+        return response;
+      }
+
+      const retryAfter = parseRetryAfter(response.headers.get('retry-after'));
+      await delay(retryAfter);
+      lastShopifyRequestTime = Date.now();
+    }
+  });
+
 const parseAllowedOrigins = (value) => {
   if (!value) return [];
   return value
@@ -255,7 +312,7 @@ const updateVariantPrice = async (variant) => {
     throw new Error('Invalid variant payload provided for update.');
   }
 
-  const response = await fetch(VARIANT_ENDPOINT(payload.id), {
+  const response = await shopifyFetch(VARIANT_ENDPOINT(payload.id), {
     method: 'PUT',
     headers: REQUEST_HEADERS,
     body: JSON.stringify({ variant: payload }),
@@ -274,7 +331,7 @@ const fetchProducts = async (status = 'active') => {
   let pageInfo = null;
 
   do {
-    const response = await fetch(buildProductsUrl({ status, pageInfo }), {
+    const response = await shopifyFetch(buildProductsUrl({ status, pageInfo }), {
       headers: REQUEST_HEADERS,
     });
 
