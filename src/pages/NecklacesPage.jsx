@@ -13,6 +13,9 @@ export function NecklacesPage() {
   const updateSupplement = usePricingStore((state) => state.updateNecklaceSupplement);
   const previewNecklaces = usePricingStore((state) => state.previewNecklaces);
   const applyNecklaces = usePricingStore((state) => state.applyNecklaces);
+  const alignNecklaceVariantsFromMetafields = usePricingStore(
+    (state) => state.alignNecklaceVariantsFromMetafields,
+  );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
@@ -91,6 +94,16 @@ export function NecklacesPage() {
         <div className="mt-6 flex flex-wrap gap-3">
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isBusy}
+            isLoading={isBusy && activeAction === 'metafields'}
+            loadingText={t('action.aligningVariants')}
+            onClick={() => runAction('metafields', alignNecklaceVariantsFromMetafields)}
+          >
+            {t('action.alignVariants')}
           </Button>
           <Button
             type="button"

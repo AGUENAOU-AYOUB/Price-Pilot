@@ -14,6 +14,9 @@ export function RingsPage() {
   const updateSupplement = usePricingStore((state) => state.updateRingSupplement);
   const previewRings = usePricingStore((state) => state.previewRings);
   const applyRings = usePricingStore((state) => state.applyRings);
+  const alignRingVariantsFromMetafields = usePricingStore(
+    (state) => state.alignRingVariantsFromMetafields,
+  );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
@@ -86,6 +89,16 @@ export function RingsPage() {
         <div className="mt-6 flex flex-wrap gap-3">
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isBusy}
+            isLoading={isBusy && activeAction === 'metafields'}
+            loadingText={t('action.aligningVariants')}
+            onClick={() => runAction('metafields', alignRingVariantsFromMetafields)}
+          >
+            {t('action.alignVariants')}
           </Button>
           <Button
             type="button"

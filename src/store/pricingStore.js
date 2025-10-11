@@ -58,6 +58,10 @@ const cloneProduct = (product) => ({
   variants: Array.isArray(product?.variants)
     ? product.variants.map((variant) => cloneVariant({ ...variant }))
     : [],
+  metafields:
+    product && typeof product.metafields === 'object'
+      ? { ...product.metafields }
+      : {},
 });
 
 const cloneProducts = (products = []) => products.map((product) => cloneProduct(product));
@@ -460,6 +464,211 @@ const collectVariantParts = (variant) => {
   return parts;
 };
 
+const arraysEqual = (a, b) => {
+  if (a === b) {
+    return true;
+  }
+
+  if (!Array.isArray(a) || !Array.isArray(b)) {
+    return false;
+  }
+
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const toCamelCase = (value) =>
+  String(value ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+([a-z0-9])/g, (_, group) => group.toUpperCase());
+
+const buildMetafieldKeyVariants = (key) => {
+  const base = String(key ?? '').trim();
+  if (!base) {
+    return [];
+  }
+
+  const lower = base.toLowerCase();
+  const slug = lower.replace(/[^a-z0-9]+/g, '_');
+  const condensed = lower.replace(/[^a-z0-9]+/g, '');
+  const camel = toCamelCase(base);
+
+  return Array.from(new Set([base, lower, slug, condensed, camel]));
+};
+
+const readMetafieldValue = (product, key) => {
+  if (!product || typeof product !== 'object') {
+    return undefined;
+  }
+
+  const { metafields } = product;
+  if (!metafields || typeof metafields !== 'object') {
+    return undefined;
+  }
+
+  const candidates = buildMetafieldKeyVariants(key);
+  for (const candidate of candidates) {
+    if (
+      candidate &&
+      Object.prototype.hasOwnProperty.call(metafields, candidate) &&
+      metafields[candidate] !== undefined
+    ) {
+      return metafields[candidate];
+    }
+  }
+
+  return undefined;
+};
+
+const normalizeMetafieldValues = (raw) => {
+  if (raw === null || raw === undefined) {
+    return [];
+  }
+
+  if (Array.isArray(raw)) {
+    return raw.flatMap((entry) => normalizeMetafieldValues(entry));
+  }
+
+  if (typeof raw === 'object') {
+    if ('value' in raw) {
+      return normalizeMetafieldValues(raw.value);
+    }
+    if (Array.isArray(raw.values)) {
+      return normalizeMetafieldValues(raw.values);
+    }
+    if (Array.isArray(raw.nodes)) {
+      return normalizeMetafieldValues(raw.nodes);
+    }
+
+    return [];
+  }
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return normalizeMetafieldValues(parsed);
+        }
+      } catch (error) {
+        console.warn('Failed to parse metafield JSON value', error);
+      }
+    }
+
+    return trimmed
+      .split(/[\n,;|/]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  const coerced = String(raw).trim();
+  return coerced ? [coerced] : [];
+};
+
+const buildMetafieldDisplayMap = (product, key, canonicalize, formatDisplay) => {
+  const rawValue = readMetafieldValue(product, key);
+  if (rawValue === undefined) {
+    return new Map();
+  }
+
+  const values = normalizeMetafieldValues(rawValue);
+  const displayMap = new Map();
+
+  for (const value of values) {
+    const canonical = canonicalize(value);
+    if (!canonical) {
+      continue;
+    }
+
+    const displayCandidate = formatDisplay ? formatDisplay(value, canonical) : value;
+    const display = String(displayCandidate ?? '').trim() || String(canonical);
+
+    if (!displayMap.has(canonical)) {
+      displayMap.set(canonical, display);
+    }
+  }
+
+  return displayMap;
+};
+
+const formatNecklaceSizeDisplay = (raw, canonical) => {
+  const normalized = String(raw ?? '').trim();
+  if (!normalized) {
+    return `${canonical}cm`;
+  }
+
+  if (/cm$/i.test(normalized)) {
+    return normalized;
+  }
+
+  if (/^[0-9]+$/.test(normalized)) {
+    return `${normalized}cm`;
+  }
+
+  return normalized;
+};
+
+const formatRingSizeDisplay = (raw, canonical) => {
+  const normalized = String(raw ?? '').trim();
+  if (!normalized) {
+    return canonical;
+  }
+
+  return normalized.toUpperCase();
+};
+
+const buildChainMetafieldMap = (product, key, contextLabel) =>
+  buildMetafieldDisplayMap(
+    product,
+    key,
+    (value) => canonicalChainName(value, contextLabel ?? 'metafield chain options'),
+    (raw, canonical) => {
+      const normalized = String(raw ?? '').trim();
+      return normalized || canonical;
+    },
+  );
+
+const buildNecklaceSizeMetafieldMap = (product, key, contextLabel) =>
+  buildMetafieldDisplayMap(
+    product,
+    key,
+    (value) => canonicalNecklaceSize(value, contextLabel ?? 'metafield necklace size'),
+    (raw, canonical) => formatNecklaceSizeDisplay(raw, canonical),
+  );
+
+const buildRingBandMetafieldMap = (product, key) =>
+  buildMetafieldDisplayMap(
+    product,
+    key,
+    (value) => canonicalRingBand(value),
+    (raw, canonical) => {
+      const normalized = String(raw ?? '').trim();
+      return normalized || canonical;
+    },
+  );
+
+const buildRingSizeMetafieldMap = (product, key) =>
+  buildMetafieldDisplayMap(
+    product,
+    key,
+    (value) => canonicalRingSize(value),
+    (raw, canonical) => formatRingSizeDisplay(raw, canonical),
+  );
+
 const deriveRingIdentity = (variant) => {
   if (!variant || typeof variant !== 'object') {
     return { key: null, band: null, size: null };
@@ -621,6 +830,315 @@ const deriveNecklaceSignature = (variant, contextLabel = 'necklace') => {
 
 const deriveSetSignature = (variant) => deriveNecklaceSignature(variant, 'set');
 
+const alignVariantsFromMetafields = async ({ scope, collection, label, alignProduct }, set, get) => {
+  const toggleLoading = get().toggleLoading;
+  if (typeof toggleLoading === 'function') {
+    toggleLoading(scope, true);
+  }
+
+  try {
+    const products = Array.isArray(get().products) ? get().products : [];
+    const nextProducts = [];
+    let touched = 0;
+    let changed = 0;
+    let mutated = false;
+
+    for (const product of products) {
+      if (!product || product.collection !== collection) {
+        nextProducts.push(product);
+        continue;
+      }
+
+      const outcome = alignProduct(product);
+      if (!outcome || !outcome.applied) {
+        nextProducts.push(product);
+        continue;
+      }
+
+      touched += 1;
+
+      if (outcome.changed && Array.isArray(outcome.variants)) {
+        changed += 1;
+        mutated = true;
+        nextProducts.push({ ...product, variants: outcome.variants });
+      } else {
+        nextProducts.push(product);
+      }
+    }
+
+    if (mutated) {
+      set({ products: nextProducts });
+    }
+
+    const pluralLabel = (count) => {
+      const base = label ?? 'product';
+      if (count === 1) {
+        return base;
+      }
+      return base.endsWith('s') ? base : `${base}s`;
+    };
+
+    const log = get().log;
+    if (typeof log === 'function') {
+      if (touched === 0) {
+        log(`No ${pluralLabel(2)} had complete metafields to update.`, scope, 'warning');
+      } else if (changed === 0) {
+        log(`Metafield options already aligned for ${touched} ${pluralLabel(touched)}.`, scope, 'info');
+      } else {
+        log(
+          `Set variant options from metafields for ${touched} ${pluralLabel(touched)} (${changed} updated).`,
+          scope,
+          'success',
+        );
+      }
+    }
+
+    return { touchedCount: touched, changedCount: changed };
+  } finally {
+    const finalizeToggle = get().toggleLoading;
+    if (typeof finalizeToggle === 'function') {
+      finalizeToggle(scope, false);
+    }
+  }
+};
+
+const alignBraceletVariantOptions = (product) => {
+  if (!Array.isArray(product?.variants) || product.variants.length === 0) {
+    return null;
+  }
+
+  const chainMap = buildChainMetafieldMap(product, 'Chain Variants', 'bracelet metafield options');
+  if (chainMap.size === 0) {
+    return null;
+  }
+
+  let applied = false;
+  let changed = false;
+
+  const updatedVariants = product.variants.map((variant) => {
+    const key = deriveBraceletKey(variant);
+    if (!key) {
+      return variant;
+    }
+
+    const display = chainMap.get(key);
+    if (!display) {
+      return variant;
+    }
+
+    applied = true;
+    const nextOptions = [display];
+    if (!arraysEqual(variant.options, nextOptions)) {
+      changed = true;
+      return { ...variant, options: nextOptions };
+    }
+
+    return variant;
+  });
+
+  if (!applied) {
+    return null;
+  }
+
+  return {
+    applied: true,
+    changed,
+    variants: changed ? updatedVariants : undefined,
+  };
+};
+
+const alignHandChainVariantOptions = (product) => {
+  if (!Array.isArray(product?.variants) || product.variants.length === 0) {
+    return null;
+  }
+
+  const chainMap = buildChainMetafieldMap(product, 'Chain Variants', 'hand chain metafield options');
+  if (chainMap.size === 0) {
+    return null;
+  }
+
+  let applied = false;
+  let changed = false;
+
+  const updatedVariants = product.variants.map((variant) => {
+    const key = deriveHandChainKey(variant);
+    if (!key) {
+      return variant;
+    }
+
+    const display = chainMap.get(key);
+    if (!display) {
+      return variant;
+    }
+
+    applied = true;
+    const nextOptions = [display];
+    if (!arraysEqual(variant.options, nextOptions)) {
+      changed = true;
+      return { ...variant, options: nextOptions };
+    }
+
+    return variant;
+  });
+
+  if (!applied) {
+    return null;
+  }
+
+  return {
+    applied: true,
+    changed,
+    variants: changed ? updatedVariants : undefined,
+  };
+};
+
+const alignNecklaceVariantOptions = (product) => {
+  if (!Array.isArray(product?.variants) || product.variants.length === 0) {
+    return null;
+  }
+
+  const chainMap = buildChainMetafieldMap(product, 'Chain Variants', 'necklace metafield options');
+  const sizeMap = buildNecklaceSizeMetafieldMap(product, 'Taille de chaine', 'necklace metafield size');
+  if (chainMap.size === 0 || sizeMap.size === 0) {
+    return null;
+  }
+
+  let applied = false;
+  let changed = false;
+
+  const updatedVariants = product.variants.map((variant) => {
+    const signature = deriveNecklaceSignature(variant);
+    const chain = signature.chain;
+    const size = signature.size;
+    if (!chain || size === null || size === undefined) {
+      return variant;
+    }
+
+    const chainDisplay = chainMap.get(chain);
+    const sizeDisplay = sizeMap.get(size);
+    if (!chainDisplay || !sizeDisplay) {
+      return variant;
+    }
+
+    applied = true;
+    const nextOptions = [chainDisplay, sizeDisplay];
+    if (!arraysEqual(variant.options, nextOptions)) {
+      changed = true;
+      return { ...variant, options: nextOptions };
+    }
+
+    return variant;
+  });
+
+  if (!applied) {
+    return null;
+  }
+
+  return {
+    applied: true,
+    changed,
+    variants: changed ? updatedVariants : undefined,
+  };
+};
+
+const alignSetVariantOptions = (product) => {
+  if (!Array.isArray(product?.variants) || product.variants.length === 0) {
+    return null;
+  }
+
+  const chainMap = buildChainMetafieldMap(product, 'Chain Variants', 'set metafield options');
+  const sizeMap = buildNecklaceSizeMetafieldMap(product, 'Taille de chaine', 'set metafield size');
+  if (chainMap.size === 0 || sizeMap.size === 0) {
+    return null;
+  }
+
+  let applied = false;
+  let changed = false;
+
+  const updatedVariants = product.variants.map((variant) => {
+    const signature = deriveSetSignature(variant);
+    const chain = signature.chain;
+    const size = signature.size;
+    if (!chain || size === null || size === undefined) {
+      return variant;
+    }
+
+    const chainDisplay = chainMap.get(chain);
+    const sizeDisplay = sizeMap.get(size);
+    if (!chainDisplay || !sizeDisplay) {
+      return variant;
+    }
+
+    applied = true;
+    const nextOptions = [chainDisplay, sizeDisplay];
+    if (!arraysEqual(variant.options, nextOptions)) {
+      changed = true;
+      return { ...variant, options: nextOptions };
+    }
+
+    return variant;
+  });
+
+  if (!applied) {
+    return null;
+  }
+
+  return {
+    applied: true,
+    changed,
+    variants: changed ? updatedVariants : undefined,
+  };
+};
+
+const alignRingVariantOptions = (product) => {
+  if (!Array.isArray(product?.variants) || product.variants.length === 0) {
+    return null;
+  }
+
+  const bandMap = buildRingBandMetafieldMap(product, "Type D'anneau");
+  const sizeMap = buildRingSizeMetafieldMap(product, 'Taille de bague');
+  if (bandMap.size === 0 || sizeMap.size === 0) {
+    return null;
+  }
+
+  let applied = false;
+  let changed = false;
+
+  const updatedVariants = product.variants.map((variant) => {
+    const identity = deriveRingIdentity(variant);
+    const band = identity.band;
+    const size = identity.size;
+    if (!band || !size) {
+      return variant;
+    }
+
+    const bandDisplay = bandMap.get(band);
+    const sizeDisplay = sizeMap.get(size);
+    if (!bandDisplay || !sizeDisplay) {
+      return variant;
+    }
+
+    applied = true;
+    const nextOptions = [bandDisplay, sizeDisplay];
+    if (!arraysEqual(variant.options, nextOptions)) {
+      changed = true;
+      return { ...variant, options: nextOptions };
+    }
+
+    return variant;
+  });
+
+  if (!applied) {
+    return null;
+  }
+
+  return {
+    applied: true,
+    changed,
+    variants: changed ? updatedVariants : undefined,
+  };
+};
+
 export const usePricingStore = create(
   devtools((set, get) => ({
     username: null,
@@ -680,6 +1198,66 @@ export const usePricingStore = create(
         return { loadingScopes: next };
       });
     },
+
+    alignBraceletVariantsFromMetafields: () =>
+      alignVariantsFromMetafields(
+        {
+          scope: 'bracelets',
+          collection: 'bracelet',
+          label: 'bracelet',
+          alignProduct: alignBraceletVariantOptions,
+        },
+        set,
+        get,
+      ),
+
+    alignHandChainVariantsFromMetafields: () =>
+      alignVariantsFromMetafields(
+        {
+          scope: 'handchains',
+          collection: 'handchain',
+          label: 'hand chain',
+          alignProduct: alignHandChainVariantOptions,
+        },
+        set,
+        get,
+      ),
+
+    alignNecklaceVariantsFromMetafields: () =>
+      alignVariantsFromMetafields(
+        {
+          scope: 'necklaces',
+          collection: 'collier',
+          label: 'necklace',
+          alignProduct: alignNecklaceVariantOptions,
+        },
+        set,
+        get,
+      ),
+
+    alignRingVariantsFromMetafields: () =>
+      alignVariantsFromMetafields(
+        {
+          scope: 'rings',
+          collection: 'bague',
+          label: 'ring',
+          alignProduct: alignRingVariantOptions,
+        },
+        set,
+        get,
+      ),
+
+    alignSetVariantsFromMetafields: () =>
+      alignVariantsFromMetafields(
+        {
+          scope: 'sets',
+          collection: 'ensemble',
+          label: 'set',
+          alignProduct: alignSetVariantOptions,
+        },
+        set,
+        get,
+      ),
 
     syncProductsFromShopify: async () => {
       if (get().productsSyncing || get().productsInitialized) {

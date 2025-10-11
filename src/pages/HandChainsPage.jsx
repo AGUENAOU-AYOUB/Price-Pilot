@@ -13,6 +13,9 @@ export function HandChainsPage() {
   const updateSupplement = usePricingStore((state) => state.updateHandChainSupplement);
   const previewHandChains = usePricingStore((state) => state.previewHandChains);
   const applyHandChains = usePricingStore((state) => state.applyHandChains);
+  const alignHandChainVariantsFromMetafields = usePricingStore(
+    (state) => state.alignHandChainVariantsFromMetafields,
+  );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
@@ -75,6 +78,16 @@ export function HandChainsPage() {
         <div className="mt-6 flex flex-wrap gap-3">
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isBusy}
+            isLoading={isBusy && activeAction === 'metafields'}
+            loadingText={t('action.aligningVariants')}
+            onClick={() => runAction('metafields', alignHandChainVariantsFromMetafields)}
+          >
+            {t('action.alignVariants')}
           </Button>
           <Button
             type="button"
