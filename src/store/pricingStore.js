@@ -499,10 +499,11 @@ const buildMetafieldKeyVariants = (key) => {
 
   const lower = base.toLowerCase();
   const slug = lower.replace(/[^a-z0-9]+/g, '_');
+  const hyphen = lower.replace(/[^a-z0-9]+/g, '-');
   const condensed = lower.replace(/[^a-z0-9]+/g, '');
   const camel = toCamelCase(base);
 
-  return Array.from(new Set([base, lower, slug, condensed, camel]));
+  return Array.from(new Set([base, lower, slug, hyphen, condensed, camel]));
 };
 
 const readMetafieldValue = (product, key) => {
