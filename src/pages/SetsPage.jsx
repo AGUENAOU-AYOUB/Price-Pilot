@@ -61,43 +61,43 @@ export function SetsPage() {
   return (
     <div className="space-y-8">
       <Card title={t('sets.title')} subtitle={t('sets.subtitle')}>
-        <p className="text-base text-neutral-500">{t('sets.helper')}</p>
-        <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-200">
-          <table className="min-w-full divide-y divide-neutral-200">
-            <thead className="bg-neutral-50">
+        <p className="text-base text-[#5a6c7d]">{t('sets.helper')}</p>
+        <div className="mt-6 overflow-hidden rounded-2xl border border-[#d7e0e8] bg-white/95 shadow-[0_26px_70px_-34px_rgba(26,58,74,0.3)]">
+          <table className="min-w-full divide-y divide-[#d7e0e8] text-[#1e2835]">
+            <thead className="bg-[#e8f2f7]">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-[0.24em] text-[#5a6c7d]">
                   Chain type
                 </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-[0.24em] text-[#5a6c7d]">
                   Bracelet supplement
                 </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-[0.24em] text-[#5a6c7d]">
                   Necklace supplement
                 </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-[0.24em] text-[#5a6c7d]">
                   Combined
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-200 bg-white text-base text-neutral-700">
+            <tbody className="divide-y divide-[#d7e0e8] bg-transparent text-base">
               {Object.entries(supplements.necklaces).map(([title, data], index) => {
                 const bracelet = supplements.bracelets[title] ?? 0;
                 const combined = bracelet + data.supplement;
-                const rowClass = index % 2 === 0 ? 'bg-white' : 'bg-neutral-50';
+                const rowClass = index % 2 === 0 ? 'bg-[#f8fafb]' : 'bg-white';
                 return (
                   <tr key={title} className={rowClass}>
-                    <td className="px-6 py-4 font-semibold text-neutral-900">{title}</td>
-                    <td className="px-6 py-4 text-neutral-600">{bracelet.toFixed(2)} dh</td>
-                    <td className="px-6 py-4 text-neutral-600">{data.supplement.toFixed(2)} dh</td>
-                    <td className="px-6 py-4 font-semibold text-primary-600">{combined.toFixed(2)} dh</td>
+                    <td className="px-6 py-4 font-semibold text-[#1e2835]">{title}</td>
+                    <td className="px-6 py-4 text-[#5a6c7d]">{bracelet.toFixed(2)} dh</td>
+                    <td className="px-6 py-4 text-[#5a6c7d]">{data.supplement.toFixed(2)} dh</td>
+                    <td className="px-6 py-4 font-semibold text-[#1a3a4a]">{combined.toFixed(2)} dh</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap gap-3 text-[#1e2835]">
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
           </Button>
