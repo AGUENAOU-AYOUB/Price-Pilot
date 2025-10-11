@@ -502,8 +502,25 @@ const buildMetafieldKeyVariants = (key) => {
   const hyphen = lower.replace(/[^a-z0-9]+/g, '-');
   const condensed = lower.replace(/[^a-z0-9]+/g, '');
   const camel = toCamelCase(base);
+  const pascal = camel ? camel.charAt(0).toUpperCase() + camel.slice(1) : '';
+  const preserveCaseSlug = base.replace(/[^a-zA-Z0-9]+/g, '_');
+  const preserveCaseHyphen = base.replace(/[^a-zA-Z0-9]+/g, '-');
+  const preserveCaseCondensed = base.replace(/[^a-zA-Z0-9]+/g, '');
 
-  return Array.from(new Set([base, lower, slug, hyphen, condensed, camel]));
+  return Array.from(
+    new Set([
+      base,
+      lower,
+      slug,
+      hyphen,
+      condensed,
+      camel,
+      pascal,
+      preserveCaseSlug,
+      preserveCaseHyphen,
+      preserveCaseCondensed,
+    ]),
+  ).filter(Boolean);
 };
 
 const readMetafieldValue = (product, key) => {
