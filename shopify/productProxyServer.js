@@ -178,15 +178,18 @@ const buildProductsUrl = ({ status = 'active', pageInfo = null }) => {
   const url = new URL(PRODUCTS_ENDPOINT);
   url.searchParams.set('limit', '250');
   url.searchParams.set('fields', 'id,title,handle,status,tags,product_type,variants');
-  if (status) {
-    url.searchParams.set('status', status);
-  }
+  
+  // IMPORTANT: When page_info is present, do NOT include status parameter
+  // Shopify's cursor-based pagination doesn't allow filtering params with page_info
   if (pageInfo) {
     url.searchParams.set('page_info', pageInfo);
+  } else if (status) {
+    // Only set status on the initial request (when there's no page_info)
+    url.searchParams.set('status', status);
   }
+  
   return url.toString();
 };
-
 const transformShopifyProduct = (product) => {
   const { basePrice, baseCompareAtPrice, variants } = normalizeVariants(product.variants);
   const tags = parseTags(product.tags);
