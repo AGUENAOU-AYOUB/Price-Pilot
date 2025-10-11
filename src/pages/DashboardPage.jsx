@@ -124,6 +124,12 @@ export function DashboardPage() {
       title: t('dashboard.section.setsTitle'),
       description: t('dashboard.section.setsBody'),
     },
+    {
+      to: '/spec-sets',
+      tone: 'warning',
+      title: t('dashboard.section.specSetsTitle'),
+      description: t('dashboard.section.specSetsBody'),
+    },
   ];
 
   return (
