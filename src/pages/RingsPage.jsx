@@ -68,9 +68,9 @@ export function RingsPage() {
           {Object.entries(supplements).map(([band, values]) => (
             <div
               key={band}
-              className="rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm"
+              className="rounded-2xl border border-white/10 bg-white/5 p-6 text-gray-200 shadow-2xl backdrop-blur-xl"
             >
-              <h3 className="text-lg font-semibold text-neutral-900">{band}</h3>
+              <h3 className="text-lg font-semibold text-white">{band}</h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
                 {ringSizes.map((size) => (
                   <Input

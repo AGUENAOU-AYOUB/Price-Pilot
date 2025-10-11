@@ -61,36 +61,36 @@ export function SetsPage() {
   return (
     <div className="space-y-8">
       <Card title={t('sets.title')} subtitle={t('sets.subtitle')}>
-        <p className="text-base text-neutral-500">{t('sets.helper')}</p>
-        <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-200">
-          <table className="min-w-full divide-y divide-neutral-200">
-            <thead className="bg-neutral-50">
+        <p className="text-base text-gray-300">{t('sets.helper')}</p>
+        <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-black/60 shadow-2xl backdrop-blur-xl">
+          <table className="min-w-full divide-y divide-white/10 text-gray-200">
+            <thead className="bg-white/5">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-[0.2em] text-gray-300">
                   Chain type
                 </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-[0.2em] text-gray-300">
                   Bracelet supplement
                 </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-[0.2em] text-gray-300">
                   Necklace supplement
                 </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                <th className="px-6 py-4 text-left text-sm font-semibold uppercase tracking-[0.2em] text-gray-300">
                   Combined
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-200 bg-white text-base text-neutral-700">
+            <tbody className="divide-y divide-white/10 bg-transparent text-base">
               {Object.entries(supplements.necklaces).map(([title, data], index) => {
                 const bracelet = supplements.bracelets[title] ?? 0;
                 const combined = bracelet + data.supplement;
-                const rowClass = index % 2 === 0 ? 'bg-white' : 'bg-neutral-50';
+                const rowClass = index % 2 === 0 ? 'bg-white/5' : 'bg-white/[0.03]';
                 return (
                   <tr key={title} className={rowClass}>
-                    <td className="px-6 py-4 font-semibold text-neutral-900">{title}</td>
-                    <td className="px-6 py-4 text-neutral-600">{bracelet.toFixed(2)} dh</td>
-                    <td className="px-6 py-4 text-neutral-600">{data.supplement.toFixed(2)} dh</td>
-                    <td className="px-6 py-4 font-semibold text-primary-600">{combined.toFixed(2)} dh</td>
+                    <td className="px-6 py-4 font-semibold text-white">{title}</td>
+                    <td className="px-6 py-4 text-gray-300">{bracelet.toFixed(2)} dh</td>
+                    <td className="px-6 py-4 text-gray-300">{data.supplement.toFixed(2)} dh</td>
+                    <td className="px-6 py-4 font-semibold text-rose-200">{combined.toFixed(2)} dh</td>
                   </tr>
                 );
               })}

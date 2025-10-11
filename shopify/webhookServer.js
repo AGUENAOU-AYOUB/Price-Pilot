@@ -6,6 +6,7 @@ import {
   braceletChainTypes,
   necklaceChainTypes,
 } from '../src/data/supplements.js';
+import { recordVariantSelection } from './themeVariantEventStore.js';
 
 const {
   VITE_SHOPIFY_STORE_DOMAIN,
@@ -42,6 +43,46 @@ const parseTags = (tags = '') =>
       .map((tag) => normalize(tag))
       .filter(Boolean),
   );
+
+const toNonEmptyString = (value) => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const asString = String(value).trim();
+  return asString.length > 0 ? asString : null;
+};
+
+const normalizeSelectedOptions = (options) => {
+  if (!Array.isArray(options)) {
+    return [];
+  }
+
+  return options
+    .map((option) => {
+      if (!option || typeof option !== 'object') {
+        return null;
+      }
+
+      const name = toNonEmptyString(option.name ?? option.label);
+      const value = toNonEmptyString(option.value ?? option.selection ?? option.option);
+
+      if (!name || !value) {
+        return null;
+      }
+
+      return {
+        name,
+        value,
+      };
+    })
+    .filter(Boolean);
+};
 
 const parseNumber = (value, fallback = 0) => {
   const parsed = Number.parseFloat(value);
@@ -108,6 +149,79 @@ const computeSetSupplement = (variant) => {
   const sizeDelta = Math.max(0, size - DEFAULT_CHAIN_SIZE);
   return braceletSupplement + necklaceData.supplement + sizeDelta * necklaceData.perCm;
 };
+
+const findOptionValue = (options, matcher) => {
+  for (const option of options) {
+    if (matcher(option)) {
+      return option.value;
+    }
+  }
+  return null;
+};
+
+app.post('/webhooks/theme-variant-selection', (req, res) => {
+  if (!req.body || typeof req.body !== 'object') {
+    res.status(400).json({ error: 'Invalid payload. Expected JSON body.' });
+    return;
+  }
+
+  const payload = req.body;
+  const productId = toNonEmptyString(payload.productId ?? payload.id);
+  const productHandle = toNonEmptyString(payload.productHandle ?? payload.handle);
+  const variantId = toNonEmptyString(payload.variantId);
+  const variantTitle = toNonEmptyString(payload.variantTitle ?? payload.title);
+  const selectedOptions = normalizeSelectedOptions(
+    payload.selectedOptions ?? payload.options ?? payload.variantOptions,
+  );
+
+  if (!productId && !productHandle) {
+    res.status(400).json({ error: 'Missing product identifier. Provide productId or productHandle.' });
+    return;
+  }
+
+  if (!variantId && !variantTitle) {
+    res.status(400).json({ error: 'Missing variant identifier. Provide variantId or variantTitle.' });
+    return;
+  }
+
+  const choisirValue = findOptionValue(selectedOptions, (option) => normalize(option.name) === 'choisir');
+  const chainSizeValue = findOptionValue(selectedOptions, (option) => {
+    const normalizedName = normalize(option.name);
+    return normalizedName.includes('taille') || normalizedName.includes('chaine');
+  });
+
+  const event = {
+    productId,
+    productHandle,
+    variantId,
+    variantTitle,
+    choisirValue,
+    chainSize: chainSizeValue,
+    selectedOptions,
+    customerId: toNonEmptyString(payload.customerId ?? payload.customer?.id),
+    cartId: toNonEmptyString(payload.cartId ?? payload.checkoutId ?? payload.cart?.id),
+    source: {
+      themeId: toNonEmptyString(payload.themeId ?? payload.theme?.id),
+      themeName: toNonEmptyString(payload.themeName ?? payload.theme?.name),
+      pageUrl: toNonEmptyString(payload.pageUrl ?? payload.context?.pageUrl ?? payload.location),
+      sessionId: toNonEmptyString(payload.sessionId ?? payload.context?.sessionId),
+      userAgent: toNonEmptyString(payload.userAgent ?? payload.context?.userAgent ?? req.get('User-Agent')),
+      ip: req.ip,
+    },
+    receivedAt: new Date().toISOString(),
+  };
+
+  recordVariantSelection(event);
+
+  console.log('Theme variant selection received', {
+    product: event.productId ?? event.productHandle,
+    variant: event.variantId ?? event.variantTitle,
+    choisir: event.choisirValue,
+    chainSize: event.chainSize,
+  });
+
+  res.status(202).json({ status: 'accepted' });
+});
 
 const buildVariantUpdates = (product, family) => {
   const baseVariant = findBaseVariant(product);

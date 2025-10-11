@@ -1,14 +1,13 @@
 import { clsx } from 'clsx';
 
 const baseStyles =
-  'inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold tracking-tight transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-60';
 
 const variants = {
-  primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-500 disabled:shadow-none',
-  secondary:
-    'border border-neutral-300 bg-white text-neutral-800 shadow-sm hover:border-primary-200 hover:bg-neutral-100',
-  ghost: 'bg-transparent text-neutral-600 hover:bg-neutral-100',
-  danger: 'bg-error-500 text-white shadow-sm hover:bg-red-500/90',
+  primary: 'bg-white text-black shadow-2xl hover:bg-gray-100',
+  secondary: 'border border-white/20 bg-white/5 text-gray-100 shadow-2xl hover:border-white/40 hover:bg-white/10',
+  ghost: 'bg-transparent text-gray-300 hover:bg-white/10',
+  danger: 'bg-red-600 text-white shadow-2xl hover:bg-red-500',
 };
 
 const Spinner = () => (
