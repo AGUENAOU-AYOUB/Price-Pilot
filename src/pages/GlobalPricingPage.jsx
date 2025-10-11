@@ -68,7 +68,7 @@ export function GlobalPricingPage() {
             onChange={(event) => setPercent(Number(event.target.value))}
             adornment="%"
           />
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 text-[#1e2835]">
             <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
               {t('action.preview')}
             </Button>

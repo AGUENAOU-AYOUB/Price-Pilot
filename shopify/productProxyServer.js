@@ -18,9 +18,189 @@ if (!VITE_SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN) {
 }
 
 const PRODUCTS_ENDPOINT = `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products.json`;
+const METAFIELDS_ENDPOINT = (productId) =>
+  `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}/metafields.json`;
 const REQUEST_HEADERS = {
   'Content-Type': 'application/json',
   'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+};
+
+const MIN_SHOPIFY_REST_INTERVAL_MS = 600;
+let lastRestRequestAt = 0;
+let shopifyRequestChain = Promise.resolve();
+
+const sleep = (durationMs) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
+
+const enqueueShopifyCall = (task) => {
+  const runTask = shopifyRequestChain.then(task, task);
+
+  shopifyRequestChain = runTask.catch(() => {});
+
+  return runTask;
+};
+
+const enforceRestRateLimit = async () => {
+  const elapsed = Date.now() - lastRestRequestAt;
+  if (elapsed < MIN_SHOPIFY_REST_INTERVAL_MS) {
+    await sleep(MIN_SHOPIFY_REST_INTERVAL_MS - elapsed);
+  }
+};
+
+const shopifyFetch = async (url, options = {}, { retries = 5 } = {}) => {
+  return enqueueShopifyCall(async () => {
+    let attempt = 0;
+
+    while (true) {
+      await enforceRestRateLimit();
+
+      const response = await fetch(url, options);
+      lastRestRequestAt = Date.now();
+
+      if (response.status !== 429 || attempt >= retries) {
+        return response;
+      }
+
+      const retryAfterHeader = response.headers.get('retry-after');
+      const retryAfterSeconds = retryAfterHeader ? Number.parseFloat(retryAfterHeader) : NaN;
+      const exponentialDelay = Math.min(
+        MIN_SHOPIFY_REST_INTERVAL_MS * 2 ** (attempt + 1),
+        10000,
+      );
+      const retryDelayMs = Number.isFinite(retryAfterSeconds)
+        ? Math.max(retryAfterSeconds * 1000, MIN_SHOPIFY_REST_INTERVAL_MS)
+        : exponentialDelay;
+
+      await sleep(retryDelayMs);
+      attempt += 1;
+    }
+  });
+};
+
+const parseMetafieldValue = (metafield) => {
+  if (!metafield || typeof metafield !== 'object') {
+    return undefined;
+  }
+
+  const raw = metafield.value;
+  const type = metafield.type ?? '';
+
+  if (raw === null || raw === undefined) {
+    return undefined;
+  }
+
+  if (typeof raw !== 'string') {
+    return raw;
+  }
+
+  const trimmed = raw.trim();
+
+  if (!trimmed) {
+    return '';
+  }
+
+  const parseJson = () => {
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      console.warn('Failed to parse metafield JSON value', {
+        key: metafield.key,
+        namespace: metafield.namespace,
+        type,
+      });
+      return raw;
+    }
+  };
+
+  if (type.startsWith('list.') || type === 'json' || type === 'json_string') {
+    return parseJson();
+  }
+
+  if (type.startsWith('number')) {
+    const numeric = Number.parseFloat(trimmed);
+    return Number.isFinite(numeric) ? numeric : trimmed;
+  }
+
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    return parseJson();
+  }
+
+  return raw;
+};
+
+const buildMetafieldMap = (entries) => {
+  const metafields = {};
+
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return metafields;
+  }
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+
+    const value = parseMetafieldValue(entry);
+    const payload = {
+      value,
+      raw: entry.value ?? null,
+      type: entry.type ?? null,
+      namespace: entry.namespace ?? null,
+      key: entry.key ?? null,
+      id: entry.id ? String(entry.id) : null,
+    };
+
+    const keyVariants = new Set();
+    if (entry.key) {
+      keyVariants.add(String(entry.key));
+    }
+
+    if (entry.namespace && entry.key) {
+      keyVariants.add(`${entry.namespace}.${entry.key}`);
+      keyVariants.add(`${entry.namespace}::${entry.key}`);
+    }
+
+    for (const variant of keyVariants) {
+      if (variant && !Object.prototype.hasOwnProperty.call(metafields, variant)) {
+        metafields[variant] = payload;
+      }
+    }
+  }
+
+  return metafields;
+};
+
+const fetchProductMetafields = async (productId) => {
+  if (!productId) {
+    return {};
+  }
+
+  try {
+    const response = await shopifyFetch(
+      METAFIELDS_ENDPOINT(productId),
+      {
+        headers: REQUEST_HEADERS,
+      },
+      { retries: 3 },
+    );
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      console.warn(
+        `Failed to load metafields for product ${productId}: ${response.status} ${response.statusText}`,
+        body,
+      );
+      return {};
+    }
+
+    const payload = await response.json();
+    return buildMetafieldMap(payload?.metafields);
+  } catch (error) {
+    console.warn(`Unexpected error fetching metafields for product ${productId}`, error);
+    return {};
+  }
 };
 
 const parseAllowedOrigins = (value) => {
@@ -224,42 +404,61 @@ const buildVariantPayload = (variant) => {
     return null;
   }
 
-  const price = formatMoney(variant.price);
-  const compareAtPrice = formatMoney(variant.compareAtPrice);
-
-  if (price === null && compareAtPrice === null) {
+  const payload = { id: String(variant.id ?? '') };
+  if (!payload.id) {
     return null;
   }
 
-  const payload = { id: String(variant.id ?? '') };
+  let hasMutations = false;
 
+  const price = formatMoney(variant.price);
   if (price !== null) {
     payload.price = price;
+    hasMutations = true;
   }
 
+  const compareAtPrice = formatMoney(variant.compareAtPrice);
   if (compareAtPrice !== null) {
     payload.compare_at_price = compareAtPrice;
+    hasMutations = true;
   }
 
-  if (!payload.id) {
+  if (Array.isArray(variant.options)) {
+    const normalizedOptions = variant.options
+      .slice(0, 3)
+      .map((option) => String(option ?? '').trim());
+
+    const [option1 = '', option2 = '', option3 = ''] = normalizedOptions;
+
+    payload.option1 = option1;
+    payload.option2 = option2;
+    payload.option3 = option3;
+    hasMutations = true;
+  }
+
+  if (!hasMutations) {
     return null;
   }
 
   return payload;
 };
 
-const updateVariantPrice = async (variant) => {
+const updateVariant = async (variant) => {
   const payload = buildVariantPayload(variant);
 
   if (!payload) {
     throw new Error('Invalid variant payload provided for update.');
   }
 
-  const response = await fetch(VARIANT_ENDPOINT(payload.id), {
-    method: 'PUT',
-    headers: REQUEST_HEADERS,
-    body: JSON.stringify({ variant: payload }),
-  });
+  const response = await shopifyFetch(
+    VARIANT_ENDPOINT(payload.id),
+    {
+      method: 'PUT',
+      headers: REQUEST_HEADERS,
+      body: JSON.stringify({ variant: payload }),
+    },
+    { retries: 3 },
+  );
 
   if (!response.ok) {
     const body = await response.text();
@@ -274,9 +473,13 @@ const fetchProducts = async (status = 'active') => {
   let pageInfo = null;
 
   do {
-    const response = await fetch(buildProductsUrl({ status, pageInfo }), {
-      headers: REQUEST_HEADERS,
-    });
+    const response = await shopifyFetch(
+      buildProductsUrl({ status, pageInfo }),
+      {
+        headers: REQUEST_HEADERS,
+      },
+      { retries: 3 },
+    );
 
     if (!response.ok) {
       const body = await response.text();
@@ -292,7 +495,11 @@ const fetchProducts = async (status = 'active') => {
       if (status === 'active' && product.status !== 'active') {
         continue;
       }
-      products.push(transformShopifyProduct(product));
+
+      const transformed = transformShopifyProduct(product);
+      transformed.metafields = await fetchProductMetafields(product.id);
+
+      products.push(transformed);
     }
 
     pageInfo = parseLinkHeader(response.headers.get('link'));
@@ -341,7 +548,7 @@ app.post(`${basePath}/variants/bulk-update`, async (req, res) => {
 
     for (const variant of variants) {
       try {
-        await updateVariantPrice(variant);
+        await updateVariant(variant);
         summary.updatedCount += 1;
       } catch (error) {
         summary.failedCount += 1;
