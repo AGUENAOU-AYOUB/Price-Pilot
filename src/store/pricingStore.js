@@ -28,6 +28,38 @@ import {
 } from '../utils/variantParsers';
 import { toast } from '../utils/toast';
 
+const USERNAME_STORAGE_KEY = 'price-pilot.username';
+
+const loadStoredUsername = () => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const stored = window.sessionStorage.getItem(USERNAME_STORAGE_KEY);
+    return stored ? stored : null;
+  } catch (error) {
+    console.warn('Failed to load stored username from sessionStorage:', error);
+    return null;
+  }
+};
+
+const persistUsername = (username) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (username) {
+      window.sessionStorage.setItem(USERNAME_STORAGE_KEY, username);
+    } else {
+      window.sessionStorage.removeItem(USERNAME_STORAGE_KEY);
+    }
+  } catch (error) {
+    console.warn('Failed to persist username to sessionStorage:', error);
+  }
+};
+
 const defaultSupplements = {
   bracelets: { ...braceletChainTypes },
   necklaces: { ...necklaceChainTypes },
@@ -1296,7 +1328,7 @@ const alignRingVariantOptions = (product) => {
 
 export const usePricingStore = create(
   devtools((set, get) => ({
-    username: null,
+    username: loadStoredUsername(),
     language: 'en',
     products: mockProducts,
     productsInitialized: false,
@@ -1306,7 +1338,11 @@ export const usePricingStore = create(
     logs: [],
     loadingScopes: new Set(),
 
-    setUsername: (username) => set({ username }),
+    setUsername: (username) =>
+      set(() => {
+        persistUsername(username);
+        return { username };
+      }),
     setLanguage: (language) => set({ language }),
 
     log: (message, scope, level = 'info') => {
