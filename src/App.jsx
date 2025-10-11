@@ -10,6 +10,7 @@ import { NecklacesPage } from './pages/NecklacesPage';
 import { RingsPage } from './pages/RingsPage';
 import { HandChainsPage } from './pages/HandChainsPage';
 import { SetsPage } from './pages/SetsPage';
+import { SpecSetsPage } from './pages/SpecSetsPage';
 import { LoginPage } from './pages/LoginPage';
 
 function AppRoutes() {
@@ -22,6 +23,7 @@ function AppRoutes() {
       <Route path="/rings" element={<RingsPage />} />
       <Route path="/hand-chains" element={<HandChainsPage />} />
       <Route path="/sets" element={<SetsPage />} />
+      <Route path="/spec-sets" element={<SpecSetsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
