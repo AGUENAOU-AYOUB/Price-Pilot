@@ -15,6 +15,7 @@ const navItems = [
   { to: '/rings', labelKey: 'nav.rings' },
   { to: '/hand-chains', labelKey: 'nav.handChains' },
   { to: '/sets', labelKey: 'nav.sets' },
+  { to: '/spec-sets', labelKey: 'nav.specSets' },
 ];
 
 export function PageLayout({ children }) {
