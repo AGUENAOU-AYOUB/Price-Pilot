@@ -212,6 +212,30 @@ Whenever you update the **Forsat S** base price directly inside Shopify, you can
 
 > **Tip:** Adjusting supplements inside the React dashboard updates the preview state only. To keep webhook automation in sync, edit `src/data/supplements.js` (and restart the webhook server) so both paths share the same supplement values.
 
+### Theme variant selection webhook
+
+Themes can emit lightweight analytics whenever a shopper toggles a variant by sending a `POST` request to the webhook server:
+
+```http
+POST /webhooks/theme-variant-selection
+Content-Type: application/json
+
+{
+  "productId": "123456789",
+  "productHandle": "example-product",
+  "variantId": "987654321",
+  "variantTitle": "Forsat M / 45cm",
+  "selectedOptions": [
+    { "name": "Choisir", "value": "Gourmette" },
+    { "name": "Taille de chaine", "value": "45cm" }
+  ],
+  "sessionId": "abc-123",
+  "pageUrl": "https://store.example.com/products/example-product"
+}
+```
+
+The server normalizes option names, records the event in an in-memory store (keeping the 500 most recent entries), and returns `202 Accepted`. Optional keys such as `customerId`, `cartId`, `themeId`, and `themeName` are preserved when present. Use this hook to bridge on-storefront selections with back-office dashboards or monitoring.
+
 ## Tech stack
 
 - [React 18](https://react.dev/)
