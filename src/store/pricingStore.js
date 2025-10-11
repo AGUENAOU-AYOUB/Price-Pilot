@@ -19,6 +19,7 @@ import {
   buildNecklaceVariants,
   buildRingVariants,
   buildSetVariants,
+  buildSpecSetVariants,
 } from '../utils/pricing';
 import {
   parseBandType,
@@ -49,6 +50,34 @@ const SCOPE_COLLECTIONS = {
   rings: ['bague'],
   handchains: ['handchain'],
   sets: ['ensemble'],
+  specSets: ['ensemble'],
+};
+
+const SCOPE_FILTERS = {
+  sets: (product) => !isSpecTaggedEnsemble(product),
+  specSets: (product) => isSpecTaggedEnsemble(product),
+};
+
+const shouldIncludeProductInScope = (scope, product) => {
+  const predicate = SCOPE_FILTERS[scope];
+  if (!predicate) {
+    return true;
+  }
+
+  try {
+    return predicate(product);
+  } catch (error) {
+    console.warn('Failed to evaluate scope predicate', { scope, productId: product?.id, error });
+    return false;
+  }
+};
+
+const filterProductsForScope = (scope, products = []) => {
+  if (!Array.isArray(products) || products.length === 0) {
+    return [];
+  }
+
+  return products.filter((product) => shouldIncludeProductInScope(scope, product));
 };
 
 const cloneVariant = (variant) => ({ ...variant });
@@ -193,6 +222,112 @@ const CHAIN_NAME_CACHE = new Map();
 const NECKLACE_SIZE_CACHE = new Map();
 const RING_BAND_CACHE = new Map();
 const RING_SIZE_CACHE = new Map();
+
+const SPEC_MODE_CANONICALS = new Map([
+  ['gourmette', 'gourmette'],
+  ['bracelet', 'gourmette'],
+  ['bracelets', 'gourmette'],
+  ['collier', 'collier'],
+  ['necklace', 'collier'],
+  ['necklaces', 'collier'],
+  ['ensemble', 'ensemble'],
+  ['set', 'ensemble'],
+  ['sets', 'ensemble'],
+]);
+
+const SPEC_MODE_FALLBACK_LABELS = new Map([
+  ['gourmette', 'Gourmette'],
+  ['collier', 'Collier'],
+  ['ensemble', 'Ensemble'],
+]);
+
+const SPEC_TAG_TOKEN = sanitizeVariantKey('spec');
+
+const canonicalSpecMode = (value) => {
+  const normalized = sanitizeVariantKey(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return SPEC_MODE_CANONICALS.get(normalized) ?? null;
+};
+
+const buildSpecModeDisplayMap = (product) => {
+  const map = new Map();
+
+  if (Array.isArray(product?.variants)) {
+    for (const variant of product.variants) {
+      for (const part of collectVariantParts(variant)) {
+        const canonical = canonicalSpecMode(part);
+        if (canonical && !map.has(canonical)) {
+          map.set(canonical, String(part).trim());
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(product?.options)) {
+    for (const option of product.options) {
+      if (!option || typeof option !== 'object') {
+        continue;
+      }
+
+      if (Array.isArray(option.values)) {
+        for (const value of option.values) {
+          const canonical = canonicalSpecMode(value);
+          if (canonical && !map.has(canonical)) {
+            map.set(canonical, String(value ?? '').trim());
+          }
+        }
+      }
+    }
+  }
+
+  for (const [mode, fallback] of SPEC_MODE_FALLBACK_LABELS.entries()) {
+    if (!map.has(mode)) {
+      map.set(mode, fallback);
+    }
+  }
+
+  return map;
+};
+
+const buildSpecVariantKey = (mode, chain, size) => {
+  if (!mode || !chain) {
+    return null;
+  }
+
+  if (mode === 'gourmette') {
+    return `${mode}::${chain}`;
+  }
+
+  if ((mode === 'collier' || mode === 'ensemble') && Number.isFinite(size)) {
+    return `${mode}::${chain}::${size}`;
+  }
+
+  return null;
+};
+
+const productHasSpecTag = (product) => {
+  if (!SPEC_TAG_TOKEN) {
+    return false;
+  }
+
+  if (!product || typeof product !== 'object' || !Array.isArray(product.tags)) {
+    return false;
+  }
+
+  return product.tags.some((tag) => sanitizeVariantKey(tag) === SPEC_TAG_TOKEN);
+};
+
+const isSpecTaggedEnsemble = (product) => {
+  if (!product || typeof product !== 'object') {
+    return false;
+  }
+
+  const collection = typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
+  return collection === 'ensemble' && productHasSpecTag(product);
+};
 
 const canonicalChainName = (value, contextLabel = 'chain types') => {
   if (value === null || value === undefined) {
@@ -848,6 +983,66 @@ const deriveNecklaceSignature = (variant, contextLabel = 'necklace') => {
 
 const deriveSetSignature = (variant) => deriveNecklaceSignature(variant, 'set');
 
+const deriveSpecSetSignature = (variant) => {
+  if (!variant || typeof variant !== 'object') {
+    return { key: null, mode: null, chain: null, size: null };
+  }
+
+  let mode = canonicalSpecMode(variant.specMode);
+  let chain = variant.chainType
+    ? canonicalChainName(variant.chainType, 'spec set chain options')
+    : null;
+
+  let size = null;
+  if (Number.isFinite(variant.size)) {
+    size = variant.size;
+  } else if (variant.size !== null && variant.size !== undefined) {
+    const parsedSize = canonicalNecklaceSize(variant.size, 'spec set size');
+    size = Number.isFinite(parsedSize) ? parsedSize : null;
+  }
+
+  for (const part of collectVariantParts(variant)) {
+    if (!mode) {
+      const parsedMode = canonicalSpecMode(part);
+      if (parsedMode) {
+        mode = parsedMode;
+        continue;
+      }
+    }
+
+    if (!chain && !hasDigits(part)) {
+      const parsedChain = canonicalChainName(part, 'spec set chain options');
+      if (parsedChain) {
+        chain = parsedChain;
+        continue;
+      }
+    }
+
+    if (mode && mode !== 'gourmette' && !Number.isFinite(size)) {
+      const parsedSize = canonicalNecklaceSize(part, 'spec set size');
+      if (Number.isFinite(parsedSize)) {
+        size = parsedSize;
+        continue;
+      }
+    }
+  }
+
+  if (mode === 'gourmette') {
+    return { key: buildSpecVariantKey(mode, chain, null), mode, chain, size: null };
+  }
+
+  if (mode === 'collier' || mode === 'ensemble') {
+    return {
+      key: buildSpecVariantKey(mode, chain, size),
+      mode,
+      chain,
+      size: Number.isFinite(size) ? size : null,
+    };
+  }
+
+  return { key: null, mode, chain, size: Number.isFinite(size) ? size : null };
+};
+
 const alignVariantsFromMetafields = async ({ scope, collection, label, alignProduct }, set, get) => {
   const toggleLoading = get().toggleLoading;
   if (typeof toggleLoading === 'function') {
@@ -1064,6 +1259,10 @@ const alignSetVariantOptions = (product) => {
     return null;
   }
 
+  if (isSpecTaggedEnsemble(product)) {
+    return null;
+  }
+
   const chainMap = buildChainMetafieldMap(product, 'Chain Variants', 'set metafield options');
   const sizeMap = buildNecklaceSizeMetafieldMap(product, 'Taille de chaine', 'set metafield size');
   if (chainMap.size === 0 || sizeMap.size === 0) {
@@ -1089,6 +1288,84 @@ const alignSetVariantOptions = (product) => {
 
     applied = true;
     const nextOptions = [chainDisplay, sizeDisplay];
+    if (!arraysEqual(variant.options, nextOptions)) {
+      changed = true;
+      return { ...variant, options: nextOptions };
+    }
+
+    return variant;
+  });
+
+  if (!applied) {
+    return null;
+  }
+
+  return {
+    applied: true,
+    changed,
+    variants: changed ? updatedVariants : undefined,
+  };
+};
+
+const alignSpecSetVariantOptions = (product) => {
+  if (!isSpecTaggedEnsemble(product)) {
+    return null;
+  }
+
+  if (!Array.isArray(product?.variants) || product.variants.length === 0) {
+    return null;
+  }
+
+  const chainMap = buildChainMetafieldMap(product, 'Chain Variants', 'spec set chain options');
+  const sizeMap = buildNecklaceSizeMetafieldMap(product, 'Taille de chaine', 'spec set size options');
+  const modeMap = buildSpecModeDisplayMap(product);
+
+  if (chainMap.size === 0 || modeMap.size === 0) {
+    return null;
+  }
+
+  let applied = false;
+  let changed = false;
+
+  const updatedVariants = product.variants.map((variant) => {
+    const signature = deriveSpecSetSignature(variant);
+    const mode = signature.mode;
+    const chain = signature.chain;
+    const size = signature.size;
+
+    if (!mode || !chain) {
+      return variant;
+    }
+
+    const modeDisplay = modeMap.get(mode);
+    const chainDisplay = chainMap.get(chain);
+    if (!modeDisplay || !chainDisplay) {
+      return variant;
+    }
+
+    let nextOptions = null;
+
+    if (mode === 'gourmette') {
+      nextOptions = [modeDisplay, chainDisplay];
+    } else {
+      if (!Number.isFinite(size)) {
+        return variant;
+      }
+
+      const sizeDisplay = sizeMap.get(size);
+      if (!sizeDisplay) {
+        return variant;
+      }
+
+      nextOptions = [modeDisplay, chainDisplay, sizeDisplay];
+    }
+
+    if (!nextOptions) {
+      return variant;
+    }
+
+    applied = true;
+
     if (!arraysEqual(variant.options, nextOptions)) {
       changed = true;
       return { ...variant, options: nextOptions };
@@ -1277,6 +1554,18 @@ export const usePricingStore = create(
         get,
       ),
 
+    alignSpecSetVariantsFromMetafields: () =>
+      alignVariantsFromMetafields(
+        {
+          scope: 'specSets',
+          collection: 'ensemble',
+          label: 'spec set',
+          alignProduct: alignSpecSetVariantOptions,
+        },
+        set,
+        get,
+      ),
+
     syncProductsFromShopify: async () => {
       if (get().productsSyncing || get().productsInitialized) {
         return;
@@ -1326,12 +1615,17 @@ export const usePricingStore = create(
       try {
         const collections = SCOPE_COLLECTIONS[scope] ?? [];
         const remoteProducts = await fetchProductsByCollections(collections);
+        const scopedRemoteProducts = filterProductsForScope(scope, remoteProducts);
         const collectionSet = buildCollectionSet(scope);
         const currentProducts = get().products;
-        const mergedProducts = mergeProductsForScope(currentProducts, remoteProducts, collectionSet);
+        const mergedProducts = mergeProductsForScope(
+          currentProducts,
+          scopedRemoteProducts,
+          collectionSet,
+        );
         const backupPayload = {
           timestamp: new Date().toISOString(),
-          products: cloneProducts(remoteProducts),
+          products: cloneProducts(scopedRemoteProducts),
         };
 
         set((state) => ({
@@ -1342,7 +1636,7 @@ export const usePricingStore = create(
           },
         }));
 
-        const count = remoteProducts.length;
+        const count = scopedRemoteProducts.length;
         const plural = count === 1 ? '' : 's';
         get().log(
           `Captured Shopify backup with ${count} product${plural} for ${scope}.`,
@@ -1380,6 +1674,7 @@ export const usePricingStore = create(
       const backupById = new Map(backupProducts.map((product) => [product.id, product]));
       const collectionSet = buildCollectionSet(scope);
       const includeAllCollections = collectionSet.size === 0;
+      const scopePredicate = SCOPE_FILTERS[scope];
       const currentProducts = get().products;
       const updatesByProduct = new Map();
       const originalVariantLookup = new Map();
@@ -1391,6 +1686,11 @@ export const usePricingStore = create(
         const collectionMatches = includeAllCollections || collectionSet.has(productCollection);
 
         if (!collectionMatches) {
+          updatedProducts.push(product);
+          continue;
+        }
+
+        if (scopePredicate && !scopePredicate(product)) {
           updatedProducts.push(product);
           continue;
         }
@@ -1450,6 +1750,10 @@ export const usePricingStore = create(
       }
 
       for (const backupProduct of backupById.values()) {
+        if (!shouldIncludeProductInScope(scope, backupProduct)) {
+          continue;
+        }
+
         const clonedBackup = cloneProduct(backupProduct);
         updatedProducts.push(clonedBackup);
 
@@ -2377,7 +2681,12 @@ export const usePricingStore = create(
     previewSets: () => {
       const { products, supplements } = get();
       return products
-        .filter((product) => product.collection === 'ensemble' && product.status === 'active')
+        .filter(
+          (product) =>
+            product.collection === 'ensemble' &&
+            product.status === 'active' &&
+            !isSpecTaggedEnsemble(product),
+        )
         .map((product) => {
           const lookup = new Map();
           for (const existingVariant of product.variants) {
@@ -2431,6 +2740,82 @@ export const usePricingStore = create(
         });
     },
 
+    previewSpecSets: () => {
+      const { products, supplements } = get();
+      return products
+        .filter(
+          (product) =>
+            product.collection === 'ensemble' &&
+            product.status === 'active' &&
+            shouldIncludeProductInScope('specSets', product),
+        )
+        .map((product) => {
+          const lookup = new Map();
+          for (const existingVariant of product.variants) {
+            const signature = deriveSpecSetSignature(existingVariant);
+            if (signature.key) {
+              lookup.set(signature.key, existingVariant);
+            }
+          }
+
+          const modeDisplays = buildSpecModeDisplayMap(product);
+
+          const targetVariants = buildSpecSetVariants(
+            product,
+            supplements.bracelets,
+            supplements.necklaces,
+            {
+              braceletModeLabel:
+                modeDisplays.get('gourmette') ?? SPEC_MODE_FALLBACK_LABELS.get('gourmette'),
+              necklaceModeLabel:
+                modeDisplays.get('collier') ?? SPEC_MODE_FALLBACK_LABELS.get('collier'),
+              setModeLabel:
+                modeDisplays.get('ensemble') ?? SPEC_MODE_FALLBACK_LABELS.get('ensemble'),
+            },
+          );
+
+          return {
+            product,
+            updatedBasePrice: product.basePrice,
+            updatedCompareAtPrice: product.baseCompareAtPrice,
+            variants: targetVariants.map((variant) => {
+              const signature = deriveSpecSetSignature(variant);
+              const currentVariant = signature.key ? lookup.get(signature.key) : null;
+              const matched = Boolean(currentVariant);
+              const targetPrice = toNumberOrNull(variant.price);
+              const targetCompare = toNumberOrNull(variant.compareAtPrice);
+              const previousPrice = matched ? resolveVariantPrice(currentVariant, product) : null;
+              const previousCompare = matched
+                ? resolveVariantCompareAt(currentVariant, product)
+                : null;
+              const priceChanged = matched && hasMeaningfulDelta(previousPrice, targetPrice);
+              const compareChanged =
+                matched &&
+                targetCompare !== null &&
+                (previousCompare === null || hasMeaningfulDelta(previousCompare, targetCompare));
+
+              const changeType = !matched
+                ? null
+                : priceChanged && compareChanged
+                  ? 'price-compare'
+                  : priceChanged
+                    ? 'price'
+                    : compareChanged
+                      ? 'compare'
+                      : null;
+
+              return {
+                ...variant,
+                previousPrice,
+                previousCompareAtPrice: previousCompare,
+                status: matched ? (changeType ? 'changed' : 'unchanged') : 'missing',
+                changeType,
+              };
+            }),
+          };
+        });
+    },
+
     applySets: async () => {
       get().toggleLoading('sets', true);
       const loadingToastId = toast.loading('Applying set pricing...');
@@ -2444,7 +2829,7 @@ export const usePricingStore = create(
         const missingSummaries = [];
 
         for (const product of products) {
-          if (product.collection !== 'ensemble') {
+          if (product.collection !== 'ensemble' || isSpecTaggedEnsemble(product)) {
             updatedProducts.push(product);
             continue;
           }
@@ -2558,6 +2943,147 @@ export const usePricingStore = create(
         get().toggleLoading('sets', false);
       }
 
+    },
+
+    applySpecSets: async () => {
+      get().toggleLoading('specSets', true);
+      const loadingToastId = toast.loading('Applying spec set pricing...');
+
+      try {
+        const { products, supplements } = get();
+
+        const updatedProducts = [];
+        const updatesByProduct = new Map();
+        const originalVariantLookup = new Map();
+        const missingSummaries = [];
+
+        for (const product of products) {
+          if (
+            product.collection !== 'ensemble' ||
+            !shouldIncludeProductInScope('specSets', product)
+          ) {
+            updatedProducts.push(product);
+            continue;
+          }
+
+          const modeDisplays = buildSpecModeDisplayMap(product);
+          const targetVariants = buildSpecSetVariants(
+            product,
+            supplements.bracelets,
+            supplements.necklaces,
+            {
+              braceletModeLabel:
+                modeDisplays.get('gourmette') ?? SPEC_MODE_FALLBACK_LABELS.get('gourmette'),
+              necklaceModeLabel:
+                modeDisplays.get('collier') ?? SPEC_MODE_FALLBACK_LABELS.get('collier'),
+              setModeLabel:
+                modeDisplays.get('ensemble') ?? SPEC_MODE_FALLBACK_LABELS.get('ensemble'),
+            },
+          );
+          const targetByKey = new Map();
+
+          for (const target of targetVariants) {
+            const signature = deriveSpecSetSignature(target);
+            if (signature.key) {
+              targetByKey.set(signature.key, target);
+            }
+          }
+
+          const availableKeys = new Set();
+          const variantKeyLookup = new Map();
+
+          for (const variant of product.variants) {
+            if (variant?.id) {
+              originalVariantLookup.set(String(variant.id), variant);
+            }
+
+            const signature = deriveSpecSetSignature(variant);
+            if (signature.key && targetByKey.has(signature.key)) {
+              availableKeys.add(signature.key);
+              variantKeyLookup.set(variant, signature.key);
+            }
+          }
+
+          const nextVariants = product.variants.map((variant) => {
+            const key = variantKeyLookup.get(variant);
+            if (!key) {
+              return variant;
+            }
+
+            const target = targetByKey.get(key);
+            if (!target) {
+              return variant;
+            }
+
+            if (
+              variant.id &&
+              (variant.price !== target.price || variant.compareAtPrice !== target.compareAtPrice)
+            ) {
+              if (!updatesByProduct.has(product.id)) {
+                updatesByProduct.set(product.id, {
+                  productId: product.id,
+                  productTitle: product.title,
+                  variants: [],
+                });
+              }
+
+              updatesByProduct.get(product.id).variants.push({
+                id: variant.id,
+                price: target.price,
+                compareAtPrice: target.compareAtPrice,
+              });
+            }
+
+            return {
+              ...variant,
+              price: target.price,
+              compareAtPrice: target.compareAtPrice,
+            };
+          });
+
+          const missingVariants = targetVariants.filter((target) => {
+            const signature = deriveSpecSetSignature(target);
+            return signature.key ? !availableKeys.has(signature.key) : true;
+          });
+
+          if (missingVariants.length > 0) {
+            missingSummaries.push({
+              product,
+              titles: missingVariants.map((variant) => variant.title),
+            });
+          }
+
+          updatedProducts.push({ ...product, variants: nextVariants });
+        }
+
+        for (const { product, titles } of missingSummaries) {
+          const plural = titles.length === 1 ? '' : 's';
+          const summary = titles.join(', ');
+          get().log(
+            `Skipped ${titles.length} spec set variant${plural} for ${product.title} because Shopify is missing: ${summary}.`,
+            'specSets',
+            'warning',
+          );
+        }
+
+        await commitShopifyVariantUpdates({
+          scope: 'specSets',
+          collection: 'ensemble',
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage:
+            'Spec set variants already aligned with supplements; no Shopify update sent.',
+          successLogMessage: 'Spec set variants updated.',
+          updateLabel: 'spec set',
+          failureLogMessage: 'Failed to push spec set variant updates to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        toast.dismiss(loadingToastId);
+        get().toggleLoading('specSets', false);
+      }
     },
 
     updateBraceletSupplement: (title, value) => {

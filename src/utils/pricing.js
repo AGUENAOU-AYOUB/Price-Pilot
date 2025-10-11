@@ -116,6 +116,45 @@ export const buildSetVariants = (product, braceletSupplements, necklaceSupplemen
   return variants;
 };
 
+export const buildSpecSetVariants = (
+  product,
+  braceletSupplements,
+  necklaceSupplements,
+  {
+    braceletModeLabel = 'Gourmette',
+    necklaceModeLabel = 'Collier',
+    setModeLabel = 'Ensemble',
+  } = {},
+) => {
+  const braceletVariants = buildBraceletVariants(product, braceletSupplements).map((variant) => ({
+    ...variant,
+    id: `${product.id}-gourmette-${variant.chainType}`,
+    specMode: 'gourmette',
+    title: `${braceletModeLabel} • ${variant.title}`,
+    size: null,
+  }));
+
+  const necklaceVariants = buildNecklaceVariants(product, necklaceSupplements).map((variant) => ({
+    ...variant,
+    id: `${product.id}-collier-${variant.chainType}-${variant.size}`,
+    specMode: 'collier',
+    title: `${necklaceModeLabel} • ${variant.title}`,
+  }));
+
+  const setVariants = buildSetVariants(
+    product,
+    braceletSupplements,
+    necklaceSupplements,
+  ).map((variant) => ({
+    ...variant,
+    id: `${product.id}-ensemble-${variant.chainType}-${variant.size}`,
+    specMode: 'ensemble',
+    title: `${setModeLabel} • ${variant.title}`,
+  }));
+
+  return [...braceletVariants, ...necklaceVariants, ...setVariants];
+};
+
 export const createPricingPreview = (product, variants) => ({
   product,
   updatedBasePrice: product.basePrice,
