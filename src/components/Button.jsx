@@ -1,13 +1,16 @@
 import { clsx } from 'clsx';
 
 const baseStyles =
-  'inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold tracking-tight transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold tracking-tight transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a3a4a]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60';
 
 const variants = {
-  primary: 'bg-white text-black shadow-2xl hover:bg-gray-100',
-  secondary: 'border border-white/20 bg-white/5 text-gray-100 shadow-2xl hover:border-white/40 hover:bg-white/10',
-  ghost: 'bg-transparent text-gray-300 hover:bg-white/10',
-  danger: 'bg-red-600 text-white shadow-2xl hover:bg-red-500',
+  primary:
+    'bg-[#1a3a4a] text-white shadow-[0_20px_40px_-24px_rgba(26,58,74,0.65)] hover:bg-[#152d39] focus-visible:ring-[#1a3a4a]',
+  secondary:
+    'border border-[#1a3a4a] text-[#1a3a4a] bg-transparent hover:bg-[#e8f2f7] shadow-[0_16px_32px_-26px_rgba(26,58,74,0.4)]',
+  ghost: 'bg-transparent text-[#5a6c7d] hover:bg-[#e8f2f7]/70',
+  danger:
+    'bg-[#d64545] text-white shadow-[0_20px_40px_-24px_rgba(214,69,69,0.55)] hover:bg-[#b93838] focus-visible:ring-[#d64545]',
 };
 
 const Spinner = () => (

@@ -67,9 +67,9 @@ export function NecklacesPage() {
           {Object.entries(supplements).map(([title, values]) => (
             <div
               key={title}
-              className="rounded-2xl border border-white/10 bg-white/5 p-6 text-gray-200 shadow-2xl backdrop-blur-xl"
+              className="rounded-2xl border border-[#d7e0e8] bg-[#e8f2f7]/70 p-6 text-[#1e2835] shadow-[0_24px_60px_-32px_rgba(26,58,74,0.25)]"
             >
-              <h3 className="text-lg font-semibold text-white">{title}</h3>
+              <h3 className="text-lg font-semibold text-[#1e2835]">{title}</h3>
               <div className="mt-4 space-y-4">
                 <Input
                   label="Supplement"
@@ -91,7 +91,7 @@ export function NecklacesPage() {
             </div>
           ))}
         </div>
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap gap-3 text-[#1e2835]">
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
           </Button>

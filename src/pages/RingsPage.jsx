@@ -68,9 +68,9 @@ export function RingsPage() {
           {Object.entries(supplements).map(([band, values]) => (
             <div
               key={band}
-              className="rounded-2xl border border-white/10 bg-white/5 p-6 text-gray-200 shadow-2xl backdrop-blur-xl"
+              className="rounded-2xl border border-[#d7e0e8] bg-[#e8f2f7]/70 p-6 text-[#1e2835] shadow-[0_24px_60px_-32px_rgba(26,58,74,0.25)]"
             >
-              <h3 className="text-lg font-semibold text-white">{band}</h3>
+              <h3 className="text-lg font-semibold text-[#1e2835]">{band}</h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
                 {ringSizes.map((size) => (
                   <Input
@@ -86,7 +86,7 @@ export function RingsPage() {
             </div>
           ))}
         </div>
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap gap-3 text-[#1e2835]">
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
           </Button>

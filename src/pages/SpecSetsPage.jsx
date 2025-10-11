@@ -60,8 +60,8 @@ export function SpecSetsPage() {
   return (
     <div className="space-y-8">
       <Card title={t('specSets.title')} subtitle={t('specSets.subtitle')}>
-        <p className="text-base text-gray-300">{t('specSets.helper')}</p>
-        <div className="mt-6 flex flex-wrap gap-3">
+        <p className="text-base text-[#5a6c7d]">{t('specSets.helper')}</p>
+        <div className="mt-6 flex flex-wrap gap-3 text-[#1e2835]">
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
           </Button>
