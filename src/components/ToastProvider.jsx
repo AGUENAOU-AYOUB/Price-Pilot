@@ -131,9 +131,19 @@ export function ToastProvider() {
         const { id, variant, message, description, duration, persistent } = toastItem;
         const label = variantLabels[variant] ?? 'Notice';
         const color = progressColors[variant] ?? '#2563eb';
+        const hasFiniteDuration = Number.isFinite(duration) && !persistent;
+        const exitDelay = hasFiniteDuration ? Math.max(duration - 200, 0) : null;
+        const style = exitDelay === null ? { '--toast-exit-delay': '999999ms' } : { '--toast-exit-delay': `${exitDelay}ms` };
 
         return (
-          <div key={id} className="toast-card" data-variant={variant} role="status" aria-live="polite">
+          <div
+            key={id}
+            className="toast-card"
+            data-variant={variant}
+            role="status"
+            aria-live="polite"
+            style={style}
+          >
             <div className="toast-icon" aria-hidden="true">
               <ToastIcon variant={variant} />
             </div>

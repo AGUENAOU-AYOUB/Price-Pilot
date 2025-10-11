@@ -33,6 +33,31 @@ const normalizeVariant = (variant) => {
   };
 };
 
+const normalizeMetafields = (metafields) => {
+  if (!metafields || typeof metafields !== 'object') {
+    return {};
+  }
+
+  if (Array.isArray(metafields)) {
+    const normalized = {};
+    for (const entry of metafields) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+
+      const key = entry.key ?? entry.name ?? entry.handle ?? entry.id;
+      if (!key) {
+        continue;
+      }
+
+      normalized[String(key)] = entry.value ?? entry.values ?? entry;
+    }
+    return normalized;
+  }
+
+  return { ...metafields };
+};
+
 const normalizeProduct = (product) => {
   if (!product || typeof product !== 'object') {
     return null;
@@ -51,6 +76,7 @@ const normalizeProduct = (product) => {
     baseCompareAtPrice,
     variants: Array.isArray(product.variants) ? product.variants.map(normalizeVariant) : [],
     status: product.status ?? 'inactive',
+    metafields: normalizeMetafields(product.metafields),
   };
 };
 

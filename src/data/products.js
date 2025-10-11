@@ -8,6 +8,9 @@ export const mockProducts = [
     baseCompareAtPrice: 1700,
     variants: [],
     status: 'active',
+    metafields: {
+      'Chain Variants': ['Forsat S', 'Gourmette S', 'Chopard M'],
+    },
   },
   {
     id: 'bracelet-2',
@@ -18,6 +21,9 @@ export const mockProducts = [
     baseCompareAtPrice: 2100,
     variants: [],
     status: 'active',
+    metafields: {
+      'Chain Variants': ['Forsat M', 'Forsat L', 'Gourmette M'],
+    },
   },
   {
     id: 'necklace-1',
@@ -28,6 +34,10 @@ export const mockProducts = [
     baseCompareAtPrice: 2200,
     variants: [],
     status: 'active',
+    metafields: {
+      'Chain Variants': ['Forsat S', 'Chopard S'],
+      'Taille de chaine': ['41cm', '45cm', '50cm'],
+    },
   },
   {
     id: 'necklace-2',
@@ -38,6 +48,10 @@ export const mockProducts = [
     baseCompareAtPrice: 2600,
     variants: [],
     status: 'active',
+    metafields: {
+      'Chain Variants': ['Forsat L', 'Gourmette M'],
+      'Taille de chaine': ['55cm', '60cm', '70cm'],
+    },
   },
   {
     id: 'ring-1',
@@ -48,6 +62,10 @@ export const mockProducts = [
     baseCompareAtPrice: 1800,
     variants: [],
     status: 'active',
+    metafields: {
+      "Type D'anneau": ['Small', 'Light'],
+      'Taille de bague': ['XS', 'S', 'L'],
+    },
   },
   {
     id: 'ring-2',
@@ -58,6 +76,10 @@ export const mockProducts = [
     baseCompareAtPrice: 2800,
     variants: [],
     status: 'active',
+    metafields: {
+      "Type D'anneau": ['Light', 'Big'],
+      'Taille de bague': ['S', 'L', 'XL'],
+    },
   },
   {
     id: 'handchain-1',
@@ -68,6 +90,9 @@ export const mockProducts = [
     baseCompareAtPrice: 1300,
     variants: [],
     status: 'active',
+    metafields: {
+      'Chain Variants': ['Forsat S', 'Gourmette S'],
+    },
   },
   {
     id: 'set-1',
@@ -78,5 +103,9 @@ export const mockProducts = [
     baseCompareAtPrice: 4500,
     variants: [],
     status: 'active',
+    metafields: {
+      'Chain Variants': ['Forsat S', 'Gourmette M'],
+      'Taille de chaine': ['41cm', '45cm', '50cm'],
+    },
   },
 ];

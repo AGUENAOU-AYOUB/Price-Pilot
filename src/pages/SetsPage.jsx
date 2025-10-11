@@ -10,6 +10,9 @@ import { useTranslation } from '../i18n/useTranslation';
 export function SetsPage() {
   const previewSets = usePricingStore((state) => state.previewSets);
   const applySets = usePricingStore((state) => state.applySets);
+  const alignSetVariantsFromMetafields = usePricingStore(
+    (state) => state.alignSetVariantsFromMetafields,
+  );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
@@ -97,6 +100,16 @@ export function SetsPage() {
         <div className="mt-6 flex flex-wrap gap-3">
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isBusy}
+            isLoading={isBusy && activeAction === 'metafields'}
+            loadingText={t('action.aligningVariants')}
+            onClick={() => runAction('metafields', alignSetVariantsFromMetafields)}
+          >
+            {t('action.alignVariants')}
           </Button>
           <Button
             type="button"

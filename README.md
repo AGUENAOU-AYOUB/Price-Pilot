@@ -167,6 +167,17 @@ Your Shopify products must have these metafield values configured:
 
 The app automatically parses these formats to match against pricing data.
 
+### Necklace variant enrichment
+
+When the proxy fetches necklace products (tagged `nckl` or with a necklace
+product type), it now cross-references the **Chain Options** and **Chaine Size**
+metafields before data reaches the client. If both metafields are populated,
+the proxy attaches the resolved chain type and size directly onto each variant
+payload. Variants missing either metafield are flagged as incomplete so the UI
+shows a red status badge and omits them from automatic updates. This keeps the
+necklace preview in sync with Shopify while avoiding extra Admin API calls from
+the browser.
+
 ## Key concepts
 
 - **Luxury rounding** – All computed prices are rounded to the closest value ending in `00` or `90`.

@@ -13,6 +13,9 @@ export function BraceletsPage() {
   const updateSupplement = usePricingStore((state) => state.updateBraceletSupplement);
   const previewBracelets = usePricingStore((state) => state.previewBracelets);
   const applyBracelets = usePricingStore((state) => state.applyBracelets);
+  const alignBraceletVariantsFromMetafields = usePricingStore(
+    (state) => state.alignBraceletVariantsFromMetafields,
+  );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
@@ -75,6 +78,16 @@ export function BraceletsPage() {
         <div className="mt-6 flex flex-wrap gap-3">
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isBusy}
+            isLoading={isBusy && activeAction === 'metafields'}
+            loadingText={t('action.aligningVariants')}
+            onClick={() => runAction('metafields', alignBraceletVariantsFromMetafields)}
+          >
+            {t('action.alignVariants')}
           </Button>
           <Button
             type="button"
