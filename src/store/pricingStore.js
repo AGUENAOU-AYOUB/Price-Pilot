@@ -221,6 +221,19 @@ const canonicalChainName = (value, contextLabel = 'chain types') => {
     }
   }
 
+  if (!canonical && normalized) {
+    for (const [candidateKey, candidateValue] of CHAIN_LOOKUP.entries()) {
+      if (candidateKey.length < 3) {
+        continue;
+      }
+
+      if (normalized.includes(candidateKey)) {
+        canonical = candidateValue;
+        break;
+      }
+    }
+  }
+
   if (!canonical) {
     console.warn(
       `Chain option "${raw}" doesn't match expected ${contextLabel}:`,
@@ -252,7 +265,20 @@ const canonicalNecklaceSize = (value, contextLabel = 'necklace') => {
   }
 
   const parsed = parseNecklaceSize(raw);
-  const canonical = Number.isFinite(parsed) && necklaceSizes.includes(parsed) ? parsed : null;
+  let canonical = Number.isFinite(parsed) && necklaceSizes.includes(parsed) ? parsed : null;
+
+  if (!canonical) {
+    const numericMatches = raw.match(/\d+/g);
+    if (Array.isArray(numericMatches)) {
+      for (const candidate of numericMatches) {
+        const parsedCandidate = Number.parseInt(candidate, 10);
+        if (Number.isFinite(parsedCandidate) && necklaceSizes.includes(parsedCandidate)) {
+          canonical = parsedCandidate;
+          break;
+        }
+      }
+    }
+  }
 
   if (!canonical) {
     console.warn(
