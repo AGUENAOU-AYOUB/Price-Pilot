@@ -23,6 +23,122 @@ const REQUEST_HEADERS = {
   'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
 };
 
+const MIN_SHOPIFY_INTERVAL_MS = 750;
+const MAX_SHOPIFY_RETRIES = 5;
+const SHOPIFY_NEAR_LIMIT_THRESHOLD = 0.75;
+const SHOPIFY_LIMIT_MINIMUM_REMAINING = 2;
+const SHOPIFY_NEAR_LIMIT_COOLDOWN_MS = 1500;
+
+const delay = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+let lastShopifyRequestTime = Date.now() - MIN_SHOPIFY_INTERVAL_MS;
+let enforcedCooldownUntil = 0;
+let shopifyRequestQueue = Promise.resolve();
+
+const requestAdditionalCooldown = (durationMs) => {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return;
+  }
+
+  const candidate = Date.now() + durationMs;
+  if (candidate > enforcedCooldownUntil) {
+    enforcedCooldownUntil = candidate;
+  }
+};
+
+const scheduleShopifyRequest = (runner) => {
+  const execute = async () => {
+    const now = Date.now();
+    const intervalWait = MIN_SHOPIFY_INTERVAL_MS - (now - lastShopifyRequestTime);
+    const cooldownWait = enforcedCooldownUntil - now;
+    const wait = Math.max(0, intervalWait, cooldownWait);
+
+    if (wait > 0) {
+      await delay(wait);
+    }
+
+    lastShopifyRequestTime = Date.now();
+    try {
+      return await runner();
+    } finally {
+      requestAdditionalCooldown(MIN_SHOPIFY_INTERVAL_MS);
+    }
+  };
+
+  shopifyRequestQueue = shopifyRequestQueue.then(execute, execute);
+  return shopifyRequestQueue;
+};
+
+const parseRetryAfter = (value) => {
+  if (!value) return MIN_SHOPIFY_INTERVAL_MS;
+
+  const seconds = Number.parseFloat(value);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.ceil(seconds * 1000);
+  }
+
+  return MIN_SHOPIFY_INTERVAL_MS;
+};
+
+const parseApiCallLimit = (value) => {
+  if (!value) return null;
+
+  const [usedRaw, totalRaw] = value.split('/');
+  const used = Number.parseInt(usedRaw, 10);
+  const total = Number.parseInt(totalRaw, 10);
+
+  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) {
+    return null;
+  }
+
+  return { used, total };
+};
+
+const shopifyFetch = (url, options) =>
+  scheduleShopifyRequest(async () => {
+    let attempt = 0;
+    let backoffDelay = MIN_SHOPIFY_INTERVAL_MS;
+
+    while (true) {
+      attempt += 1;
+      const response = await fetch(url, options);
+
+      if (response.status !== 429) {
+        const callLimit = parseApiCallLimit(
+          response.headers.get('x-shopify-shop-api-call-limit'),
+        );
+
+        if (callLimit) {
+          const remaining = callLimit.total - callLimit.used;
+          const usageRatio = callLimit.used / callLimit.total;
+
+          if (
+            remaining <= SHOPIFY_LIMIT_MINIMUM_REMAINING ||
+            usageRatio >= SHOPIFY_NEAR_LIMIT_THRESHOLD
+          ) {
+            requestAdditionalCooldown(SHOPIFY_NEAR_LIMIT_COOLDOWN_MS);
+          }
+        }
+
+        return response;
+      }
+
+      if (attempt >= MAX_SHOPIFY_RETRIES) {
+        return response;
+      }
+
+      const retryAfter = parseRetryAfter(response.headers.get('retry-after'));
+      const waitTime = Math.max(retryAfter, backoffDelay);
+      requestAdditionalCooldown(waitTime);
+      await delay(waitTime);
+      backoffDelay = Math.min(backoffDelay * 2, 8000);
+      lastShopifyRequestTime = Date.now();
+    }
+  });
+
 const parseAllowedOrigins = (value) => {
   if (!value) return [];
   return value
@@ -255,7 +371,7 @@ const updateVariantPrice = async (variant) => {
     throw new Error('Invalid variant payload provided for update.');
   }
 
-  const response = await fetch(VARIANT_ENDPOINT(payload.id), {
+  const response = await shopifyFetch(VARIANT_ENDPOINT(payload.id), {
     method: 'PUT',
     headers: REQUEST_HEADERS,
     body: JSON.stringify({ variant: payload }),
@@ -274,7 +390,7 @@ const fetchProducts = async (status = 'active') => {
   let pageInfo = null;
 
   do {
-    const response = await fetch(buildProductsUrl({ status, pageInfo }), {
+    const response = await shopifyFetch(buildProductsUrl({ status, pageInfo }), {
       headers: REQUEST_HEADERS,
     });
 
