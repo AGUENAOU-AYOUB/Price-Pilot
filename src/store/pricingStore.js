@@ -221,6 +221,19 @@ const canonicalChainName = (value, contextLabel = 'chain types') => {
     }
   }
 
+  if (!canonical && normalized) {
+    for (const [candidateKey, candidateValue] of CHAIN_LOOKUP.entries()) {
+      if (candidateKey.length < 3) {
+        continue;
+      }
+
+      if (normalized.includes(candidateKey)) {
+        canonical = candidateValue;
+        break;
+      }
+    }
+  }
+
   if (!canonical) {
     console.warn(
       `Chain option "${raw}" doesn't match expected ${contextLabel}:`,
@@ -252,7 +265,20 @@ const canonicalNecklaceSize = (value, contextLabel = 'necklace') => {
   }
 
   const parsed = parseNecklaceSize(raw);
-  const canonical = Number.isFinite(parsed) && necklaceSizes.includes(parsed) ? parsed : null;
+  let canonical = Number.isFinite(parsed) && necklaceSizes.includes(parsed) ? parsed : null;
+
+  if (!canonical) {
+    const numericMatches = raw.match(/\d+/g);
+    if (Array.isArray(numericMatches)) {
+      for (const candidate of numericMatches) {
+        const parsedCandidate = Number.parseInt(candidate, 10);
+        if (Number.isFinite(parsedCandidate) && necklaceSizes.includes(parsedCandidate)) {
+          canonical = parsedCandidate;
+          break;
+        }
+      }
+    }
+  }
 
   if (!canonical) {
     console.warn(
@@ -846,7 +872,118 @@ const deriveNecklaceSignature = (variant, contextLabel = 'necklace') => {
   return { key: buildChainSizeKey(chain, size), chain, size };
 };
 
-const deriveSetSignature = (variant) => deriveNecklaceSignature(variant, 'set');
+const SET_CHAIN_NECKLACE_KEYWORDS = [/collier/i, /necklace/i, /neck/i];
+const SET_CHAIN_BRACELET_KEYWORDS = [/bracelet/i, /poignet/i, /hand\s*chain/i, /main/i];
+const SET_CHAIN_NEUTRAL_KEYWORDS = [/ensemble/i, /set/i];
+
+const rankSetChainFragment = (fragment) => {
+  const normalized = String(fragment ?? '').toLowerCase();
+  if (!normalized) {
+    return 2;
+  }
+
+  const mentionsBracelet = SET_CHAIN_BRACELET_KEYWORDS.some((regex) => regex.test(normalized));
+  const mentionsNecklace = SET_CHAIN_NECKLACE_KEYWORDS.some((regex) => regex.test(normalized));
+  const mentionsNeutral = SET_CHAIN_NEUTRAL_KEYWORDS.some((regex) => regex.test(normalized));
+
+  if (mentionsNecklace && !mentionsBracelet) {
+    return 0;
+  }
+
+  if (mentionsNecklace && mentionsBracelet) {
+    return 1;
+  }
+
+  if (mentionsNeutral && !mentionsBracelet) {
+    return 1;
+  }
+
+  if (mentionsBracelet && !mentionsNecklace) {
+    return 3;
+  }
+
+  return 2;
+};
+
+const deriveSetSignature = (variant) => {
+  if (!variant || typeof variant !== 'object') {
+    return { key: null, chain: null, size: null };
+  }
+
+  let size = null;
+  const candidatePriorities = new Map();
+  const registerCandidate = (fragment) => {
+    const normalized = String(fragment ?? '').trim();
+    if (!normalized) {
+      return;
+    }
+
+    const canonical = canonicalChainName(normalized, 'set chain options');
+    if (!canonical) {
+      return;
+    }
+
+    const priority = rankSetChainFragment(normalized);
+    const previousPriority = candidatePriorities.get(canonical);
+
+    if (previousPriority === undefined || priority < previousPriority) {
+      candidatePriorities.set(canonical, priority);
+    }
+  };
+
+  if (Number.isFinite(variant.size)) {
+    if (necklaceSizes.includes(variant.size)) {
+      size = variant.size;
+    } else {
+      console.warn(
+        `set size "${variant.size}" doesn't match expected format or values:`,
+        necklaceSizes,
+      );
+    }
+  } else if (variant.size) {
+    size = canonicalNecklaceSize(variant.size, 'set') ?? size;
+  }
+
+  if (variant.chainType) {
+    registerCandidate(variant.chainType);
+  }
+
+  if (variant.necklaceChain) {
+    registerCandidate(variant.necklaceChain);
+  }
+
+  for (const part of collectVariantParts(variant)) {
+    const fragment = String(part ?? '').trim();
+    if (!fragment) {
+      continue;
+    }
+
+    if (!size) {
+      const parsedSize = canonicalNecklaceSize(fragment, 'set');
+      if (Number.isFinite(parsedSize)) {
+        size = parsedSize;
+      }
+    }
+
+    registerCandidate(fragment);
+  }
+
+  let chain = null;
+  let bestPriority = Infinity;
+
+  for (const [canonical, priority] of candidatePriorities.entries()) {
+    if (priority < bestPriority) {
+      bestPriority = priority;
+      chain = canonical;
+    }
+  }
+
+  if (!chain && candidatePriorities.size > 0) {
+    chain = candidatePriorities.keys().next().value;
+  }
+
+  return { key: buildChainSizeKey(chain, size), chain, size };
+};
 
 const alignVariantsFromMetafields = async ({ scope, collection, label, alignProduct }, set, get) => {
   const toggleLoading = get().toggleLoading;
