@@ -85,13 +85,26 @@ export const mockProducts = [
     id: 'handchain-1',
     title: 'Serene Hand Chain',
     collection: 'Hand chains',
-    tags: ['hand'],
+    tags: ['hand', 'hchn'],
     basePrice: 1100,
     baseCompareAtPrice: 1300,
     variants: [],
     status: 'active',
     metafields: {
       'Chain Variants': ['Forsat S', 'Gourmette S'],
+    },
+  },
+  {
+    id: 'handchain-2',
+    title: 'Cascade Hand Chain',
+    collection: 'Hand chains',
+    tags: ['hand', 'hchn'],
+    basePrice: 1250,
+    baseCompareAtPrice: 1500,
+    variants: [],
+    status: 'active',
+    metafields: {
+      'Chain Variants': ['Forsat M', 'Gourmette M'],
     },
   },
   {
