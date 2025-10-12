@@ -62,19 +62,27 @@ export function PageLayout({ children }) {
     .slice(0, 2);
 
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900">
+    <div className="relative min-h-screen bg-brand-cream text-brand-charcoal">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(203,166,181,0.18),_transparent_60%),_linear-gradient(180deg,_rgba(245,230,237,0.65)_0%,_rgba(250,247,248,0.9)_40%,_#faf7f8_100%)]" />
       <header
         className={clsx(
-          'sticky top-0 z-40 w-full border-b border-neutral-200 bg-white transition-shadow',
-          hasScrolled ? 'shadow-md' : 'shadow-sm shadow-transparent',
+          'sticky top-0 z-40 w-full border-b border-neutral-200/60 bg-white/70 backdrop-blur-xl transition-all duration-200',
+          hasScrolled ? 'shadow-[0_12px_40px_-20px_rgba(139,58,98,0.35)]' : 'shadow-none',
         )}
       >
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-6">
-            <Logo />
+            <div className="flex items-center gap-3 rounded-full bg-brand-blush/70 px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+              <Logo />
+              <span className="hidden text-sm font-semibold uppercase tracking-[0.28em] text-neutral-500 sm:block">
+                Azor Admin
+              </span>
+            </div>
             <div className="hidden flex-col lg:flex">
-              <span className="text-sm font-medium text-neutral-500">{t('header.welcomeBack')}</span>
-              <span className="text-lg font-semibold text-neutral-900">{username}</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.3em] text-neutral-400">
+                {t('header.welcomeBack')}
+              </span>
+              <span className="text-xl font-semibold text-brand-charcoal">{username}</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -86,10 +94,11 @@ export function PageLayout({ children }) {
                     to={item.to}
                     className={({ isActive }) =>
                       clsx(
-                        'rounded-full px-4 py-2 text-sm font-medium transition-all duration-150',
+                        'rounded-full border border-transparent px-5 py-2 text-sm font-semibold transition-all duration-200',
+                        'hover:-translate-y-[1px] hover:border-brand-rose/40 hover:bg-brand-blush/60 hover:text-brand-charcoal',
                         isActive
-                          ? 'bg-primary-600 text-white shadow-sm shadow-primary-200'
-                          : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900',
+                          ? 'bg-gradient-to-r from-primary-600 to-secondary-500 text-white shadow-[0_10px_30px_-20px_rgba(139,58,98,0.6)]'
+                          : 'text-neutral-500'
                       )
                     }
                   >
@@ -102,23 +111,25 @@ export function PageLayout({ children }) {
               <button
                 type="button"
                 onClick={() => setMenuOpen((open) => !open)}
-                className="flex items-center gap-3 rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 shadow-sm transition hover:border-primary-200 hover:shadow-md"
+                className="group flex items-center gap-3 rounded-full border border-brand-blush/60 bg-white/80 px-3 py-2 text-sm font-medium text-brand-charcoal shadow-[0_12px_30px_-18px_rgba(139,58,98,0.4)] transition hover:border-brand-rose/70 hover:shadow-[0_20px_45px_-20px_rgba(139,58,98,0.45)]"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50 text-base font-semibold text-primary-600">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary-600 to-secondary-500 text-base font-semibold text-white shadow-inner">
                   {initials || 'AZ'}
                 </span>
                 <div className="hidden text-left sm:flex sm:flex-col sm:leading-tight">
-                  <span className="font-semibold text-neutral-900">{username}</span>
-                  <span className="text-sm text-neutral-500">Azor Jewelry Admin</span>
+                  <span className="font-semibold text-brand-charcoal">{username}</span>
+                  <span className="text-xs font-medium uppercase tracking-[0.3em] text-neutral-400">
+                    Azor Jewelry
+                  </span>
                 </div>
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="1.5"
-                  className={clsx('h-5 w-5 text-neutral-500 transition-transform', menuOpen ? 'rotate-180' : '')}
+                  className={clsx('h-5 w-5 text-neutral-400 transition-transform', menuOpen ? 'rotate-180' : '')}
                 >
                   <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -126,12 +137,12 @@ export function PageLayout({ children }) {
               {menuOpen && (
                 <div
                   role="menu"
-                  className="absolute right-0 mt-3 w-56 rounded-xl border border-neutral-200 bg-white p-2 shadow-xl"
+                  className="absolute right-0 mt-3 w-60 rounded-2xl border border-brand-blush/60 bg-white/95 p-3 text-sm text-brand-charcoal shadow-[0_24px_60px_-28px_rgba(139,58,98,0.45)] backdrop-blur-xl"
                 >
                   <Button
                     type="button"
                     variant="ghost"
-                    className="w-full justify-start px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100"
+                    className="w-full justify-start rounded-xl px-4 py-2 text-sm font-medium text-brand-charcoal hover:bg-brand-blush/40"
                     onClick={() => {
                       toggleLanguage();
                       setMenuOpen(false);
@@ -142,7 +153,7 @@ export function PageLayout({ children }) {
                   <Button
                     type="button"
                     variant="ghost"
-                    className="w-full justify-start px-3 py-2 text-sm text-error-500 hover:bg-error-50"
+                    className="mt-1 w-full justify-start rounded-xl px-4 py-2 text-sm font-medium text-error-500 hover:bg-error-50"
                     onClick={() => {
                       setMenuOpen(false);
                       setUsername(null);
@@ -156,7 +167,7 @@ export function PageLayout({ children }) {
           </div>
         </div>
         {!isDashboard && (
-          <div className="block border-t border-neutral-100 bg-white px-4 pb-4 pt-2 lg:hidden">
+          <div className="block border-t border-brand-blush/70 bg-white/70 px-4 pb-4 pt-2 backdrop-blur-xl lg:hidden">
             <div className="flex gap-2 overflow-x-auto">
               {navItems.map((item) => (
                 <NavLink
@@ -164,10 +175,10 @@ export function PageLayout({ children }) {
                   to={item.to}
                   className={({ isActive }) =>
                     clsx(
-                      'whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all',
+                      'whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200',
                       isActive
-                        ? 'bg-primary-600 text-white shadow-sm'
-                        : 'border border-neutral-200 text-neutral-600 hover:border-primary-200 hover:text-neutral-900',
+                        ? 'bg-gradient-to-r from-primary-600 to-secondary-500 text-white shadow-[0_10px_30px_-18px_rgba(139,58,98,0.55)]'
+                        : 'border border-brand-blush/70 text-neutral-500 hover:bg-brand-blush/40 hover:text-brand-charcoal',
                     )
                   }
                 >
@@ -178,8 +189,10 @@ export function PageLayout({ children }) {
           </div>
         )}
       </header>
-      <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="space-y-8">{children}</div>
+      <main className="relative z-10 mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="space-y-10">
+          {children}
+        </div>
       </main>
     </div>
   );
