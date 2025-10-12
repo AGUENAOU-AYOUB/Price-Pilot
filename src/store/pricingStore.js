@@ -2459,9 +2459,15 @@ export const usePricingStore = create(
 
     previewHandChains: () => {
       const { products, supplements } = get();
-      return products
-        .filter((product) => isActiveHandChainProduct(product))
-        .map((product) => {
+      const activeHandChainProducts = products.filter((product) =>
+        isActiveHandChainProduct(product),
+      );
+
+      if (activeHandChainProducts.length === 0) {
+        console.log('[HandChain Preview] No active hand chain products found.');
+      }
+
+      return activeHandChainProducts.map((product) => {
           const lookup = new Map();
           for (const existingVariant of product.variants) {
             const key = deriveHandChainKey(existingVariant);
@@ -2482,7 +2488,7 @@ export const usePricingStore = create(
             supportedChains,
           );
 
-          console.debug('[HandChain Preview]', {
+          console.log('[HandChain Preview]', {
             productId: product.id,
             title: product.title,
             supportedChains: Array.from(supportedChains),
