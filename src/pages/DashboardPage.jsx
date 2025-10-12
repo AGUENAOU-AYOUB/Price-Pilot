@@ -5,39 +5,126 @@ import { usePricingStore } from '../store/pricingStore';
 import { useTranslation } from '../i18n/useTranslation';
 import { hasShopifyProxy } from '../config/shopify';
 
-const Metric = ({ icon, label, value, tone = 'neutral' }) => {
-  const toneClasses =
-    tone === 'success'
-      ? 'bg-success-500/10 text-success-600'
-      : tone === 'warning'
-      ? 'bg-warning-500/10 text-warning-600'
-      : 'bg-primary-100 text-primary-600';
+const iconClassName = 'h-6 w-6 text-brand-burgundy';
+
+const GlobalPricingIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={iconClassName}
+  >
+    <circle cx="12" cy="12" r="8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4 12h16" strokeLinecap="round" />
+    <path d="M12 4c2.5 2.2 4 5.6 4 8s-1.5 5.8-4 8c-2.5-2.2-4-5.6-4-8s1.5-5.8 4-8z" strokeLinecap="round" />
+  </svg>
+);
+
+const BraceletIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={iconClassName}
+  >
+    <path d="M8 9a4 4 0 0 1 8 0" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8 15a4 4 0 0 0 8 0" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M6.5 11.5h-1" strokeLinecap="round" />
+    <path d="M18.5 12.5h-1" strokeLinecap="round" />
+    <path d="M12 5.5v1.2" strokeLinecap="round" />
+  </svg>
+);
+
+const NecklaceIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={iconClassName}
+  >
+    <path d="M5.5 9a6.5 6.5 0 0 0 13 0" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M12 12.5v3.5" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="12" cy="18.5" r="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const RingIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={iconClassName}
+  >
+    <circle cx="12" cy="13.5" r="4.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9.5 7.5 12 5l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 8.8h6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const HandChainIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={iconClassName}
+  >
+    <path d="M9.2 8.8 7.4 10.6a3 3 0 0 0 0 4.2l1.6 1.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14.8 15.2 16.6 13.4a3 3 0 0 0 0-4.2l-1.6-1.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M10.5 14.5 13.5 11.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const SetsIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={iconClassName}
+  >
+    <path d="M7 9h10l2 3-2 3H7l-2-3z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 15.5 7.5 18h9l-1.5-2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 8.5 7.5 6h9L15 8.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const Metric = ({ icon, label, value, tone = 'primary' }) => {
+  const toneClasses = {
+    primary: 'bg-brand-blush/60 text-primary-600',
+    success: 'bg-success-50 text-success-600',
+    warning: 'bg-warning-50 text-warning-500',
+  };
 
   return (
-    <div className="flex items-start gap-4 rounded-2xl border border-neutral-200 bg-white/80 p-5 shadow-sm">
-      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${toneClasses}`}>{icon}</div>
+    <div className="flex items-start gap-4 rounded-3xl border border-brand-blush/60 bg-white/80 p-6 shadow-[0_22px_60px_-40px_rgba(139,58,98,0.55)] backdrop-blur-sm">
+      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${toneClasses[tone] ?? toneClasses.primary}`}>
+        {icon}
+      </div>
       <div>
-        <p className="text-sm font-medium uppercase tracking-wide text-neutral-500">{label}</p>
-        <p className="mt-2 text-2xl font-semibold text-neutral-900">{value}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-neutral-500">{label}</p>
+        <p className="mt-3 text-3xl font-semibold text-brand-charcoal">{value}</p>
       </div>
     </div>
   );
 };
 
-const SectionIcon = ({ tone }) => {
+const SectionIcon = ({ tone, icon: Icon }) => {
   const tones = {
-    primary: 'bg-primary-100 text-primary-600',
-    success: 'bg-success-500/10 text-success-600',
-    warning: 'bg-warning-500/10 text-warning-500',
+    primary: 'bg-brand-blush/70 text-primary-600',
+    success: 'bg-success-50 text-success-600',
+    warning: 'bg-warning-50 text-warning-500',
   };
 
   const toneClass = tones[tone] ?? tones.primary;
 
   return (
     <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${toneClass}`}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
-        <path d="M12 6v12M6 12h12" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+      {Icon ? <Icon /> : null}
     </div>
   );
 };
@@ -59,6 +146,7 @@ export function DashboardPage() {
     {
       label: t('dashboard.activeProducts'),
       value: activeCount,
+      tone: 'primary',
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
           <path d="M3 7h18M3 12h18M3 17h18" strokeLinecap="round" />
@@ -68,6 +156,7 @@ export function DashboardPage() {
     {
       label: t('dashboard.collections'),
       value: collectionCount,
+      tone: 'primary',
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
           <path d="M4 4h16v4H4zM4 10h10v10H4zM16 10h4v10h-4z" strokeLinecap="round" strokeLinejoin="round" />
@@ -93,46 +182,52 @@ export function DashboardPage() {
       tone: 'primary',
       title: t('dashboard.section.globalTitle'),
       description: t('dashboard.section.globalBody'),
+      icon: GlobalPricingIcon,
     },
     {
       to: '/bracelets',
       tone: 'success',
       title: t('dashboard.section.braceletsTitle'),
       description: t('dashboard.section.braceletsBody'),
+      icon: BraceletIcon,
     },
     {
       to: '/necklaces',
       tone: 'primary',
       title: t('dashboard.section.necklacesTitle'),
       description: t('dashboard.section.necklacesBody'),
+      icon: NecklaceIcon,
     },
     {
       to: '/rings',
       tone: 'warning',
       title: t('dashboard.section.ringsTitle'),
       description: t('dashboard.section.ringsBody'),
+      icon: RingIcon,
     },
     {
       to: '/hand-chains',
       tone: 'primary',
       title: t('dashboard.section.handChainsTitle'),
       description: t('dashboard.section.handChainsBody'),
+      icon: HandChainIcon,
     },
     {
       to: '/sets',
       tone: 'success',
       title: t('dashboard.section.setsTitle'),
       description: t('dashboard.section.setsBody'),
+      icon: SetsIcon,
     },
   ];
 
   return (
-    <div className="space-y-10">
-      <Card className="border-none bg-white/90 shadow-lg ring-1 ring-neutral-200" title={t('dashboard.heroTitle')}>
+    <div className="space-y-12">
+      <Card className="border border-brand-blush/60 bg-white/85" title={t('dashboard.heroTitle')}>
         <div className="space-y-6 text-base text-neutral-600">
           <p className="text-lg text-neutral-600">{t('dashboard.heroSubtitle')}</p>
           <p>{t('dashboard.heroBody')}</p>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-5 md:grid-cols-3">
             {metrics.map((metric) => (
               <Metric key={metric.label} {...metric} />
             ))}
@@ -140,11 +235,11 @@ export function DashboardPage() {
         </div>
       </Card>
 
-      <section className="space-y-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <section className="space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold text-neutral-900">{t('dashboard.sectionsTitle')}</h2>
-            <p className="text-base text-neutral-600">{t('dashboard.sectionsSubtitle')}</p>
+            <h2 className="text-3xl font-semibold text-brand-charcoal">{t('dashboard.sectionsTitle')}</h2>
+            <p className="text-base text-neutral-500">{t('dashboard.sectionsSubtitle')}</p>
           </div>
         </div>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -152,17 +247,18 @@ export function DashboardPage() {
             <Link
               key={section.to}
               to={section.to}
-              className="group block h-full rounded-3xl border border-neutral-200 bg-white/90 p-8 shadow-sm transition hover:-translate-y-1 hover:border-primary-200 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="group relative block h-full overflow-hidden rounded-[26px] border border-brand-blush/60 bg-white/80 p-8 shadow-[0_24px_60px_-36px_rgba(139,58,98,0.45)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_30px_80px_-40px_rgba(139,58,98,0.55)]"
             >
-              <div className="flex h-full flex-col gap-6">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(195,100,149,0.15),_transparent_65%)] opacity-80" aria-hidden="true" />
+              <div className="relative flex h-full flex-col gap-6">
                 <div className="flex items-center gap-4">
-                  <SectionIcon tone={section.tone} />
-                  <span className="text-sm font-medium uppercase tracking-wide text-neutral-500">
+                  <SectionIcon tone={section.tone} icon={section.icon} />
+                  <span className="text-xs font-semibold uppercase tracking-[0.28em] text-neutral-500">
                     {section.title}
                   </span>
                 </div>
-                <p className="text-lg font-semibold text-neutral-900">{section.title}</p>
-                <p className="text-base text-neutral-600">{section.description}</p>
+                <p className="text-xl font-semibold text-brand-charcoal">{section.title}</p>
+                <p className="text-base text-neutral-500">{section.description}</p>
                 <div className="mt-auto flex items-center gap-2 text-sm font-semibold text-primary-600">
                   <span>{t('dashboard.openWorkspace')}</span>
                   <svg
