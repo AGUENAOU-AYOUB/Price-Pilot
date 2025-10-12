@@ -101,6 +101,57 @@ const cloneProducts = (products = []) => products.map((product) => cloneProduct(
 const normalizeCollectionKey = (collection) =>
   typeof collection === 'string' ? collection.trim().toLowerCase() : '';
 
+const collectNormalizedCollectionKeys = (target, collection) => {
+  if (!target || !(target instanceof Set) || collection === null || collection === undefined) {
+    return;
+  }
+
+  if (Array.isArray(collection)) {
+    for (const entry of collection) {
+      collectNormalizedCollectionKeys(target, entry);
+    }
+    return;
+  }
+
+  if (typeof collection === 'object') {
+    const { handle, title, name } = collection;
+    collectNormalizedCollectionKeys(target, handle);
+    collectNormalizedCollectionKeys(target, title);
+    collectNormalizedCollectionKeys(target, name);
+    return;
+  }
+
+  const normalized = normalizeCollectionKey(collection);
+  if (normalized) {
+    target.add(normalized);
+  }
+};
+
+const getNormalizedCollectionKeySet = (collection) => {
+  const normalized = new Set();
+  collectNormalizedCollectionKeys(normalized, collection);
+  return normalized;
+};
+
+const hasCollectionMatch = (collection, collectionSet) => {
+  if (!(collectionSet instanceof Set) || collectionSet.size === 0) {
+    return true;
+  }
+
+  const productCollections = getNormalizedCollectionKeySet(collection);
+  if (productCollections.size === 0) {
+    return false;
+  }
+
+  for (const key of productCollections) {
+    if (collectionSet.has(key)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const normalizeTag = (tag) =>
   typeof tag === 'string' ? tag.trim().toLowerCase() : '';
 
@@ -117,15 +168,27 @@ const isActiveProduct = (product) => {
   return status === 'active';
 };
 
+const HAND_CHAIN_COLLECTION_KEYS = new Set([
+  'handchain',
+  'hand chains',
+  'hand chain',
+  'hand-chain',
+  'handchains',
+]);
+
 const isHandChainCollection = (collection) => {
-  const normalized = normalizeCollectionKey(collection);
-  return (
-    normalized === 'handchain' ||
-    normalized === 'hand chains' ||
-    normalized === 'hand chain' ||
-    normalized === 'hand-chain' ||
-    normalized === 'handchains'
-  );
+  const normalizedEntries = getNormalizedCollectionKeySet(collection);
+  if (normalizedEntries.size === 0) {
+    return false;
+  }
+
+  for (const key of normalizedEntries) {
+    if (HAND_CHAIN_COLLECTION_KEYS.has(key)) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 const isActiveHandChainProduct = (product) =>
@@ -136,7 +199,17 @@ const isActiveHandChainProduct = (product) =>
 
 const buildCollectionSet = (scope) => {
   const collections = SCOPE_COLLECTIONS[scope] ?? [];
-  return new Set(collections.map((collection) => normalizeCollectionKey(collection)));
+  const normalized = new Set();
+
+  if (Array.isArray(collections)) {
+    for (const entry of collections) {
+      collectNormalizedCollectionKeys(normalized, entry);
+    }
+  } else {
+    collectNormalizedCollectionKeys(normalized, collections);
+  }
+
+  return normalized;
 };
 
 const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) => {
@@ -150,9 +223,7 @@ const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) =
   const synchronizedIds = new Set();
 
   const merged = currentProducts.map((product) => {
-    const collectionKey = normalizeCollectionKey(product.collection);
-
-    if (!collectionSet.has(collectionKey)) {
+    if (!hasCollectionMatch(product?.collection, collectionSet)) {
       return cloneProduct(product);
     }
 
@@ -452,10 +523,13 @@ const commitShopifyVariantUpdates = async ({
     : collection
     ? [collection]
     : [];
-  const collectionSet =
-    normalizedCollections.length > 0
-      ? new Set(normalizedCollections.map((entry) => entry.toLowerCase()))
-      : null;
+  const collectionSet = normalizedCollections.length > 0 ? new Set() : null;
+
+  if (collectionSet) {
+    for (const entry of normalizedCollections) {
+      collectNormalizedCollectionKeys(collectionSet, entry);
+    }
+  }
 
   if (!hasShopifyProxy()) {
     get().log(proxyMissingMessage, scope, 'error');
@@ -486,9 +560,7 @@ const commitShopifyVariantUpdates = async ({
         return product;
       }
 
-      const productCollection =
-        typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
-      if (!collectionSet.has(productCollection)) {
+      if (!hasCollectionMatch(product?.collection, collectionSet)) {
         return product;
       }
 
@@ -1105,17 +1177,19 @@ const alignVariantsFromMetafields = async ({ scope, collection, label, alignProd
     let touched = 0;
     let changed = 0;
     let mutated = false;
-    const collections = Array.isArray(collection)
-      ? collection.map((entry) => normalizeCollectionKey(entry)).filter(Boolean)
-      : collection
-      ? [normalizeCollectionKey(collection)].filter(Boolean)
-      : [];
-    const collectionSet = new Set(collections);
+    const collectionSet = new Set();
+    if (Array.isArray(collection)) {
+      for (const entry of collection) {
+        collectNormalizedCollectionKeys(collectionSet, entry);
+      }
+    } else {
+      collectNormalizedCollectionKeys(collectionSet, collection);
+    }
 
     for (const product of products) {
       if (
         !product ||
-        (collectionSet.size > 0 && !collectionSet.has(normalizeCollectionKey(product.collection)))
+        !hasCollectionMatch(product.collection, collectionSet)
       ) {
         nextProducts.push(product);
         continue;
@@ -1648,9 +1722,7 @@ export const usePricingStore = create(
       const updatedProducts = [];
 
       for (const product of currentProducts) {
-        const productCollection =
-          typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
-        const collectionMatches = includeAllCollections || collectionSet.has(productCollection);
+        const collectionMatches = includeAllCollections || hasCollectionMatch(product?.collection, collectionSet);
 
         if (!collectionMatches) {
           updatedProducts.push(product);
