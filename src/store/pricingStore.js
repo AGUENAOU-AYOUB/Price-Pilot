@@ -2482,6 +2482,14 @@ export const usePricingStore = create(
             supportedChains,
           );
 
+          console.debug('[HandChain Preview]', {
+            productId: product.id,
+            title: product.title,
+            supportedChains: Array.from(supportedChains),
+            currentVariants: product.variants,
+            targetVariants,
+          });
+
           return {
             product,
             updatedBasePrice: product.basePrice,
