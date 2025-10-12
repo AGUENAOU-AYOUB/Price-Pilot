@@ -198,6 +198,8 @@ const normalizeProductType = (product) => {
   return product.product_type.trim().toLowerCase();
 };
 
+const HAND_CHAIN_TAG = 'hchn';
+
 const determineCollection = (product) => {
   const normalizedTags = parseTags(product.tags)
     .map((tag) => tag.toLowerCase())
@@ -217,11 +219,7 @@ const determineCollection = (product) => {
   ) {
     return 'bague';
   }
-  if (
-    normalizedTags.has('hchn') ||
-    productType === 'hand chains' ||
-    productType === 'hand chain'
-  ) {
+  if (normalizedTags.has(HAND_CHAIN_TAG) || productType === 'hand chains' || productType === 'hand chain') {
     return 'handchain';
   }
   if (

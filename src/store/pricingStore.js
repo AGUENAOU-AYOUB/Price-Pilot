@@ -79,7 +79,7 @@ const SCOPE_COLLECTIONS = {
   bracelets: ['bracelet'],
   necklaces: ['collier'],
   rings: ['bague'],
-  handchains: ['handchain', 'hand chains', 'hand chain'],
+  handchains: ['hand chains', 'hand-chains'],
   sets: ['ensemble'],
 };
 
@@ -155,12 +155,14 @@ const hasCollectionMatch = (collection, collectionSet) => {
 const normalizeTag = (tag) =>
   typeof tag === 'string' ? tag.trim().toLowerCase() : '';
 
+const HAND_CHAIN_TAG = 'hchn';
+
 const hasHandChainTag = (product) => {
   if (!product || !Array.isArray(product.tags)) {
     return false;
   }
 
-  return product.tags.some((tag) => normalizeTag(tag) === 'hchn');
+  return product.tags.some((tag) => normalizeTag(tag) === HAND_CHAIN_TAG);
 };
 
 const isActiveProduct = (product) => {
@@ -168,13 +170,7 @@ const isActiveProduct = (product) => {
   return status === 'active';
 };
 
-const HAND_CHAIN_COLLECTION_KEYS = new Set([
-  'handchain',
-  'hand chains',
-  'hand chain',
-  'hand-chain',
-  'handchains',
-]);
+const HAND_CHAIN_COLLECTION_KEYS = new Set(['hand chains', 'hand-chains', 'handchains']);
 
 const isHandChainCollection = (collection) => {
   const normalizedEntries = getNormalizedCollectionKeySet(collection);
@@ -1569,7 +1565,7 @@ export const usePricingStore = create(
       alignVariantsFromMetafields(
         {
           scope: 'handchains',
-          collection: ['handchain', 'hand chains'],
+          collection: ['hand chains', 'hand-chains'],
           label: 'hand chain',
           alignProduct: alignHandChainVariantOptions,
         },
@@ -2725,7 +2721,7 @@ export const usePricingStore = create(
 
         await commitShopifyVariantUpdates({
           scope: 'handchains',
-          collection: ['handchain', 'hand chains'],
+          collection: ['hand chains', 'hand-chains'],
           updatedProducts,
           updatesByProduct,
           originalVariantLookup,
