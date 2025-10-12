@@ -4,7 +4,7 @@ export function Card({ title, subtitle, actions, children, className }) {
   return (
     <section
       className={clsx(
-        'rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md',
+        'rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm ring-1 ring-slate-100 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg sm:p-8',
         className,
       )}
     >
