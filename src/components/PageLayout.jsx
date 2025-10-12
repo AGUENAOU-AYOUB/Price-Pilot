@@ -70,7 +70,7 @@ export function PageLayout({ children }) {
           hasScrolled ? 'shadow-[0_12px_40px_-20px_rgba(139,58,98,0.35)]' : 'shadow-none',
         )}
       >
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full items-center justify-between px-4 py-4 sm:px-6 lg:px-12 xl:px-14">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3 rounded-full bg-brand-blush/70 px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
               <Logo />
@@ -189,7 +189,7 @@ export function PageLayout({ children }) {
           </div>
         )}
       </header>
-      <main className="relative z-10 mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <main className="relative z-10 mx-auto w-full px-4 py-12 sm:px-6 lg:px-12 xl:px-14">
         <div className="space-y-10">
           {children}
         </div>
