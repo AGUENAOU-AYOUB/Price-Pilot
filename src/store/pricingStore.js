@@ -79,7 +79,7 @@ const SCOPE_COLLECTIONS = {
   bracelets: ['bracelet'],
   necklaces: ['collier'],
   rings: ['bague'],
-  handchains: ['handchain'],
+  handchains: ['handchain', 'hand chains'],
   sets: ['ensemble'],
 };
 
@@ -98,9 +98,22 @@ const cloneProduct = (product) => ({
 
 const cloneProducts = (products = []) => products.map((product) => cloneProduct(product));
 
+const normalizeCollectionKey = (collection) =>
+  typeof collection === 'string' ? collection.trim().toLowerCase() : '';
+
+const isHandChainCollection = (collection) => {
+  const normalized = normalizeCollectionKey(collection);
+  return (
+    normalized === 'handchain' ||
+    normalized === 'hand chains' ||
+    normalized === 'hand-chain' ||
+    normalized === 'handchains'
+  );
+};
+
 const buildCollectionSet = (scope) => {
   const collections = SCOPE_COLLECTIONS[scope] ?? [];
-  return new Set(collections.map((collection) => collection.toLowerCase()));
+  return new Set(collections.map((collection) => normalizeCollectionKey(collection)));
 };
 
 const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) => {
@@ -114,8 +127,7 @@ const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) =
   const synchronizedIds = new Set();
 
   const merged = currentProducts.map((product) => {
-    const collectionKey =
-      typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
+    const collectionKey = normalizeCollectionKey(product.collection);
 
     if (!collectionSet.has(collectionKey)) {
       return cloneProduct(product);
@@ -215,6 +227,23 @@ const CHAIN_LOOKUP = new Map(
   UNIQUE_CHAIN_NAMES.map((name) => [sanitizeVariantKey(name), name]),
 );
 
+const CHAIN_SYNONYM_PATTERNS = [
+  [/forcat/g, 'forsat'],
+];
+
+const applyChainSynonyms = (value) => {
+  if (!value) {
+    return value;
+  }
+
+  let normalized = value;
+  for (const [pattern, replacement] of CHAIN_SYNONYM_PATTERNS) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+
+  return normalized;
+};
+
 const RING_BAND_NAMES = Object.keys(ringBandSupplements);
 
 const RING_BAND_LOOKUP = new Map(
@@ -241,7 +270,7 @@ const canonicalChainName = (value, contextLabel = 'chain types') => {
   }
 
   const parsed = parseChainName(raw);
-  const normalized = parsed ? sanitizeVariantKey(parsed) : null;
+  const normalized = parsed ? applyChainSynonyms(sanitizeVariantKey(parsed)) : null;
   let canonical = normalized ? CHAIN_LOOKUP.get(normalized) : null;
 
   if (!canonical && normalized) {
@@ -718,6 +747,30 @@ const buildChainMetafieldMap = (product, key, contextLabel) =>
     },
   );
 
+const collectSupportedChainKeys = (
+  product,
+  deriveKey,
+  metafieldContext = 'chain options',
+) => {
+  const keys = new Set();
+
+  if (Array.isArray(product?.variants) && typeof deriveKey === 'function') {
+    for (const variant of product.variants) {
+      const key = deriveKey(variant);
+      if (key) {
+        keys.add(key);
+      }
+    }
+  }
+
+  const chainMap = buildChainMetafieldMap(product, 'Chain Variants', metafieldContext);
+  for (const key of chainMap.keys()) {
+    keys.add(key);
+  }
+
+  return keys;
+};
+
 const buildNecklaceSizeMetafieldMap = (product, key, contextLabel) =>
   buildMetafieldDisplayMap(
     product,
@@ -1029,9 +1082,18 @@ const alignVariantsFromMetafields = async ({ scope, collection, label, alignProd
     let touched = 0;
     let changed = 0;
     let mutated = false;
+    const collections = Array.isArray(collection)
+      ? collection.map((entry) => normalizeCollectionKey(entry)).filter(Boolean)
+      : collection
+      ? [normalizeCollectionKey(collection)].filter(Boolean)
+      : [];
+    const collectionSet = new Set(collections);
 
     for (const product of products) {
-      if (!product || product.collection !== collection) {
+      if (
+        !product ||
+        (collectionSet.size > 0 && !collectionSet.has(normalizeCollectionKey(product.collection)))
+      ) {
         nextProducts.push(product);
         continue;
       }
@@ -1406,7 +1468,7 @@ export const usePricingStore = create(
       alignVariantsFromMetafields(
         {
           scope: 'handchains',
-          collection: 'handchain',
+          collection: ['handchain', 'hand chains'],
           label: 'hand chain',
           alignProduct: alignHandChainVariantOptions,
         },
@@ -2371,7 +2433,7 @@ export const usePricingStore = create(
     previewHandChains: () => {
       const { products, supplements } = get();
       return products
-        .filter((product) => product.collection === 'handchain' && product.status === 'active')
+        .filter((product) => isHandChainCollection(product.collection) && product.status === 'active')
         .map((product) => {
           const lookup = new Map();
           for (const existingVariant of product.variants) {
@@ -2381,11 +2443,23 @@ export const usePricingStore = create(
             }
           }
 
+          const supportedChains = collectSupportedChainKeys(
+            product,
+            deriveHandChainKey,
+            'hand chain preview options',
+          );
+
+          const targetVariants = buildHandChainVariants(
+            product,
+            supplements.handChains,
+            supportedChains,
+          );
+
           return {
             product,
             updatedBasePrice: product.basePrice,
             updatedCompareAtPrice: product.baseCompareAtPrice,
-            variants: buildHandChainVariants(product, supplements.handChains).map((variant) => {
+            variants: targetVariants.map((variant) => {
               const key = deriveHandChainKey(variant);
               const currentVariant = key ? lookup.get(key) : null;
               const matched = Boolean(currentVariant);
@@ -2434,12 +2508,22 @@ export const usePricingStore = create(
         const missingSummaries = [];
 
         for (const product of products) {
-          if (product.collection !== 'handchain') {
+          if (!isHandChainCollection(product.collection)) {
             updatedProducts.push(product);
             continue;
           }
 
-          const targetVariants = buildHandChainVariants(product, supplements.handChains);
+          const supportedChains = collectSupportedChainKeys(
+            product,
+            deriveHandChainKey,
+            'hand chain metafield options',
+          );
+
+          const targetVariants = buildHandChainVariants(
+            product,
+            supplements.handChains,
+            supportedChains,
+          );
           const targetByKey = new Map();
 
           for (const target of targetVariants) {
@@ -2528,7 +2612,7 @@ export const usePricingStore = create(
 
         await commitShopifyVariantUpdates({
           scope: 'handchains',
-          collection: 'handchain',
+          collection: ['handchain', 'hand chains'],
           updatedProducts,
           updatesByProduct,
           originalVariantLookup,
