@@ -214,6 +214,7 @@ const determineCollection = (product) => {
     return 'bague';
   }
   if (
+    normalizedTags.has('hchn') ||
     normalizedTags.has('hand') ||
     normalizedTags.has('handchain') ||
     normalizedType.includes('hand chain') ||
