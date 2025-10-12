@@ -190,10 +190,19 @@ const parseTags = (tags = '') =>
     .map((tag) => tag.trim())
     .filter(Boolean);
 
+const normalizeProductType = (product) => {
+  if (!product || typeof product.product_type !== 'string') {
+    return '';
+  }
+
+  return product.product_type.trim().toLowerCase();
+};
+
 const determineCollection = (product) => {
   const normalizedTags = parseTags(product.tags)
     .map((tag) => tag.toLowerCase())
     .reduce((acc, tag) => acc.add(tag), new Set());
+  const productType = normalizeProductType(product);
 
   if (normalizedTags.has('brac')) {
     return 'bracelet';
@@ -209,7 +218,9 @@ const determineCollection = (product) => {
     return 'bague';
   }
   if (
-    normalizedTags.has('hchn')
+    normalizedTags.has('hchn') ||
+    productType === 'hand chains' ||
+    productType === 'hand chain'
   ) {
     return 'handchain';
   }
