@@ -220,7 +220,7 @@ const determineCollection = (product) => {
     return 'bague';
   }
   if (normalizedTags.has(HAND_CHAIN_TAG) || productType === 'hand chains' || productType === 'hand chain') {
-    return 'handchain';
+    return HAND_CHAIN_TAG;
   }
   if (
     normalizedTags.has('set')
