@@ -227,6 +227,23 @@ const CHAIN_LOOKUP = new Map(
   UNIQUE_CHAIN_NAMES.map((name) => [sanitizeVariantKey(name), name]),
 );
 
+const CHAIN_SYNONYM_PATTERNS = [
+  [/forcat/g, 'forsat'],
+];
+
+const applyChainSynonyms = (value) => {
+  if (!value) {
+    return value;
+  }
+
+  let normalized = value;
+  for (const [pattern, replacement] of CHAIN_SYNONYM_PATTERNS) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+
+  return normalized;
+};
+
 const RING_BAND_NAMES = Object.keys(ringBandSupplements);
 
 const RING_BAND_LOOKUP = new Map(
@@ -253,7 +270,7 @@ const canonicalChainName = (value, contextLabel = 'chain types') => {
   }
 
   const parsed = parseChainName(raw);
-  const normalized = parsed ? sanitizeVariantKey(parsed) : null;
+  const normalized = parsed ? applyChainSynonyms(sanitizeVariantKey(parsed)) : null;
   let canonical = normalized ? CHAIN_LOOKUP.get(normalized) : null;
 
   if (!canonical && normalized) {
