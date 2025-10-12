@@ -84,7 +84,7 @@ export const mockProducts = [
   {
     id: 'handchain-1',
     title: 'Serene Hand Chain',
-    collection: 'handchain',
+    collection: 'Hand chains',
     tags: ['hand'],
     basePrice: 1100,
     baseCompareAtPrice: 1300,
