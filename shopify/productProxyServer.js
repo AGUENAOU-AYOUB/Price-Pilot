@@ -194,38 +194,27 @@ const determineCollection = (product) => {
   const normalizedTags = parseTags(product.tags)
     .map((tag) => tag.toLowerCase())
     .reduce((acc, tag) => acc.add(tag), new Set());
-  const normalizedType = (product.product_type ?? '').trim().toLowerCase();
 
-  if (normalizedTags.has('brac') || normalizedType.includes('bracelet')) {
+  if (normalizedTags.has('brac')) {
     return 'bracelet';
   }
   if (
-    normalizedTags.has('nckl') ||
-    normalizedType.includes('necklace') ||
-    normalizedType.includes('collier')
+    normalizedTags.has('nckl')
   ) {
     return 'collier';
   }
   if (
-    normalizedTags.has('rng') ||
-    normalizedType.includes('ring') ||
-    normalizedType.includes('bague')
+    normalizedTags.has('rng')
   ) {
     return 'bague';
   }
   if (
-    normalizedTags.has('hand') ||
-    normalizedTags.has('handchain') ||
-    normalizedType.includes('hand chain') ||
-    normalizedType.includes('handchain')
+    normalizedTags.has('hchn')
   ) {
     return 'handchain';
   }
   if (
-    normalizedTags.has('set') ||
-    normalizedTags.has('ensemble') ||
-    normalizedType.includes('set') ||
-    normalizedType.includes('ensemble')
+    normalizedTags.has('set')
   ) {
     return 'ensemble';
   }
