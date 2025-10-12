@@ -79,7 +79,7 @@ const SCOPE_COLLECTIONS = {
   bracelets: ['bracelet'],
   necklaces: ['collier'],
   rings: ['bague'],
-  handchains: ['handchain', 'hand chains'],
+  handchains: ['handchain', 'hand chains', 'hand chain'],
   sets: ['ensemble'],
 };
 
@@ -106,6 +106,7 @@ const isHandChainCollection = (collection) => {
   return (
     normalized === 'handchain' ||
     normalized === 'hand chains' ||
+    normalized === 'hand chain' ||
     normalized === 'hand-chain' ||
     normalized === 'handchains'
   );
