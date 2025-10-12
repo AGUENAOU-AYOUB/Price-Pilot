@@ -127,7 +127,7 @@ that each product in Shopify meets the following requirements:
    - Necklaces: tag with `nckl` or use a product type containing “necklace” or
      “collier”.
    - Rings: tag with `rng` or a product type containing “ring” or “bague”.
-   - Hand chains: tag with `hand`/`handchain` or a product type containing
+  - Hand chains: tag with `hand`/`hchn` or a product type containing
      “hand chain”.
    - Sets: tag with `set`/`ensemble` or a product type containing “set” or
      “ensemble”.

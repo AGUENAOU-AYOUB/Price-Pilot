@@ -79,7 +79,7 @@ const SCOPE_COLLECTIONS = {
   bracelets: ['bracelet'],
   necklaces: ['collier'],
   rings: ['bague'],
-  handchains: ['hand chains', 'hand-chains'],
+  handchains: ['hand chains', 'hand-chains', 'hchn'],
   sets: ['ensemble'],
 };
 
@@ -170,7 +170,7 @@ const isActiveProduct = (product) => {
   return status === 'active';
 };
 
-const HAND_CHAIN_COLLECTION_KEYS = new Set(['hand chains', 'hand-chains', 'handchains']);
+const HAND_CHAIN_COLLECTION_KEYS = new Set(['hand chains', 'hand-chains', 'handchains', HAND_CHAIN_TAG]);
 
 const isHandChainCollection = (collection) => {
   const normalizedEntries = getNormalizedCollectionKeySet(collection);
@@ -1049,7 +1049,7 @@ const deriveNecklaceSignature = (variant, contextLabel = 'necklace') => {
 };
 
 const SET_CHAIN_NECKLACE_KEYWORDS = [/collier/i, /necklace/i, /neck/i];
-const SET_CHAIN_BRACELET_KEYWORDS = [/bracelet/i, /poignet/i, /hand\s*chain/i, /main/i];
+const SET_CHAIN_BRACELET_KEYWORDS = [/bracelet/i, /poignet/i, /(?:hand\s*chain|hchn)/i, /main/i];
 const SET_CHAIN_NEUTRAL_KEYWORDS = [/ensemble/i, /set/i];
 
 const rankSetChainFragment = (fragment) => {
