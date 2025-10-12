@@ -1493,7 +1493,7 @@ export const usePricingStore = create(
   devtools((set, get) => ({
     username: loadStoredUsername(),
     language: 'en',
-    products: mockProducts,
+    products: hasShopifyProxy() ? [] : mockProducts,
     productsInitialized: false,
     productsSyncing: false,
     supplements: cloneSupplements(),
@@ -1620,7 +1620,7 @@ export const usePricingStore = create(
 
       if (!hasShopifyProxy()) {
         get().log('Shopify proxy missing; using local mock catalog.', 'catalog', 'warning');
-        set({ productsInitialized: true });
+        set({ products: mockProducts, productsInitialized: true });
         return;
       }
 
