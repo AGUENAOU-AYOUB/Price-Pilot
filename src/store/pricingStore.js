@@ -718,6 +718,30 @@ const buildChainMetafieldMap = (product, key, contextLabel) =>
     },
   );
 
+const collectSupportedChainKeys = (
+  product,
+  deriveKey,
+  metafieldContext = 'chain options',
+) => {
+  const keys = new Set();
+
+  if (Array.isArray(product?.variants) && typeof deriveKey === 'function') {
+    for (const variant of product.variants) {
+      const key = deriveKey(variant);
+      if (key) {
+        keys.add(key);
+      }
+    }
+  }
+
+  const chainMap = buildChainMetafieldMap(product, 'Chain Variants', metafieldContext);
+  for (const key of chainMap.keys()) {
+    keys.add(key);
+  }
+
+  return keys;
+};
+
 const buildNecklaceSizeMetafieldMap = (product, key, contextLabel) =>
   buildMetafieldDisplayMap(
     product,
@@ -2381,11 +2405,23 @@ export const usePricingStore = create(
             }
           }
 
+          const supportedChains = collectSupportedChainKeys(
+            product,
+            deriveHandChainKey,
+            'hand chain preview options',
+          );
+
+          const targetVariants = buildHandChainVariants(
+            product,
+            supplements.handChains,
+            supportedChains,
+          );
+
           return {
             product,
             updatedBasePrice: product.basePrice,
             updatedCompareAtPrice: product.baseCompareAtPrice,
-            variants: buildHandChainVariants(product, supplements.handChains).map((variant) => {
+            variants: targetVariants.map((variant) => {
               const key = deriveHandChainKey(variant);
               const currentVariant = key ? lookup.get(key) : null;
               const matched = Boolean(currentVariant);
@@ -2439,7 +2475,17 @@ export const usePricingStore = create(
             continue;
           }
 
-          const targetVariants = buildHandChainVariants(product, supplements.handChains);
+          const supportedChains = collectSupportedChainKeys(
+            product,
+            deriveHandChainKey,
+            'hand chain metafield options',
+          );
+
+          const targetVariants = buildHandChainVariants(
+            product,
+            supplements.handChains,
+            supportedChains,
+          );
           const targetByKey = new Map();
 
           for (const target of targetVariants) {
