@@ -122,20 +122,63 @@ export async function fetchActiveProducts() {
 const normalizeCollectionKey = (collection) =>
   typeof collection === 'string' ? collection.trim().toLowerCase() : '';
 
+const collectNormalizedCollectionKeys = (target, collection) => {
+  if (!target || !(target instanceof Set) || collection === null || collection === undefined) {
+    return;
+  }
+
+  if (Array.isArray(collection)) {
+    for (const entry of collection) {
+      collectNormalizedCollectionKeys(target, entry);
+    }
+    return;
+  }
+
+  if (typeof collection === 'object') {
+    const { handle, title, name } = collection;
+    collectNormalizedCollectionKeys(target, handle);
+    collectNormalizedCollectionKeys(target, title);
+    collectNormalizedCollectionKeys(target, name);
+    return;
+  }
+
+  const normalized = normalizeCollectionKey(collection);
+  if (normalized) {
+    target.add(normalized);
+  }
+};
+
 export async function fetchProductsByCollections(collections = [], options = {}) {
-  const normalizedCollections = Array.isArray(collections)
-    ? collections
-        .map(normalizeCollectionKey)
-        .filter(Boolean)
-    : [];
+  const normalizedCollections = new Set();
+  if (Array.isArray(collections)) {
+    for (const collection of collections) {
+      collectNormalizedCollectionKeys(normalizedCollections, collection);
+    }
+  } else {
+    collectNormalizedCollectionKeys(normalizedCollections, collections);
+  }
 
   const universe = await fetchProducts(options);
-  if (normalizedCollections.length === 0) {
+  if (normalizedCollections.size === 0) {
     return universe;
   }
 
-  const collectionSet = new Set(normalizedCollections);
-  return universe.filter((product) => collectionSet.has(normalizeCollectionKey(product.collection)));
+  return universe.filter((product) => {
+    const productCollections = new Set();
+    collectNormalizedCollectionKeys(productCollections, product?.collection);
+
+    if (productCollections.size === 0) {
+      return false;
+    }
+
+    for (const key of productCollections) {
+      if (normalizedCollections.has(key)) {
+        return true;
+      }
+    }
+
+    return false;
+  });
 }
 
 export async function pushVariantUpdates(updates) {
