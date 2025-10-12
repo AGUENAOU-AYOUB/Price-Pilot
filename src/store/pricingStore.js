@@ -101,6 +101,22 @@ const cloneProducts = (products = []) => products.map((product) => cloneProduct(
 const normalizeCollectionKey = (collection) =>
   typeof collection === 'string' ? collection.trim().toLowerCase() : '';
 
+const normalizeTag = (tag) =>
+  typeof tag === 'string' ? tag.trim().toLowerCase() : '';
+
+const hasHandChainTag = (product) => {
+  if (!product || !Array.isArray(product.tags)) {
+    return false;
+  }
+
+  return product.tags.some((tag) => normalizeTag(tag) === 'hchn');
+};
+
+const isActiveProduct = (product) => {
+  const status = typeof product?.status === 'string' ? product.status.trim().toLowerCase() : '';
+  return status === 'active';
+};
+
 const isHandChainCollection = (collection) => {
   const normalized = normalizeCollectionKey(collection);
   return (
@@ -111,6 +127,12 @@ const isHandChainCollection = (collection) => {
     normalized === 'handchains'
   );
 };
+
+const isActiveHandChainProduct = (product) =>
+  Boolean(product) &&
+  isActiveProduct(product) &&
+  isHandChainCollection(product.collection) &&
+  hasHandChainTag(product);
 
 const buildCollectionSet = (scope) => {
   const collections = SCOPE_COLLECTIONS[scope] ?? [];
@@ -1198,6 +1220,10 @@ const alignBraceletVariantOptions = (product) => {
 };
 
 const alignHandChainVariantOptions = (product) => {
+  if (!hasHandChainTag(product)) {
+    return null;
+  }
+
   if (!Array.isArray(product?.variants) || product.variants.length === 0) {
     return null;
   }
@@ -2434,7 +2460,7 @@ export const usePricingStore = create(
     previewHandChains: () => {
       const { products, supplements } = get();
       return products
-        .filter((product) => isHandChainCollection(product.collection) && product.status === 'active')
+        .filter((product) => isActiveHandChainProduct(product))
         .map((product) => {
           const lookup = new Map();
           for (const existingVariant of product.variants) {
@@ -2455,6 +2481,14 @@ export const usePricingStore = create(
             supplements.handChains,
             supportedChains,
           );
+
+          console.debug('[HandChain Preview]', {
+            productId: product.id,
+            title: product.title,
+            supportedChains: Array.from(supportedChains),
+            currentVariants: product.variants,
+            targetVariants,
+          });
 
           return {
             product,
@@ -2509,7 +2543,7 @@ export const usePricingStore = create(
         const missingSummaries = [];
 
         for (const product of products) {
-          if (!isHandChainCollection(product.collection)) {
+          if (!isActiveHandChainProduct(product)) {
             updatedProducts.push(product);
             continue;
           }
