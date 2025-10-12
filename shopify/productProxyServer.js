@@ -366,7 +366,6 @@ const buildVariantPayload = (variant) => {
 
 const updateVariantPrice = async (variant) => {
   const payload = buildVariantPayload(variant);
-
   if (!payload) {
     throw new Error('Invalid variant payload provided for update.');
   }
