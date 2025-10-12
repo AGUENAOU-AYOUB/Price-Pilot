@@ -68,10 +68,10 @@ const topBarConfig = {
 };
 
 const toneClasses = {
-  neutral: 'bg-slate-700/60 text-slate-200',
-  warning: 'bg-amber-500/20 text-amber-300 border border-amber-400/40',
-  success: 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40',
-  info: 'bg-indigo-500/20 text-indigo-200 border border-indigo-400/40',
+  neutral: 'bg-slate-100 text-slate-600 border border-slate-200',
+  warning: 'bg-amber-100 text-amber-600 border border-amber-200',
+  success: 'bg-emerald-100 text-emerald-600 border border-emerald-200',
+  info: 'bg-indigo-100 text-indigo-600 border border-indigo-200',
 };
 
 function Badge({ tone = 'neutral', children }) {
@@ -89,7 +89,7 @@ function Badge({ tone = 'neutral', children }) {
 
 function IconWrapper({ children }) {
   return (
-    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800/70 text-slate-200 transition group-hover:bg-indigo-600/40 group-focus-visible:bg-indigo-600/40">
+    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition group-hover:bg-indigo-50 group-hover:text-indigo-600 group-focus-visible:bg-indigo-50 group-focus-visible:text-indigo-600">
       {children}
     </span>
   );
@@ -116,11 +116,11 @@ function NavigationItem({ item, collapsed, onSelect }) {
         to={item.to}
         className={({ isActive }) =>
           clsx(
-            'group flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900',
+            'group flex items-center gap-3 rounded-xl px-3 py-2 text-slate-600 transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white',
             collapsed ? 'justify-center' : 'justify-start',
             isActive
-              ? 'bg-indigo-600/20 text-white ring-1 ring-inset ring-indigo-500'
-              : 'hover:bg-slate-800/70 hover:text-white',
+              ? 'bg-indigo-100 text-indigo-700 shadow-sm'
+              : 'hover:bg-slate-100 hover:text-indigo-700',
           )
         }
         onClick={onSelect}
@@ -139,7 +139,7 @@ function NavigationItem({ item, collapsed, onSelect }) {
         }
       }}
       className={clsx(
-        'group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-slate-300 transition duration-200 hover:bg-slate-800/70 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900',
+        'group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-slate-600 transition duration-200 hover:bg-slate-100 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white',
         collapsed ? 'justify-center' : 'justify-start',
       )}
     >
@@ -431,35 +431,35 @@ export function PageLayout({ children }) {
   );
 
   const sidebarClassName = clsx(
-    'fixed inset-y-0 left-0 z-40 flex h-full flex-col bg-slate-950/95 text-slate-100 shadow-xl ring-1 ring-slate-900/50 transition-transform duration-200',
+    'fixed inset-y-0 left-0 z-40 flex h-full flex-col border-r border-slate-200 bg-white/90 text-slate-700 shadow-[0_18px_60px_-35px_rgba(15,23,42,0.55)] backdrop-blur-xl transition-transform duration-300 supports-[backdrop-filter]:bg-white/70',
     isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
     isCollapsed ? 'w-20' : 'w-72',
   );
 
   const mainClassName = clsx(
-    'flex min-h-screen flex-col bg-slate-100 text-slate-900 transition-all duration-200',
+    'flex min-h-screen flex-col bg-slate-50 text-slate-900 transition-all duration-300',
     isCollapsed ? 'lg:ml-20' : 'lg:ml-72',
   );
 
   return (
     <PageLayoutContext.Provider value={{ searchQuery, setSearchQuery }}>
-      <div className="relative flex min-h-screen bg-slate-100 text-slate-900">
+      <div className="relative flex min-h-screen bg-slate-50 text-slate-900">
         <aside className={sidebarClassName}>
           <div className="flex items-center justify-between px-4 py-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-slate-900/80">
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-indigo-100 text-indigo-700">
                 <Logo />
               </div>
               {!isCollapsed && (
                 <div className="leading-tight">
-                  <p className="text-sm font-semibold tracking-tight text-white">Price Pilot</p>
-                  <p className="text-xs text-slate-400">CRM Console</p>
+                  <p className="text-sm font-semibold tracking-tight text-slate-900">Price Pilot</p>
+                  <p className="text-xs text-slate-400">Growth CRM</p>
                 </div>
               )}
             </div>
             <button
               type="button"
-              className="hidden rounded-md border border-slate-700/70 p-2 text-slate-300 transition duration-200 hover:border-indigo-500 hover:text-white lg:inline-flex"
+              className="hidden rounded-lg border border-slate-200 p-2 text-slate-500 transition duration-200 hover:border-indigo-300 hover:text-indigo-600 lg:inline-flex"
               onClick={() => setIsCollapsed((current) => !current)}
             >
               <ArrowLeftIcon className={clsx('h-4 w-4 transition-transform', isCollapsed ? 'rotate-180' : '')} />
@@ -472,7 +472,7 @@ export function PageLayout({ children }) {
               {navigationGroups.map((group) => (
                 <div key={group.key} className="space-y-3">
                   {!isCollapsed && (
-                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
                       {group.title}
                     </p>
                   )}
@@ -491,12 +491,12 @@ export function PageLayout({ children }) {
             </div>
           </nav>
 
-          <div className="mt-auto border-t border-slate-800/70 px-4 py-5">
+          <div className="mt-auto border-t border-slate-200 px-4 py-5">
             <div className="relative" ref={profileRef}>
               <button
                 type="button"
                 className={clsx(
-                  'flex w-full items-center gap-3 rounded-xl border border-slate-800/60 bg-slate-900/60 px-3 py-3 text-left transition duration-200 hover:border-indigo-500 hover:bg-slate-900',
+                  'flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3 text-left transition duration-200 hover:border-indigo-300 hover:bg-indigo-50',
                   isCollapsed ? 'justify-center' : 'justify-between',
                 )}
                 onClick={() => setIsProfileMenuOpen((current) => !current)}
@@ -506,17 +506,28 @@ export function PageLayout({ children }) {
                 </span>
                 {!isCollapsed && (
                   <div className="flex flex-1 flex-col overflow-hidden">
-                    <span className="truncate text-sm font-semibold text-white">{username}</span>
+                    <span className="truncate text-sm font-semibold text-slate-900">{username}</span>
                     <span className="truncate text-xs text-slate-400">{email}</span>
                   </div>
                 )}
                 {!isCollapsed && <CogSixIcon className="h-4 w-4 text-slate-400" />}
               </button>
               {isProfileMenuOpen && (
-                <div className="absolute bottom-16 left-0 right-0 z-10 space-y-2 rounded-xl border border-slate-800/60 bg-slate-900/95 p-3 text-sm text-slate-200 shadow-lg">
+                <div className="absolute bottom-16 left-0 right-0 z-10 space-y-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600 shadow-xl">
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-800"
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
+                    onClick={() => {
+                      setShowShortcuts(true);
+                      setIsProfileMenuOpen(false);
+                    }}
+                  >
+                    <span className="text-slate-700">View keyboard shortcuts</span>
+                    <span className="text-xs text-slate-400">Shift + ?</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
                     onClick={() => {
                       toggleLanguage();
                       setIsProfileMenuOpen(false);
@@ -527,7 +538,7 @@ export function PageLayout({ children }) {
                   </button>
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-rose-200 transition duration-200 hover:bg-rose-500/10"
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-rose-500 transition duration-200 hover:bg-rose-50"
                     onClick={() => {
                       setIsProfileMenuOpen(false);
                       setUsername(null);
@@ -544,51 +555,155 @@ export function PageLayout({ children }) {
 
         {isSidebarOpen && (
           <div
-            className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-sm lg:hidden"
+            className="fixed inset-0 z-30 bg-slate-900/30 backdrop-blur-sm lg:hidden"
             onClick={() => setIsSidebarOpen(false)}
           />
         )}
 
         <div className={mainClassName}>
-          <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-            <div className="flex items-center justify-between px-4 py-3 sm:px-6 lg:px-10">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-600 transition duration-200 hover:border-indigo-300 hover:text-indigo-600 lg:hidden"
-                  onClick={() => setIsSidebarOpen(true)}
-                >
-                  <MenuIcon />
-                  <span className="sr-only">Open navigation</span>
-                </button>
-                <button
-                  type="button"
-                  className="hidden h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-600 transition duration-200 hover:border-indigo-300 hover:text-indigo-600 lg:inline-flex"
-                  onClick={() => navigate(-1)}
-                >
-                  <ArrowLeftIcon />
-                  <span className="sr-only">Go back</span>
-                </button>
-                <div className="min-w-0">
-                  <nav className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                    {pageMeta.breadcrumbs.map((crumb, index) => (
-                      <span key={crumb} className="flex items-center gap-2">
-                        <span>{crumb}</span>
-                        {index < pageMeta.breadcrumbs.length - 1 && (
-                          <span aria-hidden="true" className="text-slate-300">
-                            /
-                          </span>
-                        )}
-                      </span>
-                    ))}
-                  </nav>
-                  <h1 className="truncate text-xl font-semibold text-slate-900 sm:text-2xl">
-                    {pageMeta.title}
-                  </h1>
+          <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
+            <div className="flex flex-col gap-4 px-4 py-4 sm:px-6 lg:px-10">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-3 md:gap-4">
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition duration-200 hover:border-indigo-300 hover:text-indigo-600 lg:hidden"
+                    onClick={() => setIsSidebarOpen(true)}
+                  >
+                    <MenuIcon />
+                    <span className="sr-only">Open navigation</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="hidden h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition duration-200 hover:border-indigo-300 hover:text-indigo-600 lg:inline-flex"
+                    onClick={() => navigate(-1)}
+                  >
+                    <ArrowLeftIcon />
+                    <span className="sr-only">Go back</span>
+                  </button>
+                  <div className="min-w-0 space-y-1">
+                    <nav className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-400">
+                      {pageMeta.breadcrumbs.map((crumb, index) => (
+                        <span key={crumb} className="flex items-center gap-2">
+                          <span>{crumb}</span>
+                          {index < pageMeta.breadcrumbs.length - 1 && (
+                            <span aria-hidden="true" className="text-slate-300">
+                              /
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                    </nav>
+                    <h1 className="truncate text-xl font-semibold text-slate-900 sm:text-2xl">
+                      {pageMeta.title}
+                    </h1>
+                  </div>
+                </div>
+                <div className="relative flex flex-wrap items-center justify-end gap-2 md:gap-3">
+                  <div className="hidden items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm transition duration-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 md:flex">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="h-4 w-4 text-slate-400"
+                      aria-hidden="true"
+                    >
+                      <path d="M11 17a6 6 0 100-12 6 6 0 000 12z" />
+                      <path d="M21 21l-3.5-3.5" strokeLinecap="round" />
+                    </svg>
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      className="w-56 border-none bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                      placeholder="Search products or rules"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition duration-200 hover:border-indigo-300 hover:text-indigo-600"
+                    onClick={() => setShowShortcuts((current) => !current)}
+                  >
+                    <QuestionIcon />
+                    <span className="sr-only">Keyboard shortcuts</span>
+                  </button>
+                  <Button
+                    variant="primary"
+                    className="hidden md:inline-flex"
+                    icon={<PlusIcon className="h-4 w-4" />}
+                    onClick={() => setShowCommandPalette((current) => !current)}
+                  >
+                    {pageMeta.primaryActionLabel}
+                  </Button>
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-indigo-500 bg-indigo-500 text-white transition duration-200 hover:bg-indigo-400 md:hidden"
+                    onClick={() => setShowCommandPalette((current) => !current)}
+                  >
+                    <PlusIcon />
+                    <span className="sr-only">Create action</span>
+                  </button>
+
+                  {showShortcuts && (
+                    <div
+                      ref={shortcutsRef}
+                      className="absolute right-0 top-12 z-20 w-72 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-xl"
+                    >
+                      <h3 className="text-sm font-semibold text-slate-900">Keyboard shortcuts</h3>
+                      <ul className="mt-3 space-y-2">
+                        <li className="flex items-center justify-between">
+                          <span>Open quick actions</span>
+                          <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs">Shift + A</span>
+                        </li>
+                        <li className="flex items-center justify-between">
+                          <span>Toggle language</span>
+                          <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs">Alt + L</span>
+                        </li>
+                        <li className="flex items-center justify-between">
+                          <span>Preview pricing</span>
+                          <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs">P</span>
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+
+                  {showCommandPalette && (
+                    <div
+                      ref={commandPaletteRef}
+                      className="absolute right-0 top-12 z-20 w-80 space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-xl"
+                    >
+                      <h3 className="text-sm font-semibold text-slate-900">Quick actions</h3>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
+                        onClick={() => setShowCommandPalette(false)}
+                      >
+                        <span>Create pricing rule</span>
+                        <span className="text-xs text-slate-400">Shift + C</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
+                        onClick={() => setShowCommandPalette(false)}
+                      >
+                        <span>Import pricing CSV</span>
+                        <span className="text-xs text-slate-400">I</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
+                        onClick={() => setShowCommandPalette(false)}
+                      >
+                        <span>Export current rules</span>
+                        <span className="text-xs text-slate-400">E</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="relative flex items-center gap-3">
-                <div className="hidden items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm transition duration-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 md:flex">
+              <div className="md:hidden">
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm transition duration-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100">
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
@@ -604,95 +719,15 @@ export function PageLayout({ children }) {
                     type="search"
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    className="w-56 border-none bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                    className="flex-1 border-none bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
                     placeholder="Search products or rules"
                   />
                 </div>
-                <button
-                  type="button"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-600 transition duration-200 hover:border-indigo-300 hover:text-indigo-600"
-                  onClick={() => setShowShortcuts((current) => !current)}
-                >
-                  <QuestionIcon />
-                  <span className="sr-only">Keyboard shortcuts</span>
-                </button>
-                <Button
-                  variant="primary"
-                  className="hidden md:inline-flex"
-                  icon={<PlusIcon className="h-4 w-4" />}
-                  onClick={() => setShowCommandPalette((current) => !current)}
-                >
-                  {pageMeta.primaryActionLabel}
-                </Button>
-                <button
-                  type="button"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-indigo-500 bg-indigo-500 text-white transition duration-200 hover:bg-indigo-400 md:hidden"
-                  onClick={() => setShowCommandPalette((current) => !current)}
-                >
-                  <PlusIcon />
-                  <span className="sr-only">Create action</span>
-                </button>
-
-                {showShortcuts && (
-                  <div
-                    ref={shortcutsRef}
-                    className="absolute right-0 top-12 z-20 w-72 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-xl"
-                  >
-                    <h3 className="text-sm font-semibold text-slate-900">Keyboard shortcuts</h3>
-                    <ul className="mt-3 space-y-2">
-                      <li className="flex items-center justify-between">
-                        <span>Open quick actions</span>
-                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs">Shift + A</span>
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span>Toggle language</span>
-                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs">Alt + L</span>
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span>Preview pricing</span>
-                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs">P</span>
-                      </li>
-                    </ul>
-                  </div>
-                )}
-
-                {showCommandPalette && (
-                  <div
-                    ref={commandPaletteRef}
-                    className="absolute right-0 top-12 z-20 w-80 space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-xl"
-                  >
-                    <h3 className="text-sm font-semibold text-slate-900">Quick actions</h3>
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
-                      onClick={() => setShowCommandPalette(false)}
-                    >
-                      <span>Create pricing rule</span>
-                      <span className="text-xs text-slate-400">Shift + C</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
-                      onClick={() => setShowCommandPalette(false)}
-                    >
-                      <span>Import pricing CSV</span>
-                      <span className="text-xs text-slate-400">I</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
-                      onClick={() => setShowCommandPalette(false)}
-                    >
-                      <span>Export current rules</span>
-                      <span className="text-xs text-slate-400">E</span>
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10">
+          <main className="flex-1 px-4 py-8 sm:px-6 lg:px-10">
             <div className="mx-auto w-full max-w-7xl space-y-6">{children}</div>
           </main>
         </div>

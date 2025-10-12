@@ -3,9 +3,9 @@ import { clsx } from 'clsx';
 
 export const Input = forwardRef(({ label, helperText, className, adornment, prefix, ...props }, ref) => {
   return (
-    <label className="flex flex-col gap-1 text-sm text-slate-700">
+    <label className="flex flex-col gap-1 text-sm text-slate-600">
       {label && <span className="font-semibold text-slate-700">{label}</span>}
-      <div className="relative flex h-11 items-center rounded-md border border-slate-300 bg-white px-3 shadow-sm transition duration-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100">
+      <div className="relative flex h-11 items-center rounded-md border border-slate-200 bg-white px-3 shadow-sm transition duration-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100">
         {prefix && <span className="mr-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{prefix}</span>}
         <input
           ref={ref}
