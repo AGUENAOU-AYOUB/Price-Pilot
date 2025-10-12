@@ -1,16 +1,15 @@
 import { clsx } from 'clsx';
 
 const baseStyles =
-  'inline-flex h-11 items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold tracking-tight transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70';
+  'inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium tracking-tight transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60';
 
 const variants = {
   primary:
-    'bg-gradient-to-r from-primary-600 via-primary-500 to-secondary-500 text-white shadow-[0_18px_40px_-20px_rgba(139,58,98,0.6)] hover:shadow-[0_22px_50px_-22px_rgba(139,58,98,0.65)] disabled:shadow-none',
+    'bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 hover:shadow transition duration-200 disabled:shadow-none',
   secondary:
-    'border border-brand-blush/70 bg-white/80 text-brand-charcoal shadow-[0_12px_30px_-20px_rgba(139,58,98,0.35)] hover:border-brand-rose/70 hover:bg-brand-blush/40',
-  ghost: 'bg-transparent text-brand-charcoal hover:bg-brand-blush/35',
-  danger:
-    'bg-error-500 text-white shadow-[0_18px_40px_-20px_rgba(217,92,108,0.6)] hover:bg-error-500/90',
+    'border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-indigo-300 hover:text-indigo-600 hover:shadow-md',
+  ghost: 'bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+  danger: 'bg-rose-500 text-white shadow-sm hover:bg-rose-400',
 };
 
 const Spinner = () => (

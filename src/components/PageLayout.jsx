@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 
 import { usePricingStore } from '../store/pricingStore';
@@ -7,15 +14,296 @@ import { useTranslation } from '../i18n/useTranslation';
 import { Logo } from './Logo';
 import { Button } from './Button';
 
-const navItems = [
-  { to: '/', labelKey: 'nav.dashboard' },
-  { to: '/global-pricing', labelKey: 'nav.globalPricing' },
-  { to: '/bracelets', labelKey: 'nav.bracelets' },
-  { to: '/necklaces', labelKey: 'nav.necklaces' },
-  { to: '/rings', labelKey: 'nav.rings' },
-  { to: '/hand-chains', labelKey: 'nav.handChains' },
-  { to: '/sets', labelKey: 'nav.sets' },
-];
+const PageLayoutContext = createContext({
+  searchQuery: '',
+  setSearchQuery: () => {},
+});
+
+export function usePageLayoutContext() {
+  return useContext(PageLayoutContext);
+}
+
+const defaultMeta = {
+  title: 'Workspace',
+  breadcrumbs: ['Workspace'],
+  primaryActionLabel: 'New action',
+};
+
+const topBarConfig = {
+  '/': {
+    title: 'Dashboard Overview',
+    breadcrumbs: ['Dashboard'],
+    primaryActionLabel: 'New automation',
+  },
+  '/global-pricing': {
+    title: 'Global Pricing Rules',
+    breadcrumbs: ['Pricing', 'Global Pricing'],
+    primaryActionLabel: 'Create rule',
+  },
+  '/bracelets': {
+    title: 'Bracelets Pricing',
+    breadcrumbs: ['Pricing Management', 'Bracelets'],
+    primaryActionLabel: 'New adjustment',
+  },
+  '/necklaces': {
+    title: 'Necklaces Pricing',
+    breadcrumbs: ['Pricing Management', 'Necklaces'],
+    primaryActionLabel: 'New adjustment',
+  },
+  '/rings': {
+    title: 'Rings Pricing',
+    breadcrumbs: ['Pricing Management', 'Rings'],
+    primaryActionLabel: 'New adjustment',
+  },
+  '/hand-chains': {
+    title: 'Hand Chains Pricing',
+    breadcrumbs: ['Pricing Management', 'Hand Chains'],
+    primaryActionLabel: 'New adjustment',
+  },
+  '/sets': {
+    title: 'Sets Pricing',
+    breadcrumbs: ['Pricing Management', 'Sets'],
+    primaryActionLabel: 'New adjustment',
+  },
+};
+
+const toneClasses = {
+  neutral: 'bg-slate-700/60 text-slate-200',
+  warning: 'bg-amber-500/20 text-amber-300 border border-amber-400/40',
+  success: 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40',
+  info: 'bg-indigo-500/20 text-indigo-200 border border-indigo-400/40',
+};
+
+function Badge({ tone = 'neutral', children }) {
+  return (
+    <span
+      className={clsx(
+        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide',
+        toneClasses[tone] ?? toneClasses.neutral,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function IconWrapper({ children }) {
+  return (
+    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800/70 text-slate-200 transition group-hover:bg-indigo-600/40 group-focus-visible:bg-indigo-600/40">
+      {children}
+    </span>
+  );
+}
+
+function NavigationItem({ item, collapsed, onSelect }) {
+  const content = (
+    <>
+      <IconWrapper>
+        <item.icon className="h-5 w-5" />
+      </IconWrapper>
+      {!collapsed && (
+        <div className="flex flex-1 items-center justify-between gap-2">
+          <span className="text-sm font-medium">{item.label}</span>
+          {item.badge ? <Badge tone={item.badge.tone}>{item.badge.label}</Badge> : null}
+        </div>
+      )}
+    </>
+  );
+
+  if (item.to) {
+    return (
+      <NavLink
+        to={item.to}
+        className={({ isActive }) =>
+          clsx(
+            'group flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900',
+            collapsed ? 'justify-center' : 'justify-start',
+            isActive
+              ? 'bg-indigo-600/20 text-white ring-1 ring-inset ring-indigo-500'
+              : 'hover:bg-slate-800/70 hover:text-white',
+          )
+        }
+        onClick={onSelect}
+      >
+        {content}
+      </NavLink>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (typeof item.onClick === 'function') {
+          item.onClick();
+        }
+      }}
+      className={clsx(
+        'group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-slate-300 transition duration-200 hover:bg-slate-800/70 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900',
+        collapsed ? 'justify-center' : 'justify-start',
+      )}
+    >
+      {content}
+    </button>
+  );
+}
+
+function HomeIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M3 11.25L12 3l9 8.25V20a1 1 0 01-1 1h-5.5a.5.5 0 01-.5-.5v-4.75a.75.75 0 00-.75-.75h-3.5a.75.75 0 00-.75.75V20.5a.5.5 0 01-.5.5H4a1 1 0 01-1-1v-8.75z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CubeIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M12 3l8.5 4.5v9L12 21l-8.5-4.5v-9z" strokeLinejoin="round" />
+      <path d="M12 12l8.5-4.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 12L3.5 7.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AdjustmentsIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M6 7h12M6 12h7M6 17h10" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="9" cy="12" r="2" />
+      <circle cx="14" cy="17" r="2" />
+    </svg>
+  );
+}
+
+function CollectionIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
+      <path d="M9 4v16" />
+      <path d="M4 9h16" />
+    </svg>
+  );
+}
+
+function BraceletIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <circle cx="12" cy="12" r="7" />
+      <path d="M5 12h14" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function NecklaceIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M4 6c2 4 5 6 8 6s6-2 8-6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 12v8" strokeLinecap="round" />
+      <path d="M8 20h8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function RingIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <circle cx="12" cy="14" r="6" />
+      <path d="M9 5l3-3 3 3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LayersIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M12 4l8 4-8 4-8-4 8-4z" strokeLinejoin="round" />
+      <path d="M4 12l8 4 8-4" strokeLinejoin="round" />
+      <path d="M4 16l8 4 8-4" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LinkIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M10.5 13.5l3-3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 6h-2a4 4 0 000 8h2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M15 10h2a4 4 0 110 8h-2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function GlobeIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a15 15 0 010 18a15 15 0 010-18z" />
+    </svg>
+  );
+}
+
+function CogIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h.09A1.65 1.65 0 0010 3.09V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h.09a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v.09A1.65 1.65 0 0019.4 12z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ShieldIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M12 3l8 4v5c0 5.25-3.438 9.984-8 11-4.562-1.016-8-5.75-8-11V7l8-4z" strokeLinejoin="round" />
+      <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ArrowLeftIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MenuIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-6 w-6', props.className)}>
+      <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function QuestionIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M12 18h.01" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 14a4 4 0 10-4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PlusIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CogSixIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={clsx('h-5 w-5', props.className)}>
+      <path d="M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" />
+      <path d="M19.94 13.5a7.5 7.5 0 000-3l-2.1-.35a5.5 5.5 0 00-.94-1.63l1.08-1.9a7.5 7.5 0 00-2.12-2.12l-1.9 1.08a5.5 5.5 0 00-1.63-.94l-.35-2.1a7.5 7.5 0 00-3 0l-.35 2.1a5.5 5.5 0 00-1.63.94l-1.9-1.08a7.5 7.5 0 00-2.12 2.12l1.08 1.9a5.5 5.5 0 00-.94 1.63l-2.1.35a7.5 7.5 0 000 3l2.1.35a5.5 5.5 0 00.94 1.63l-1.08 1.9a7.5 7.5 0 002.12 2.12l1.9-1.08a5.5 5.5 0 001.63.94l.35 2.1a7.5 7.5 0 003 0l.35-2.1a5.5 5.5 0 001.63-.94l1.9 1.08a7.5 7.5 0 002.12-2.12l-1.08-1.9a5.5 5.5 0 00.94-1.63l2.1-.35z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 export function PageLayout({ children }) {
   const username = usePricingStore((state) => state.username);
@@ -23,31 +311,39 @@ export function PageLayout({ children }) {
   const language = usePricingStore((state) => state.language);
   const setLanguage = usePricingStore((state) => state.setLanguage);
   const { t } = useTranslation();
-  const [hasScrolled, setHasScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
-  const isDashboard = location.pathname === '/';
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
-  const toggleLanguage = () => {
-    setLanguage(language === 'en' ? 'fr' : 'en');
-  };
+  const profileRef = useRef(null);
+  const shortcutsRef = useRef(null);
+  const commandPaletteRef = useRef(null);
+
+  const pageMeta = useMemo(() => topBarConfig[location.pathname] ?? defaultMeta, [location.pathname]);
 
   useEffect(() => {
-    const onScroll = () => {
-      setHasScrolled(window.scrollY > 4);
-    };
-
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const handleClick = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setMenuOpen(false);
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(event.target)
+      ) {
+        setIsProfileMenuOpen(false);
+      }
+      if (shortcutsRef.current && !shortcutsRef.current.contains(event.target)) {
+        setShowShortcuts(false);
+      }
+      if (commandPaletteRef.current && !commandPaletteRef.current.contains(event.target)) {
+        setShowCommandPalette(false);
       }
     };
 
@@ -61,139 +357,346 @@ export function PageLayout({ children }) {
     .join('')
     .slice(0, 2);
 
+  const email = username
+    ? `${username.replace(/\s+/g, '.').toLowerCase()}@azorjewelry.com`
+    : 'operations@azorjewelry.com';
+
+  const toggleLanguage = () => {
+    setLanguage(language === 'en' ? 'fr' : 'en');
+  };
+
+  const openQuickActions = () => setShowCommandPalette(true);
+
+  const navigationGroups = useMemo(
+    () => [
+      {
+        key: 'main',
+        title: 'Main',
+        items: [
+          { to: '/', label: t('nav.dashboard'), icon: HomeIcon },
+          {
+            label: 'Products',
+            icon: CubeIcon,
+            badge: { label: '3', tone: 'warning' },
+            onClick: openQuickActions,
+          },
+          {
+            to: '/global-pricing',
+            label: 'Pricing Rules',
+            icon: AdjustmentsIcon,
+          },
+          {
+            label: 'Collections',
+            icon: CollectionIcon,
+            badge: { label: 'New', tone: 'info' },
+            onClick: openQuickActions,
+          },
+        ],
+      },
+      {
+        key: 'pricing',
+        title: 'Pricing Management',
+        items: [
+          { to: '/hand-chains', label: t('nav.handChains'), icon: LinkIcon },
+          { to: '/bracelets', label: t('nav.bracelets'), icon: BraceletIcon },
+          { to: '/necklaces', label: t('nav.necklaces'), icon: NecklaceIcon },
+          { to: '/rings', label: t('nav.rings'), icon: RingIcon },
+          { to: '/sets', label: t('nav.sets'), icon: LayersIcon },
+        ],
+      },
+      {
+        key: 'settings',
+        title: 'Settings',
+        items: [
+          {
+            to: '/global-pricing',
+            label: 'Global Pricing',
+            icon: GlobeIcon,
+            badge: { label: 'Live', tone: 'success' },
+          },
+          {
+            label: 'Metafield Configuration',
+            icon: CogIcon,
+            onClick: openQuickActions,
+          },
+          {
+            label: 'Backup & Restore',
+            icon: ShieldIcon,
+            onClick: openQuickActions,
+          },
+        ],
+      },
+    ],
+    [openQuickActions, t],
+  );
+
+  const sidebarClassName = clsx(
+    'fixed inset-y-0 left-0 z-40 flex h-full flex-col bg-slate-950/95 text-slate-100 shadow-xl ring-1 ring-slate-900/50 transition-transform duration-200',
+    isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+    isCollapsed ? 'w-20' : 'w-72',
+  );
+
+  const mainClassName = clsx(
+    'flex min-h-screen flex-col bg-slate-100 text-slate-900 transition-all duration-200',
+    isCollapsed ? 'lg:ml-20' : 'lg:ml-72',
+  );
+
   return (
-    <div className="relative min-h-screen bg-brand-cream text-brand-charcoal">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(203,166,181,0.18),_transparent_60%),_linear-gradient(180deg,_rgba(245,230,237,0.65)_0%,_rgba(250,247,248,0.9)_40%,_#faf7f8_100%)]" />
-      <header
-        className={clsx(
-          'sticky top-0 z-40 w-full border-b border-neutral-200/60 bg-white/70 backdrop-blur-xl transition-all duration-200',
-          hasScrolled ? 'shadow-[0_12px_40px_-20px_rgba(139,58,98,0.35)]' : 'shadow-none',
-        )}
-      >
-        <div className="mx-auto flex w-full items-center justify-between px-4 py-4 sm:px-6 lg:px-12 xl:px-14">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-3 rounded-full bg-brand-blush/70 px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
-              <Logo />
-              <span className="hidden text-sm font-semibold uppercase tracking-[0.28em] text-neutral-500 sm:block">
-                Azor Admin
-              </span>
+    <PageLayoutContext.Provider value={{ searchQuery, setSearchQuery }}>
+      <div className="relative flex min-h-screen bg-slate-100 text-slate-900">
+        <aside className={sidebarClassName}>
+          <div className="flex items-center justify-between px-4 py-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-slate-900/80">
+                <Logo />
+              </div>
+              {!isCollapsed && (
+                <div className="leading-tight">
+                  <p className="text-sm font-semibold tracking-tight text-white">Price Pilot</p>
+                  <p className="text-xs text-slate-400">CRM Console</p>
+                </div>
+              )}
             </div>
-            <div className="hidden flex-col lg:flex">
-              <span className="text-xs font-semibold uppercase tracking-[0.3em] text-neutral-400">
-                {t('header.welcomeBack')}
-              </span>
-              <span className="text-xl font-semibold text-brand-charcoal">{username}</span>
-            </div>
+            <button
+              type="button"
+              className="hidden rounded-md border border-slate-700/70 p-2 text-slate-300 transition duration-200 hover:border-indigo-500 hover:text-white lg:inline-flex"
+              onClick={() => setIsCollapsed((current) => !current)}
+            >
+              <ArrowLeftIcon className={clsx('h-4 w-4 transition-transform', isCollapsed ? 'rotate-180' : '')} />
+              <span className="sr-only">Toggle sidebar</span>
+            </button>
           </div>
-          <div className="flex items-center gap-4">
-            {!isDashboard && (
-              <nav className="hidden items-center gap-2 lg:flex">
-                {navItems.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={({ isActive }) =>
-                      clsx(
-                        'rounded-full border border-transparent px-5 py-2 text-sm font-semibold transition-all duration-200',
-                        'hover:-translate-y-[1px] hover:border-brand-rose/40 hover:bg-brand-blush/60 hover:text-brand-charcoal',
-                        isActive
-                          ? 'bg-gradient-to-r from-primary-600 to-secondary-500 text-white shadow-[0_10px_30px_-20px_rgba(139,58,98,0.6)]'
-                          : 'text-neutral-500'
-                      )
-                    }
-                  >
-                    {t(item.labelKey)}
-                  </NavLink>
-                ))}
-              </nav>
-            )}
-            <div className="relative" ref={menuRef}>
+
+          <nav className="flex-1 overflow-y-auto px-4 pb-6">
+            <div className="space-y-6">
+              {navigationGroups.map((group) => (
+                <div key={group.key} className="space-y-3">
+                  {!isCollapsed && (
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                      {group.title}
+                    </p>
+                  )}
+                  <div className="space-y-1">
+                    {group.items.map((item) => (
+                      <NavigationItem
+                        key={item.label}
+                        item={item}
+                        collapsed={isCollapsed}
+                        onSelect={() => setIsSidebarOpen(false)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </nav>
+
+          <div className="mt-auto border-t border-slate-800/70 px-4 py-5">
+            <div className="relative" ref={profileRef}>
               <button
                 type="button"
-                onClick={() => setMenuOpen((open) => !open)}
-                className="group flex items-center gap-3 rounded-full border border-brand-blush/60 bg-white/80 px-3 py-2 text-sm font-medium text-brand-charcoal shadow-[0_12px_30px_-18px_rgba(139,58,98,0.4)] transition hover:border-brand-rose/70 hover:shadow-[0_20px_45px_-20px_rgba(139,58,98,0.45)]"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
+                className={clsx(
+                  'flex w-full items-center gap-3 rounded-xl border border-slate-800/60 bg-slate-900/60 px-3 py-3 text-left transition duration-200 hover:border-indigo-500 hover:bg-slate-900',
+                  isCollapsed ? 'justify-center' : 'justify-between',
+                )}
+                onClick={() => setIsProfileMenuOpen((current) => !current)}
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary-600 to-secondary-500 text-base font-semibold text-white shadow-inner">
-                  {initials || 'AZ'}
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-500 text-sm font-semibold text-white">
+                  {initials || 'PP'}
                 </span>
-                <div className="hidden text-left sm:flex sm:flex-col sm:leading-tight">
-                  <span className="font-semibold text-brand-charcoal">{username}</span>
-                  <span className="text-xs font-medium uppercase tracking-[0.3em] text-neutral-400">
-                    Azor Jewelry
-                  </span>
-                </div>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  className={clsx('h-5 w-5 text-neutral-400 transition-transform', menuOpen ? 'rotate-180' : '')}
-                >
-                  <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                {!isCollapsed && (
+                  <div className="flex flex-1 flex-col overflow-hidden">
+                    <span className="truncate text-sm font-semibold text-white">{username}</span>
+                    <span className="truncate text-xs text-slate-400">{email}</span>
+                  </div>
+                )}
+                {!isCollapsed && <CogSixIcon className="h-4 w-4 text-slate-400" />}
               </button>
-              {menuOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 mt-3 w-60 rounded-2xl border border-brand-blush/60 bg-white/95 p-3 text-sm text-brand-charcoal shadow-[0_24px_60px_-28px_rgba(139,58,98,0.45)] backdrop-blur-xl"
-                >
-                  <Button
+              {isProfileMenuOpen && (
+                <div className="absolute bottom-16 left-0 right-0 z-10 space-y-2 rounded-xl border border-slate-800/60 bg-slate-900/95 p-3 text-sm text-slate-200 shadow-lg">
+                  <button
                     type="button"
-                    variant="ghost"
-                    className="w-full justify-start rounded-xl px-4 py-2 text-sm font-medium text-brand-charcoal hover:bg-brand-blush/40"
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-800"
                     onClick={() => {
                       toggleLanguage();
-                      setMenuOpen(false);
+                      setIsProfileMenuOpen(false);
                     }}
                   >
-                    {language === 'en' ? 'Passer en Français' : 'Switch to English'}
-                  </Button>
-                  <Button
+                    <span>{language === 'en' ? 'Passer en français' : 'Switch to English'}</span>
+                    <span className="text-xs text-slate-400">Alt + L</span>
+                  </button>
+                  <button
                     type="button"
-                    variant="ghost"
-                    className="mt-1 w-full justify-start rounded-xl px-4 py-2 text-sm font-medium text-error-500 hover:bg-error-50"
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-rose-200 transition duration-200 hover:bg-rose-500/10"
                     onClick={() => {
-                      setMenuOpen(false);
+                      setIsProfileMenuOpen(false);
                       setUsername(null);
                     }}
                   >
-                    {t('action.logout')}
-                  </Button>
+                    <span>{t('action.logout')}</span>
+                    <span className="text-xs text-rose-300">Esc</span>
+                  </button>
                 </div>
               )}
             </div>
           </div>
-        </div>
-        {!isDashboard && (
-          <div className="block border-t border-brand-blush/70 bg-white/70 px-4 pb-4 pt-2 backdrop-blur-xl lg:hidden">
-            <div className="flex gap-2 overflow-x-auto">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    clsx(
-                      'whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200',
-                      isActive
-                        ? 'bg-gradient-to-r from-primary-600 to-secondary-500 text-white shadow-[0_10px_30px_-18px_rgba(139,58,98,0.55)]'
-                        : 'border border-brand-blush/70 text-neutral-500 hover:bg-brand-blush/40 hover:text-brand-charcoal',
-                    )
-                  }
-                >
-                  {t(item.labelKey)}
-                </NavLink>
-              ))}
-            </div>
-          </div>
+        </aside>
+
+        {isSidebarOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-sm lg:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+          />
         )}
-      </header>
-      <main className="relative z-10 mx-auto w-full px-4 py-12 sm:px-6 lg:px-12 xl:px-14">
-        <div className="space-y-10">
-          {children}
+
+        <div className={mainClassName}>
+          <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+            <div className="flex items-center justify-between px-4 py-3 sm:px-6 lg:px-10">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-600 transition duration-200 hover:border-indigo-300 hover:text-indigo-600 lg:hidden"
+                  onClick={() => setIsSidebarOpen(true)}
+                >
+                  <MenuIcon />
+                  <span className="sr-only">Open navigation</span>
+                </button>
+                <button
+                  type="button"
+                  className="hidden h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-600 transition duration-200 hover:border-indigo-300 hover:text-indigo-600 lg:inline-flex"
+                  onClick={() => navigate(-1)}
+                >
+                  <ArrowLeftIcon />
+                  <span className="sr-only">Go back</span>
+                </button>
+                <div className="min-w-0">
+                  <nav className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                    {pageMeta.breadcrumbs.map((crumb, index) => (
+                      <span key={crumb} className="flex items-center gap-2">
+                        <span>{crumb}</span>
+                        {index < pageMeta.breadcrumbs.length - 1 && (
+                          <span aria-hidden="true" className="text-slate-300">
+                            /
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </nav>
+                  <h1 className="truncate text-xl font-semibold text-slate-900 sm:text-2xl">
+                    {pageMeta.title}
+                  </h1>
+                </div>
+              </div>
+              <div className="relative flex items-center gap-3">
+                <div className="hidden items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm transition duration-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 md:flex">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="h-4 w-4 text-slate-400"
+                    aria-hidden="true"
+                  >
+                    <path d="M11 17a6 6 0 100-12 6 6 0 000 12z" />
+                    <path d="M21 21l-3.5-3.5" strokeLinecap="round" />
+                  </svg>
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    className="w-56 border-none bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                    placeholder="Search products or rules"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-600 transition duration-200 hover:border-indigo-300 hover:text-indigo-600"
+                  onClick={() => setShowShortcuts((current) => !current)}
+                >
+                  <QuestionIcon />
+                  <span className="sr-only">Keyboard shortcuts</span>
+                </button>
+                <Button
+                  variant="primary"
+                  className="hidden md:inline-flex"
+                  icon={<PlusIcon className="h-4 w-4" />}
+                  onClick={() => setShowCommandPalette((current) => !current)}
+                >
+                  {pageMeta.primaryActionLabel}
+                </Button>
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-indigo-500 bg-indigo-500 text-white transition duration-200 hover:bg-indigo-400 md:hidden"
+                  onClick={() => setShowCommandPalette((current) => !current)}
+                >
+                  <PlusIcon />
+                  <span className="sr-only">Create action</span>
+                </button>
+
+                {showShortcuts && (
+                  <div
+                    ref={shortcutsRef}
+                    className="absolute right-0 top-12 z-20 w-72 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-xl"
+                  >
+                    <h3 className="text-sm font-semibold text-slate-900">Keyboard shortcuts</h3>
+                    <ul className="mt-3 space-y-2">
+                      <li className="flex items-center justify-between">
+                        <span>Open quick actions</span>
+                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs">Shift + A</span>
+                      </li>
+                      <li className="flex items-center justify-between">
+                        <span>Toggle language</span>
+                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs">Alt + L</span>
+                      </li>
+                      <li className="flex items-center justify-between">
+                        <span>Preview pricing</span>
+                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs">P</span>
+                      </li>
+                    </ul>
+                  </div>
+                )}
+
+                {showCommandPalette && (
+                  <div
+                    ref={commandPaletteRef}
+                    className="absolute right-0 top-12 z-20 w-80 space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-xl"
+                  >
+                    <h3 className="text-sm font-semibold text-slate-900">Quick actions</h3>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
+                      onClick={() => setShowCommandPalette(false)}
+                    >
+                      <span>Create pricing rule</span>
+                      <span className="text-xs text-slate-400">Shift + C</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
+                      onClick={() => setShowCommandPalette(false)}
+                    >
+                      <span>Import pricing CSV</span>
+                      <span className="text-xs text-slate-400">I</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 transition duration-200 hover:bg-slate-100"
+                      onClick={() => setShowCommandPalette(false)}
+                    >
+                      <span>Export current rules</span>
+                      <span className="text-xs text-slate-400">E</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </header>
+
+          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10">
+            <div className="mx-auto w-full max-w-7xl space-y-6">{children}</div>
+          </main>
         </div>
-      </main>
-    </div>
+      </div>
+    </PageLayoutContext.Provider>
   );
 }
