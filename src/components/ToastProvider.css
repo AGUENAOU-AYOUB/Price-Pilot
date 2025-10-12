@@ -13,65 +13,66 @@
   pointer-events: auto;
   min-width: 280px;
   max-width: 360px;
-  border-radius: 0.75rem;
-  padding: 1rem 1.25rem;
+  border-radius: 1.1rem;
+  padding: 1.15rem 1.35rem;
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
-  background-color: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  gap: 0.9rem;
+  box-shadow: 0 28px 60px -26px rgba(139, 58, 98, 0.45);
+  background: linear-gradient(150deg, rgba(250, 247, 248, 0.95) 0%, rgba(255, 255, 255, 0.98) 60%);
+  border: 1px solid rgba(196, 165, 176, 0.4);
   animation-name: toast-in, toast-out;
   animation-duration: 0.25s, 0.2s;
   animation-timing-function: ease, ease;
   animation-fill-mode: forwards, forwards;
   animation-delay: 0s, var(--toast-exit-delay, 5.8s);
   will-change: transform, opacity;
+  backdrop-filter: blur(8px);
 }
 
 .toast-card[data-variant='success'] .toast-icon {
-  background: rgba(16, 185, 129, 0.12);
-  color: #059669;
+  background: rgba(75, 182, 147, 0.16);
+  color: #35856b;
 }
 
 .toast-card[data-variant='error'] .toast-icon {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  background: rgba(217, 92, 108, 0.16);
+  color: #c04958;
 }
 
 .toast-card[data-variant='warning'] .toast-icon {
-  background: rgba(245, 158, 11, 0.16);
-  color: #b45309;
+  background: rgba(234, 163, 85, 0.18);
+  color: #b8743a;
 }
 
 .toast-card[data-variant='info'] .toast-icon {
-  background: rgba(37, 99, 235, 0.12);
-  color: #2563eb;
+  background: rgba(195, 100, 149, 0.18);
+  color: #8b3a62;
 }
 
 .toast-card[data-variant='loading'] .toast-icon {
-  background: rgba(37, 99, 235, 0.12);
-  color: #2563eb;
+  background: rgba(195, 100, 149, 0.18);
+  color: #8b3a62;
 }
 
 .toast-card h4 {
-  font-size: 0.95rem;
-  line-height: 1.35rem;
+  font-size: 1rem;
+  line-height: 1.45rem;
   font-weight: 600;
-  color: #111827;
+  color: #2c2c2c;
   margin: 0;
 }
 
 .toast-card p {
-  font-size: 0.85rem;
-  line-height: 1.25rem;
-  color: #4b5563;
+  font-size: 0.9rem;
+  line-height: 1.35rem;
+  color: #7f6676;
   margin: 0.25rem 0 0 0;
 }
 
 .toast-icon {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.65rem;
+  height: 2.65rem;
   border-radius: 9999px;
   display: flex;
   align-items: center;
@@ -84,15 +85,16 @@
   margin-left: auto;
   border: none;
   background: transparent;
-  color: #9ca3af;
+  color: #a68d9b;
   cursor: pointer;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   padding: 0.25rem;
-  transition: color 0.2s ease;
+  transition: color 0.2s ease, transform 0.2s ease;
 }
 
 .toast-close:hover {
-  color: #4b5563;
+  color: #8b3a62;
+  transform: translateY(-1px);
 }
 
 .toast-progress {
