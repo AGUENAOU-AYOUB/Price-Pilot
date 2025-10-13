@@ -29,6 +29,70 @@ export const applyPercentage = (price, percent) => {
   return roundToLuxuryStep(updated);
 };
 
+export const roundSupplementValue = (
+  value,
+  { step = 10, minimum = 0, strategy = 'luxury-ceil' } = {},
+) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return typeof minimum === 'number' && Number.isFinite(minimum) ? minimum : 0;
+  }
+
+  let rounded;
+
+  if (strategy === 'step') {
+    const numericStep = Number(step);
+    const safeStep = Number.isFinite(numericStep) && numericStep > 0 ? numericStep : 1;
+    rounded = Math.ceil(numericValue / safeStep) * safeStep;
+  } else {
+    const endings = [0, 50, 90];
+    const hasFraction = !Number.isInteger(numericValue);
+    const workingValue = hasFraction ? Math.floor(numericValue) : numericValue;
+    const lastTwoDigits = ((workingValue % 100) + 100) % 100;
+
+    if (endings.includes(lastTwoDigits)) {
+      rounded = workingValue;
+    } else {
+      let hundredBlock = Math.floor(workingValue / 100);
+      let candidate = hundredBlock * 100;
+
+      while (candidate < workingValue) {
+        let found = false;
+        for (const ending of endings) {
+          candidate = hundredBlock * 100 + ending;
+          if (candidate >= workingValue) {
+            found = true;
+            break;
+          }
+        }
+
+        if (found) {
+          break;
+        }
+
+        hundredBlock += 1;
+        candidate = hundredBlock * 100;
+      }
+
+      rounded = candidate;
+    }
+  }
+
+  if (typeof minimum === 'number' && Number.isFinite(minimum)) {
+    return Math.max(rounded, minimum);
+  }
+
+  return rounded;
+};
+
+export const applySupplementPercentage = (value, percent, options = {}) => {
+  const numericValue = Number(value) || 0;
+  const numericPercent = Number(percent);
+  const ratio = Number.isFinite(numericPercent) ? numericPercent / 100 : 0;
+  const updated = numericValue * (1 + ratio);
+  return roundSupplementValue(updated, options);
+};
+
 export const buildBraceletVariants = (product, supplements) => {
   return Object.entries(supplements).map(([title, supplement]) => ({
     id: `${product.id}-${title}`,

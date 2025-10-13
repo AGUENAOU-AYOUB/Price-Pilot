@@ -14,6 +14,7 @@ import { hasShopifyProxy } from '../config/shopify';
 import { fetchActiveProducts, fetchProductsByCollections, pushVariantUpdates } from '../services/shopify';
 import {
   applyPercentage,
+  applySupplementPercentage,
   buildBraceletVariants,
   buildHandChainVariants,
   buildNecklaceVariants,
@@ -57,6 +58,75 @@ const persistUsername = (username) => {
     }
   } catch (error) {
     console.warn('Failed to persist username to sessionStorage:', error);
+  }
+};
+
+const SUPPLEMENT_BACKUP_STORAGE_KEY = 'price-pilot.supplement-backups';
+
+const createEmptySupplementBackups = () => ({
+  bracelets: null,
+  necklaces: null,
+});
+
+const sanitizeBackupSnapshot = (value) => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (error) {
+    console.warn('Failed to sanitize supplement backup snapshot:', error);
+    return null;
+  }
+};
+
+const loadStoredSupplementBackups = () => {
+  if (typeof window === 'undefined') {
+    return createEmptySupplementBackups();
+  }
+
+  try {
+    const stored = window.localStorage.getItem(SUPPLEMENT_BACKUP_STORAGE_KEY);
+    if (!stored) {
+      return createEmptySupplementBackups();
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object') {
+      return createEmptySupplementBackups();
+    }
+
+    return {
+      bracelets: sanitizeBackupSnapshot(parsed.bracelets),
+      necklaces: sanitizeBackupSnapshot(parsed.necklaces),
+    };
+  } catch (error) {
+    console.warn('Failed to load stored supplement backups from localStorage:', error);
+    return createEmptySupplementBackups();
+  }
+};
+
+const persistSupplementBackups = (backups) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (!backups) {
+      window.localStorage.removeItem(SUPPLEMENT_BACKUP_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(
+      SUPPLEMENT_BACKUP_STORAGE_KEY,
+      JSON.stringify({
+        bracelets: sanitizeBackupSnapshot(backups.bracelets),
+        necklaces: sanitizeBackupSnapshot(backups.necklaces),
+      }),
+    );
+  } catch (error) {
+    console.warn('Failed to persist supplement backups to localStorage:', error);
   }
 };
 
@@ -1334,6 +1404,7 @@ export const usePricingStore = create(
     productsInitialized: false,
     productsSyncing: false,
     supplements: cloneSupplements(),
+    supplementBackups: loadStoredSupplementBackups(),
     backups: {},
     logs: [],
     loadingScopes: new Set(),
@@ -2731,6 +2802,194 @@ export const usePricingStore = create(
         get().toggleLoading('sets', false);
       }
 
+    },
+
+    previewBraceletSupplementAdjustment: (percent = 0) => {
+      const adjustment = Number(percent);
+      const safePercent = Number.isFinite(adjustment) ? adjustment : 0;
+      const { supplements } = get();
+
+      return Object.entries(supplements.bracelets).map(([chainType, currentValue]) => {
+        const current = Number(currentValue) || 0;
+        const next = applySupplementPercentage(current, safePercent, { minimum: 0 });
+        return {
+          chainType,
+          current,
+          next,
+          delta: next - current,
+        };
+      });
+    },
+
+    applyBraceletSupplementAdjustment: (percent = 0) => {
+      const adjustment = Number(percent);
+      const safePercent = Number.isFinite(adjustment) ? adjustment : 0;
+
+      set((state) => {
+        const updatedBracelets = Object.fromEntries(
+          Object.entries(state.supplements.bracelets).map(([chainType, value]) => [
+            chainType,
+            applySupplementPercentage(value, safePercent, { minimum: 0 }),
+          ]),
+        );
+
+        return {
+          supplements: {
+            ...state.supplements,
+            bracelets: updatedBracelets,
+          },
+        };
+      });
+    },
+
+    previewNecklaceSupplementAdjustment: (percent = 0) => {
+      const adjustment = Number(percent);
+      const safePercent = Number.isFinite(adjustment) ? adjustment : 0;
+      const { supplements } = get();
+
+      return Object.entries(supplements.necklaces).map(([chainType, values]) => {
+        const currentSupplement = Number(values?.supplement) || 0;
+        const currentPerCm = Number(values?.perCm) || 0;
+        const nextSupplement = applySupplementPercentage(currentSupplement, safePercent, {
+          minimum: 0,
+        });
+        const nextPerCm = applySupplementPercentage(currentPerCm, safePercent, {
+          strategy: 'step',
+          step: 5,
+          minimum: 0,
+        });
+
+        return {
+          chainType,
+          supplement: {
+            current: currentSupplement,
+            next: nextSupplement,
+            delta: nextSupplement - currentSupplement,
+          },
+          perCm: {
+            current: currentPerCm,
+            next: nextPerCm,
+            delta: nextPerCm - currentPerCm,
+          },
+        };
+      });
+    },
+
+    applyNecklaceSupplementAdjustment: (percent = 0) => {
+      const adjustment = Number(percent);
+      const safePercent = Number.isFinite(adjustment) ? adjustment : 0;
+
+      set((state) => {
+        const updatedNecklaces = Object.fromEntries(
+          Object.entries(state.supplements.necklaces).map(([chainType, values]) => {
+            const currentSupplement = Number(values?.supplement) || 0;
+            const currentPerCm = Number(values?.perCm) || 0;
+
+            return [
+              chainType,
+              {
+                supplement: applySupplementPercentage(currentSupplement, safePercent, {
+                  minimum: 0,
+                }),
+                perCm: applySupplementPercentage(currentPerCm, safePercent, {
+                  strategy: 'step',
+                  step: 5,
+                  minimum: 0,
+                }),
+              },
+            ];
+          }),
+        );
+
+        const updatedHandChains = Object.fromEntries(
+          Object.entries(updatedNecklaces).map(([chainType, values]) => [
+            chainType,
+            (Number(values?.supplement) || 0) * HAND_CHAIN_MULTIPLIER,
+          ]),
+        );
+
+        return {
+          supplements: {
+            ...state.supplements,
+            necklaces: updatedNecklaces,
+            handChains: updatedHandChains,
+          },
+        };
+      });
+    },
+
+    backupSupplements: (scope) => {
+      if (!['bracelets', 'necklaces'].includes(scope)) {
+        return false;
+      }
+
+      const snapshot = JSON.parse(JSON.stringify(get().supplements[scope] ?? {}));
+
+      set((state) => {
+        const nextBackups = {
+          ...state.supplementBackups,
+          [scope]: snapshot,
+        };
+
+        persistSupplementBackups(nextBackups);
+
+        return {
+          supplementBackups: nextBackups,
+        };
+      });
+
+      return true;
+    },
+
+    hasSupplementBackup: (scope) => {
+      if (!['bracelets', 'necklaces'].includes(scope)) {
+        return false;
+      }
+
+      const backup = get().supplementBackups?.[scope];
+      return Boolean(backup);
+    },
+
+    restoreSupplementBackup: (scope) => {
+      if (!['bracelets', 'necklaces'].includes(scope)) {
+        return false;
+      }
+
+      const backup = get().supplementBackups?.[scope];
+      if (!backup) {
+        return false;
+      }
+
+      const restored = JSON.parse(JSON.stringify(backup));
+
+      if (scope === 'bracelets') {
+        set((state) => ({
+          supplements: {
+            ...state.supplements,
+            bracelets: restored,
+          },
+        }));
+        return true;
+      }
+
+      set((state) => {
+        const updatedHandChains = Object.fromEntries(
+          Object.entries(restored).map(([chainType, values]) => [
+            chainType,
+            (Number(values?.supplement) || 0) * HAND_CHAIN_MULTIPLIER,
+          ]),
+        );
+
+        return {
+          supplements: {
+            ...state.supplements,
+            necklaces: restored,
+            handChains: updatedHandChains,
+          },
+        };
+      });
+
+      return true;
     },
 
     updateBraceletSupplement: (title, value) => {
