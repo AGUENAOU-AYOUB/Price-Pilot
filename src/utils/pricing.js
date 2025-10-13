@@ -8,6 +8,7 @@ export const roundToLuxuryStep = (value) => {
   const candidates = [];
   const base = Math.floor(value / 100) * 100;
   candidates.push(base);
+  candidates.push(base + 50);
   candidates.push(base + 90);
   candidates.push(base + 100);
 
@@ -34,8 +35,8 @@ export const buildBraceletVariants = (product, supplements) => {
     id: `${product.id}-${title}`,
     title,
     chainType: title,
-    price: product.basePrice + supplement,
-    compareAtPrice: product.baseCompareAtPrice + supplement,
+    price: roundToLuxuryStep(product.basePrice + supplement),
+    compareAtPrice: roundToLuxuryStep(product.baseCompareAtPrice + supplement),
   }));
 };
 
@@ -53,8 +54,8 @@ export const buildNecklaceVariants = (product, chainTypeSupplements) => {
         title,
         chainType,
         size,
-        price: priceBase,
-        compareAtPrice: compareBase,
+        price: roundToLuxuryStep(priceBase),
+        compareAtPrice: roundToLuxuryStep(compareBase),
       });
     }
   }
@@ -67,8 +68,8 @@ export const buildRingVariants = (product, ringSupplements = ringBandSupplements
     for (const size of ringSizes) {
       const supplement = ringSupplements[band][size];
       const title = `${band} • ${size}`;
-      const price = product.basePrice + supplement;
-      const compareAtPrice = product.baseCompareAtPrice + supplement;
+      const price = roundToLuxuryStep(product.basePrice + supplement);
+      const compareAtPrice = roundToLuxuryStep(product.baseCompareAtPrice + supplement);
       variants.push({
         id: `${product.id}-${band}-${size}`,
         title,
@@ -102,8 +103,8 @@ export const buildHandChainVariants = (
       id: `${product.id}-${chainType}`,
       title: chainType,
       chainType,
-      price: product.basePrice + supplement,
-      compareAtPrice: product.baseCompareAtPrice + supplement,
+      price: roundToLuxuryStep(product.basePrice + supplement),
+      compareAtPrice: roundToLuxuryStep(product.baseCompareAtPrice + supplement),
     }));
 };
 
@@ -123,8 +124,8 @@ export const buildSetVariants = (product, braceletSupplements, necklaceSupplemen
         title,
         chainType,
         size,
-        price: priceBase,
-        compareAtPrice: compareBase,
+        price: roundToLuxuryStep(priceBase),
+        compareAtPrice: roundToLuxuryStep(compareBase),
       });
     }
   }
