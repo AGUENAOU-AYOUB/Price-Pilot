@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -16,6 +16,17 @@ export function NecklacesPage() {
   const alignNecklaceVariantsFromMetafields = usePricingStore(
     (state) => state.alignNecklaceVariantsFromMetafields,
   );
+  const previewSupplementAdjustment = usePricingStore(
+    (state) => state.previewNecklaceSupplementAdjustment,
+  );
+  const applySupplementAdjustment = usePricingStore(
+    (state) => state.applyNecklaceSupplementAdjustment,
+  );
+  const backupSupplements = usePricingStore((state) => state.backupSupplements);
+  const restoreSupplementBackup = usePricingStore((state) => state.restoreSupplementBackup);
+  const hasSupplementBackup = usePricingStore((state) =>
+    state.hasSupplementBackup('necklaces'),
+  );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
@@ -24,8 +35,36 @@ export function NecklacesPage() {
 
   const [previews, setPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
+  const [supplementPercent, setSupplementPercent] = useState('');
+  const [perCmPercent, setPerCmPercent] = useState('');
+  const [supplementPreview, setSupplementPreview] = useState([]);
 
   const isBusy = loadingScopes.has('necklaces');
+
+  const supplementPercentValue = useMemo(() => {
+    const parsed = Number.parseFloat(supplementPercent);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [supplementPercent]);
+
+  const perCmPercentValue = useMemo(() => {
+    const parsed = Number.parseFloat(perCmPercent);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [perCmPercent]);
+
+  const formatCurrency = (value) => {
+    if (!Number.isFinite(value)) {
+      return '—';
+    }
+    return `${Math.round(value).toLocaleString()} dh`;
+  };
+
+  const formatDelta = (value) => {
+    if (!Number.isFinite(value) || value === 0) {
+      return t('supplements.deltaNone');
+    }
+    const prefix = value > 0 ? '+' : '−';
+    return `${prefix}${Math.abs(Math.round(value)).toLocaleString()} dh`;
+  };
 
   const handlePreview = () => {
     const results = previewNecklaces();
@@ -49,6 +88,108 @@ export function NecklacesPage() {
     }
 
     toast.success(t('toast.previewReady', { scope: t('nav.necklaces') }));
+  };
+
+  const handleSupplementPreview = () => {
+    if (supplementPercentValue === null) {
+      toast.error(t('supplements.invalidPercent'));
+      return;
+    }
+
+    const results = previewSupplementAdjustment({
+      supplementPercent: supplementPercentValue,
+      perCmPercent: 0,
+    });
+    setSupplementPreview(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(t('toast.supplementPreviewEmpty', { scope: t('nav.necklaces') }));
+      return;
+    }
+
+    toast.success(t('toast.necklaceSupplementsPreviewReady'));
+  };
+
+  const handleSupplementApply = () => {
+    if (supplementPercentValue === null) {
+      toast.error(t('supplements.invalidPercent'));
+      return;
+    }
+
+    applySupplementAdjustment({ supplementPercent: supplementPercentValue, perCmPercent: 0 });
+    const preview = previewSupplementAdjustment({
+      supplementPercent: supplementPercentValue,
+      perCmPercent: 0,
+    });
+    setSupplementPreview(preview);
+    toast.success(
+      t('toast.necklaceSupplementsApplied', {
+        percent: supplementPercentValue,
+      }),
+    );
+  };
+
+  const handlePerCmPreview = () => {
+    if (perCmPercentValue === null) {
+      toast.error(t('supplements.invalidPercent'));
+      return;
+    }
+
+    const results = previewSupplementAdjustment({
+      supplementPercent: 0,
+      perCmPercent: perCmPercentValue,
+    });
+    setSupplementPreview(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(t('toast.supplementPreviewEmpty', { scope: t('nav.necklaces') }));
+      return;
+    }
+
+    toast.success(t('toast.necklacePerCmPreviewReady'));
+  };
+
+  const handlePerCmApply = () => {
+    if (perCmPercentValue === null) {
+      toast.error(t('supplements.invalidPercent'));
+      return;
+    }
+
+    applySupplementAdjustment({ supplementPercent: 0, perCmPercent: perCmPercentValue });
+    const preview = previewSupplementAdjustment({
+      supplementPercent: 0,
+      perCmPercent: perCmPercentValue,
+    });
+    setSupplementPreview(preview);
+    toast.success(
+      t('toast.necklacePerCmApplied', {
+        percent: perCmPercentValue,
+      }),
+    );
+  };
+
+  const handleSupplementBackup = () => {
+    const success = backupSupplements('necklaces');
+    if (success) {
+      toast.success(t('toast.supplementBackupSaved', { scope: t('nav.necklaces') }));
+    } else {
+      toast.error(t('toast.supplementBackupFailed', { scope: t('nav.necklaces') }));
+    }
+  };
+
+  const handleSupplementRestore = () => {
+    const restored = restoreSupplementBackup('necklaces');
+    if (!restored) {
+      toast.warning(t('toast.supplementBackupMissing', { scope: t('nav.necklaces') }));
+      return;
+    }
+
+    const preview = previewSupplementAdjustment({
+      supplementPercent: supplementPercentValue ?? 0,
+      perCmPercent: perCmPercentValue ?? 0,
+    });
+    setSupplementPreview(preview);
+    toast.success(t('toast.supplementRestoreSuccess', { scope: t('nav.necklaces') }));
   };
 
   const runAction = async (action, handler) => {
@@ -132,6 +273,133 @@ export function NecklacesPage() {
             {t('action.restoreBackup')}
           </Button>
         </div>
+      </Card>
+      <Card title={t('supplements.adjustmentTitle')} subtitle={t('supplements.adjustmentSubtitleNecklaces')}>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm">
+            <h3 className="text-base font-semibold text-neutral-900">
+              {t('supplements.sectionSupplementTitle')}
+            </h3>
+            <div className="mt-4 grid gap-4 sm:flex sm:items-end">
+              <div className="sm:w-48">
+                <Input
+                  label={t('supplements.percentLabel')}
+                  type="number"
+                  step="0.1"
+                  value={supplementPercent}
+                  onChange={(event) => setSupplementPercent(event.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" variant="secondary" onClick={handleSupplementPreview}>
+                  {t('supplements.previewSupplementsButton')}
+                </Button>
+                <Button type="button" onClick={handleSupplementApply}>
+                  {t('supplements.applySupplementsButton')}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm">
+            <h3 className="text-base font-semibold text-neutral-900">
+              {t('supplements.sectionPerCmTitle')}
+            </h3>
+            <div className="mt-4 grid gap-4 sm:flex sm:items-end">
+              <div className="sm:w-48">
+                <Input
+                  label={t('supplements.percentLabel')}
+                  type="number"
+                  step="0.1"
+                  value={perCmPercent}
+                  onChange={(event) => setPerCmPercent(event.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" variant="secondary" onClick={handlePerCmPreview}>
+                  {t('supplements.previewPerCmButton')}
+                </Button>
+                <Button type="button" onClick={handlePerCmApply}>
+                  {t('supplements.applyPerCmButton')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Button type="button" variant="secondary" onClick={handleSupplementBackup}>
+            {t('supplements.backupButton')}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={handleSupplementRestore}
+            disabled={!hasSupplementBackup}
+          >
+            {t('supplements.restoreButton')}
+          </Button>
+        </div>
+        {supplementPreview.length > 0 && (
+          <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-200">
+            <table className="min-w-full divide-y divide-neutral-200 text-sm">
+              <thead className="bg-neutral-50/70 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-4 py-3">{t('supplements.chainType')}</th>
+                  <th className="px-4 py-3">{t('supplements.fieldLabel')}</th>
+                  <th className="px-4 py-3 text-right">{t('supplements.currentValue')}</th>
+                  <th className="px-4 py-3 text-right">{t('supplements.previewValue')}</th>
+                  <th className="px-4 py-3 text-right">{t('supplements.changeValue')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200 bg-white/80">
+                {supplementPreview.map((item) => (
+                  <Fragment key={item.chainType}>
+                    <tr>
+                      <td className="px-4 py-3 font-medium text-neutral-900" rowSpan={2}>
+                        {item.chainType}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-600">{t('supplements.fieldSupplement')}</td>
+                      <td className="px-4 py-3 text-right text-neutral-700">{formatCurrency(item.supplement.current)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-primary-600">
+                        {formatCurrency(item.supplement.next)}
+                      </td>
+                      <td
+                        className={
+                          item.supplement.delta > 0
+                            ? 'px-4 py-3 text-right font-semibold text-emerald-600'
+                            : item.supplement.delta < 0
+                              ? 'px-4 py-3 text-right font-semibold text-rose-500'
+                              : 'px-4 py-3 text-right font-semibold text-neutral-500'
+                        }
+                      >
+                        {formatDelta(item.supplement.delta)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 text-neutral-600">{t('supplements.fieldPerCm')}</td>
+                      <td className="px-4 py-3 text-right text-neutral-700">{formatCurrency(item.perCm.current)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-primary-600">
+                        {formatCurrency(item.perCm.next)}
+                      </td>
+                      <td
+                        className={
+                          item.perCm.delta > 0
+                            ? 'px-4 py-3 text-right font-semibold text-emerald-600'
+                            : item.perCm.delta < 0
+                              ? 'px-4 py-3 text-right font-semibold text-rose-500'
+                              : 'px-4 py-3 text-right font-semibold text-neutral-500'
+                        }
+                      >
+                        {formatDelta(item.perCm.delta)}
+                      </td>
+                    </tr>
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
       <Card title={t('necklaces.previewTitle')} subtitle={t('necklaces.previewSubtitle')}>
         <PreviewTable previews={previews} />
