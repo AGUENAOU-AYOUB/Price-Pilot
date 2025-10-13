@@ -29,6 +29,31 @@ export const applyPercentage = (price, percent) => {
   return roundToLuxuryStep(updated);
 };
 
+export const roundSupplementValue = (value, { step = 10, minimum = 0 } = {}) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return typeof minimum === 'number' && Number.isFinite(minimum) ? minimum : 0;
+  }
+
+  const numericStep = Number(step);
+  const safeStep = Number.isFinite(numericStep) && numericStep > 0 ? numericStep : 1;
+  const rounded = Math.round(numericValue / safeStep) * safeStep;
+
+  if (typeof minimum === 'number' && Number.isFinite(minimum)) {
+    return Math.max(rounded, minimum);
+  }
+
+  return rounded;
+};
+
+export const applySupplementPercentage = (value, percent, options) => {
+  const numericValue = Number(value) || 0;
+  const numericPercent = Number(percent);
+  const ratio = Number.isFinite(numericPercent) ? numericPercent / 100 : 0;
+  const updated = numericValue * (1 + ratio);
+  return roundSupplementValue(updated, options);
+};
+
 export const buildBraceletVariants = (product, supplements) => {
   return Object.entries(supplements).map(([title, supplement]) => ({
     id: `${product.id}-${title}`,
