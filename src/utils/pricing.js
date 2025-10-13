@@ -46,28 +46,36 @@ export const roundSupplementValue = (
     rounded = Math.ceil(numericValue / safeStep) * safeStep;
   } else {
     const endings = [0, 50, 90];
-    let hundredBlock = Math.floor(numericValue / 100);
-    let candidate = hundredBlock * 100;
+    const hasFraction = !Number.isInteger(numericValue);
+    const workingValue = hasFraction ? Math.floor(numericValue) : numericValue;
+    const lastTwoDigits = ((workingValue % 100) + 100) % 100;
 
-    while (candidate < numericValue) {
-      let found = false;
-      for (const ending of endings) {
-        candidate = hundredBlock * 100 + ending;
-        if (candidate >= numericValue) {
-          found = true;
+    if (endings.includes(lastTwoDigits)) {
+      rounded = workingValue;
+    } else {
+      let hundredBlock = Math.floor(workingValue / 100);
+      let candidate = hundredBlock * 100;
+
+      while (candidate < workingValue) {
+        let found = false;
+        for (const ending of endings) {
+          candidate = hundredBlock * 100 + ending;
+          if (candidate >= workingValue) {
+            found = true;
+            break;
+          }
+        }
+
+        if (found) {
           break;
         }
+
+        hundredBlock += 1;
+        candidate = hundredBlock * 100;
       }
 
-      if (found) {
-        break;
-      }
-
-      hundredBlock += 1;
-      candidate = hundredBlock * 100;
+      rounded = candidate;
     }
-
-    rounded = candidate;
   }
 
   if (typeof minimum === 'number' && Number.isFinite(minimum)) {
