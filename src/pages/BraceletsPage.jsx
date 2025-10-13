@@ -16,6 +16,18 @@ export function BraceletsPage() {
   const alignBraceletVariantsFromMetafields = usePricingStore(
     (state) => state.alignBraceletVariantsFromMetafields,
   );
+  const previewBraceletAdjustment = usePricingStore(
+    (state) => state.previewBraceletChainAdjustment,
+  );
+  const applyBraceletAdjustment = usePricingStore(
+    (state) => state.applyBraceletChainAdjustment,
+  );
+  const restoreBraceletAdjustment = usePricingStore(
+    (state) => state.restoreBraceletChainAdjustment,
+  );
+  const braceletAdjustmentBackup = usePricingStore(
+    (state) => state.chainAdjustmentBackups?.bracelets,
+  );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
@@ -23,9 +35,12 @@ export function BraceletsPage() {
   const toast = useToast();
 
   const [previews, setPreviews] = useState([]);
+  const [adjustmentPreviews, setAdjustmentPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
+  const [adjustmentPercent, setAdjustmentPercent] = useState(0);
 
   const isBusy = loadingScopes.has('bracelets');
+  const canRestoreAdjustment = Boolean(braceletAdjustmentBackup?.products?.length);
 
   const handlePreview = () => {
     const results = previewBracelets();
@@ -49,6 +64,39 @@ export function BraceletsPage() {
     }
 
     toast.success(t('toast.previewReady', { scope: t('nav.bracelets') }));
+  };
+
+  const handleAdjustmentPreview = () => {
+    const results = previewBraceletAdjustment(adjustmentPercent);
+    setAdjustmentPreviews(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(
+        t('toast.previewEmpty', { scope: t('chainAdjustment.scope.bracelets') }),
+      );
+      return;
+    }
+
+    const missingCount = results.reduce((count, preview) => {
+      if (!preview?.variants) {
+        return count;
+      }
+      return count + preview.variants.filter((variant) => variant.status === 'missing').length;
+    }, 0);
+
+    if (missingCount > 0) {
+      toast.error(
+        t('toast.previewMissing', {
+          scope: t('chainAdjustment.scope.bracelets'),
+          count: missingCount,
+        }),
+      );
+      return;
+    }
+
+    toast.success(
+      t('toast.previewReady', { scope: t('chainAdjustment.scope.bracelets') }),
+    );
   };
 
   const runAction = async (action, handler) => {
@@ -116,6 +164,58 @@ export function BraceletsPage() {
             {t('action.restoreBackup')}
           </Button>
         </div>
+      </Card>
+      <Card
+        title={t('bracelets.adjustmentTitle')}
+        subtitle={t('bracelets.adjustmentSubtitle')}
+      >
+        <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
+          <Input
+            type="number"
+            step="0.5"
+            label={t('chainAdjustment.percentLabel')}
+            helperText={t('chainAdjustment.percentHint')}
+            value={adjustmentPercent}
+            onChange={(event) => setAdjustmentPercent(Number(event.target.value))}
+            adornment="%"
+          />
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleAdjustmentPreview}
+              disabled={isBusy}
+            >
+              {t('action.preview')}
+            </Button>
+            <Button
+              type="button"
+              isLoading={isBusy && activeAction === 'adjust-apply'}
+              loadingText={t('chainAdjustment.applying')}
+              onClick={() =>
+                runAction('adjust-apply', () => applyBraceletAdjustment(adjustmentPercent))
+              }
+            >
+              {t('chainAdjustment.apply')}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isBusy || !canRestoreAdjustment}
+              isLoading={isBusy && activeAction === 'adjust-restore'}
+              loadingText={t('chainAdjustment.restoring')}
+              onClick={() => runAction('adjust-restore', () => restoreBraceletAdjustment())}
+            >
+              {t('chainAdjustment.restore')}
+            </Button>
+          </div>
+        </form>
+      </Card>
+      <Card
+        title={t('chainAdjustment.previewTitle')}
+        subtitle={t('chainAdjustment.previewSubtitle')}
+      >
+        <PreviewTable previews={adjustmentPreviews} />
       </Card>
       <Card title={t('bracelets.previewTitle')} subtitle={t('bracelets.previewSubtitle')}>
         <PreviewTable previews={previews} />

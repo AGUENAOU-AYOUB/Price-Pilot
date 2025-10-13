@@ -24,6 +24,9 @@ const ACTIVITY_ICONS = {
   apply: CheckIcon,
   backup: ShieldIcon,
   restore: RotateIcon,
+  'adjust-preview': PreviewIcon,
+  'adjust-apply': CheckIcon,
+  'adjust-restore': RotateIcon,
 };
 
 const currencyFormatter = new Intl.NumberFormat('fr-MA', {
@@ -279,6 +282,18 @@ export function HandChainsPage() {
   const alignHandChainVariantsFromMetafields = usePricingStore(
     (state) => state.alignHandChainVariantsFromMetafields,
   );
+  const previewHandChainAdjustment = usePricingStore(
+    (state) => state.previewHandChainAdjustment,
+  );
+  const applyHandChainAdjustment = usePricingStore(
+    (state) => state.applyHandChainAdjustment,
+  );
+  const restoreHandChainAdjustment = usePricingStore(
+    (state) => state.restoreHandChainAdjustment,
+  );
+  const handChainAdjustmentBackup = usePricingStore(
+    (state) => state.chainAdjustmentBackups?.handchains,
+  );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const loadingScopes = usePricingStore((state) => state.loadingScopes);
@@ -297,6 +312,8 @@ export function HandChainsPage() {
   const [compareAtPrice, setCompareAtPrice] = useState('');
   const [activity, setActivity] = useState([]);
   const [timelineRange, setTimelineRange] = useState('7');
+  const [chainAdjustmentPercent, setChainAdjustmentPercent] = useState(0);
+  const [chainAdjustmentPreviews, setChainAdjustmentPreviews] = useState([]);
   const tabs = useMemo(
     () => [
       { key: 'overview', label: 'Overview' },
@@ -308,6 +325,7 @@ export function HandChainsPage() {
   );
 
   const isBusy = loadingScopes.has('handchains');
+  const canRestoreChainAdjustment = Boolean(handChainAdjustmentBackup?.products?.length);
 
   const filteredPreviews = useMemo(() => {
     if (!Array.isArray(previews)) {
@@ -376,6 +394,39 @@ export function HandChainsPage() {
     toast.success(t('toast.previewReady', { scope: t('nav.handChains') }));
     appendActivity('preview', 'Generated hand chains preview');
     setActiveTab('preview');
+  };
+
+  const handleChainAdjustmentPreview = () => {
+    const results = previewHandChainAdjustment(chainAdjustmentPercent);
+    setChainAdjustmentPreviews(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(
+        t('toast.previewEmpty', { scope: t('chainAdjustment.scope.handChains') }),
+      );
+      return;
+    }
+
+    const missingCount = results.reduce((count, preview) => {
+      if (!preview?.variants) {
+        return count;
+      }
+      return count + preview.variants.filter((variant) => variant.status === 'missing').length;
+    }, 0);
+
+    if (missingCount > 0) {
+      toast.error(
+        t('toast.previewMissing', {
+          scope: t('chainAdjustment.scope.handChains'),
+          count: missingCount,
+        }),
+      );
+      appendActivity('adjust-preview', 'Adjustment preview completed with missing variants');
+      return;
+    }
+
+    toast.success(t('toast.previewReady', { scope: t('chainAdjustment.scope.handChains') }));
+    appendActivity('adjust-preview', 'Generated hand chain adjustment preview');
   };
 
   const runAction = async (action, handler, activityLabel) => {
@@ -519,6 +570,74 @@ export function HandChainsPage() {
           {t('action.restoreBackup')}
         </Button>
       </div>
+    </Card>
+  );
+
+  const adjustmentCard = (
+    <Card
+      title={t('handChains.adjustmentTitle')}
+      subtitle={t('handChains.adjustmentSubtitle')}
+    >
+      <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
+        <Input
+          label={t('chainAdjustment.percentLabel')}
+          helperText={t('chainAdjustment.percentHint')}
+          type="number"
+          step="0.5"
+          value={chainAdjustmentPercent}
+          onChange={(event) => setChainAdjustmentPercent(Number(event.target.value))}
+          adornment="%"
+        />
+        <div className="flex flex-wrap gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleChainAdjustmentPreview}
+            disabled={isBusy}
+          >
+            {t('action.preview')}
+          </Button>
+          <Button
+            type="button"
+            isLoading={isBusy && activeAction === 'adjust-apply'}
+            loadingText={t('chainAdjustment.applying')}
+            onClick={() =>
+              runAction(
+                'adjust-apply',
+                () => applyHandChainAdjustment(chainAdjustmentPercent),
+                'Applied hand chain adjustment',
+              )
+            }
+          >
+            {t('chainAdjustment.apply')}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={isBusy || !canRestoreChainAdjustment}
+            isLoading={isBusy && activeAction === 'adjust-restore'}
+            loadingText={t('chainAdjustment.restoring')}
+            onClick={() =>
+              runAction(
+                'adjust-restore',
+                () => restoreHandChainAdjustment(),
+                'Restored hand chain adjustment',
+              )
+            }
+          >
+            {t('chainAdjustment.restore')}
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+
+  const adjustmentPreviewCard = (
+    <Card
+      title={t('chainAdjustment.previewTitle')}
+      subtitle={t('chainAdjustment.previewSubtitle')}
+    >
+      <PreviewTable previews={chainAdjustmentPreviews} />
     </Card>
   );
 
@@ -669,6 +788,8 @@ export function HandChainsPage() {
       mainContent = (
         <>
           {configurationCard}
+          {adjustmentCard}
+          {adjustmentPreviewCard}
           {previewTab}
         </>
       );
@@ -677,6 +798,8 @@ export function HandChainsPage() {
       mainContent = (
         <>
           {configurationCard}
+          {adjustmentCard}
+          {adjustmentPreviewCard}
           {applyTab}
         </>
       );
@@ -693,6 +816,8 @@ export function HandChainsPage() {
       mainContent = (
         <>
           {configurationCard}
+          {adjustmentCard}
+          {adjustmentPreviewCard}
           {previewSummaryCard}
           {activityCard}
         </>

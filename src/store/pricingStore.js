@@ -285,6 +285,265 @@ const hasMeaningfulDelta = (previous, next, tolerance = 0.01) => {
   return Math.abs(prevNum - nextNum) > tolerance;
 };
 
+const normalizePercent = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const createChainAdjustmentPreview = ({ products, filterProducts, deriveKey, adjustment }) => {
+  return products
+    .filter(filterProducts)
+    .map((product) => {
+      const variants = (Array.isArray(product.variants) ? product.variants : [])
+        .map((variant) => {
+          const identity = deriveKey(variant);
+          if (!identity?.key) {
+            return null;
+          }
+
+          const previousPrice = resolveVariantPrice(variant, product);
+          const previousCompare = resolveVariantCompareAt(variant, product);
+          const nextPrice = applyPercentage(previousPrice, adjustment);
+          const nextCompare = applyPercentage(previousCompare, adjustment);
+          const priceChanged = hasMeaningfulDelta(previousPrice, nextPrice);
+          const compareChanged = hasMeaningfulDelta(previousCompare, nextCompare);
+          const changeType = priceChanged && compareChanged
+            ? 'price-compare'
+            : priceChanged
+              ? 'price'
+              : compareChanged
+                ? 'compare'
+                : null;
+
+          return {
+            ...variant,
+            id: variant?.id
+              ? String(variant.id)
+              : `${product.id}-${variant?.title ?? identity.key}`,
+            title: variant?.title ?? identity.title ?? identity.key ?? 'Variant',
+            price: nextPrice,
+            compareAtPrice: nextCompare,
+            previousPrice,
+            previousCompareAtPrice: previousCompare,
+            status: changeType ? 'changed' : 'unchanged',
+            changeType,
+          };
+        })
+        .filter(Boolean);
+
+      return {
+        product,
+        updatedBasePrice: product.basePrice,
+        updatedCompareAtPrice: product.baseCompareAtPrice,
+        variants,
+      };
+    })
+    .filter((preview) => Array.isArray(preview.variants) && preview.variants.length > 0);
+};
+
+const createChainAdjustmentPlan = ({
+  products,
+  filterProducts,
+  deriveKey,
+  adjustment,
+}) => {
+  const updatedProducts = [];
+  const updatesByProduct = new Map();
+  const originalVariantLookup = new Map();
+  const snapshots = [];
+
+  for (const product of products) {
+    if (!filterProducts(product)) {
+      updatedProducts.push(product);
+      continue;
+    }
+
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const nextVariants = [];
+    const snapshotVariants = [];
+    let productChanged = false;
+
+    for (const variant of variants) {
+      const identity = deriveKey(variant);
+      const variantId = variant?.id ? String(variant.id) : null;
+
+      if (variantId) {
+        originalVariantLookup.set(variantId, variant);
+      }
+
+      if (!identity?.key || !variantId) {
+        nextVariants.push(variant);
+        continue;
+      }
+
+      const previousPrice = resolveVariantPrice(variant, product);
+      const previousCompare = resolveVariantCompareAt(variant, product);
+      const nextPrice = applyPercentage(previousPrice, adjustment);
+      const nextCompare = applyPercentage(previousCompare, adjustment);
+      const priceChanged = hasMeaningfulDelta(previousPrice, nextPrice);
+      const compareChanged = hasMeaningfulDelta(previousCompare, nextCompare);
+
+      if (!priceChanged && !compareChanged) {
+        nextVariants.push(variant);
+        continue;
+      }
+
+      productChanged = true;
+
+      if (!updatesByProduct.has(product.id)) {
+        updatesByProduct.set(product.id, {
+          productId: product.id,
+          productTitle: product.title,
+          variants: [],
+        });
+      }
+
+      updatesByProduct.get(product.id).variants.push({
+        id: variantId,
+        price: nextPrice,
+        compareAtPrice: nextCompare,
+      });
+
+      snapshotVariants.push({
+        id: variantId,
+        price: previousPrice,
+        compareAtPrice: previousCompare,
+      });
+
+      nextVariants.push({
+        ...variant,
+        price: nextPrice,
+        compareAtPrice: nextCompare,
+      });
+    }
+
+    if (productChanged) {
+      updatedProducts.push({ ...product, variants: nextVariants });
+      snapshots.push({
+        productId: product.id,
+        productTitle: product.title,
+        variants: snapshotVariants,
+      });
+    } else {
+      updatedProducts.push(product);
+    }
+  }
+
+  return {
+    updatedProducts,
+    updatesByProduct,
+    originalVariantLookup,
+    snapshots,
+  };
+};
+
+const createChainAdjustmentRestorePlan = ({ products, filterProducts, backup }) => {
+  const updatedProducts = [];
+  const updatesByProduct = new Map();
+  const originalVariantLookup = new Map();
+
+  const backupProducts = Array.isArray(backup?.products) ? backup.products : [];
+  const backupById = new Map();
+
+  for (const entry of backupProducts) {
+    if (entry?.productId) {
+      backupById.set(entry.productId, entry);
+    }
+  }
+
+  for (const product of products) {
+    if (!filterProducts(product)) {
+      updatedProducts.push(product);
+      continue;
+    }
+
+    const backupEntry = backupById.get(product.id);
+    if (!backupEntry) {
+      updatedProducts.push(product);
+      continue;
+    }
+
+    const snapshotVariants = Array.isArray(backupEntry.variants) ? backupEntry.variants : [];
+    const restoreMap = new Map(
+      snapshotVariants
+        .map((variant) => [String(variant?.id ?? ''), variant])
+        .filter(([id]) => Boolean(id)),
+    );
+
+    if (restoreMap.size === 0) {
+      updatedProducts.push(product);
+      continue;
+    }
+
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const nextVariants = [];
+    let productChanged = false;
+
+    for (const variant of variants) {
+      const variantId = variant?.id ? String(variant.id) : null;
+
+      if (variantId) {
+        originalVariantLookup.set(variantId, variant);
+      }
+
+      if (!variantId) {
+        nextVariants.push(variant);
+        continue;
+      }
+
+      const snapshotVariant = restoreMap.get(variantId);
+      if (!snapshotVariant) {
+        nextVariants.push(variant);
+        continue;
+      }
+
+      const currentPrice = resolveVariantPrice(variant, product);
+      const currentCompare = resolveVariantCompareAt(variant, product);
+      const priceChanged = hasMeaningfulDelta(currentPrice, snapshotVariant.price);
+      const compareChanged = hasMeaningfulDelta(currentCompare, snapshotVariant.compareAtPrice);
+
+      if (!priceChanged && !compareChanged) {
+        nextVariants.push(variant);
+        continue;
+      }
+
+      productChanged = true;
+
+      if (!updatesByProduct.has(product.id)) {
+        updatesByProduct.set(product.id, {
+          productId: product.id,
+          productTitle: product.title,
+          variants: [],
+        });
+      }
+
+      updatesByProduct.get(product.id).variants.push({
+        id: variantId,
+        price: snapshotVariant.price,
+        compareAtPrice: snapshotVariant.compareAtPrice,
+      });
+
+      nextVariants.push({
+        ...variant,
+        price: snapshotVariant.price,
+        compareAtPrice: snapshotVariant.compareAtPrice,
+      });
+    }
+
+    if (productChanged) {
+      updatedProducts.push({ ...product, variants: nextVariants });
+    } else {
+      updatedProducts.push(product);
+    }
+  }
+
+  return {
+    updatedProducts,
+    updatesByProduct,
+    originalVariantLookup,
+  };
+};
+
 const buildRingKey = (band, size) => {
   if (!band || !size) {
     return null;
@@ -1494,6 +1753,11 @@ export const usePricingStore = create(
     productsSyncing: false,
     supplements: cloneSupplements(),
     backups: {},
+    chainAdjustmentBackups: {
+      bracelets: null,
+      necklaces: null,
+      handchains: null,
+    },
     logs: [],
     loadingScopes: new Set(),
 
@@ -2165,6 +2429,145 @@ export const usePricingStore = create(
       }
     },
 
+    previewBraceletChainAdjustment: (percent = 0) => {
+      const adjustment = normalizePercent(percent);
+      const { products } = get();
+
+      return createChainAdjustmentPreview({
+        products,
+        filterProducts: (product) =>
+          product?.collection === 'bracelet' && isActiveProduct(product),
+        deriveKey: (variant) => {
+          const key = deriveBraceletKey(variant);
+          return key ? { key, title: variant?.title ?? key } : null;
+        },
+        adjustment,
+      });
+    },
+
+    applyBraceletChainAdjustment: async (percent = 0) => {
+      const adjustment = normalizePercent(percent);
+      const { products } = get();
+
+      const plan = createChainAdjustmentPlan({
+        products,
+        filterProducts: (product) => product?.collection === 'bracelet',
+        deriveKey: (variant) => {
+          const key = deriveBraceletKey(variant);
+          return key ? { key } : null;
+        },
+        adjustment,
+      });
+
+      if (plan.snapshots.length > 0) {
+        const snapshot = {
+          timestamp: new Date().toISOString(),
+          products: plan.snapshots,
+        };
+        set((state) => ({
+          chainAdjustmentBackups: {
+            ...state.chainAdjustmentBackups,
+            bracelets: snapshot,
+          },
+        }));
+      }
+
+      get().toggleLoading('bracelets', true);
+      const loadingToastId = toast.loading('Applying bracelet chain adjustment...');
+
+      try {
+        await commitShopifyVariantUpdates({
+          scope: 'bracelets',
+          collection: 'bracelet',
+          updatedProducts: plan.updatedProducts,
+          updatesByProduct: plan.updatesByProduct,
+          originalVariantLookup: plan.originalVariantLookup,
+          noChangesMessage:
+            'No bracelet chain variants required updates for this adjustment.',
+          successLogMessage: 'Bracelet chain prices adjusted.',
+          updateLabel: 'bracelet chain price adjustment',
+          failureLogMessage: 'Failed to apply bracelet chain price adjustment to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        toast.dismiss(loadingToastId);
+        get().toggleLoading('bracelets', false);
+      }
+    },
+
+    restoreBraceletChainAdjustment: async () => {
+      const backup = get().chainAdjustmentBackups.bracelets;
+
+      if (!backup || !Array.isArray(backup.products) || backup.products.length === 0) {
+        get().log('No saved bracelet chain adjustment to restore.', 'bracelets', 'warning');
+        return;
+      }
+
+      if (!hasShopifyProxy()) {
+        get().log(
+          'Shopify proxy missing; unable to restore bracelet chain adjustment.',
+          'bracelets',
+          'error',
+        );
+        return;
+      }
+
+      const { products } = get();
+      const plan = createChainAdjustmentRestorePlan({
+        products,
+        filterProducts: (product) => product?.collection === 'bracelet',
+        backup,
+      });
+
+      if (plan.updatesByProduct.size === 0) {
+        get().log(
+          'Bracelet chain prices already match the saved adjustment snapshot.',
+          'bracelets',
+          'info',
+        );
+        set((state) => ({
+          chainAdjustmentBackups: {
+            ...state.chainAdjustmentBackups,
+            bracelets: null,
+          },
+        }));
+        return;
+      }
+
+      get().toggleLoading('bracelets', true);
+      const loadingToastId = toast.loading('Restoring bracelet chain prices...');
+
+      try {
+        const result = await commitShopifyVariantUpdates({
+          scope: 'bracelets',
+          collection: 'bracelet',
+          updatedProducts: plan.updatedProducts,
+          updatesByProduct: plan.updatesByProduct,
+          originalVariantLookup: plan.originalVariantLookup,
+          noChangesMessage:
+            'Bracelet chain prices already match the saved adjustment snapshot.',
+          successLogMessage: 'Bracelet chain prices restored to the saved snapshot.',
+          updateLabel: 'bracelet chain price',
+          failureLogMessage: 'Failed to restore bracelet chain prices in Shopify.',
+          set,
+          get,
+        });
+
+        if (!result || result.success) {
+          set((state) => ({
+            chainAdjustmentBackups: {
+              ...state.chainAdjustmentBackups,
+              bracelets: null,
+            },
+          }));
+        }
+      } finally {
+        toast.dismiss(loadingToastId);
+        get().toggleLoading('bracelets', false);
+      }
+    },
+
     previewNecklaces: () => {
       const { products, supplements } = get();
       return products
@@ -2337,6 +2740,157 @@ export const usePricingStore = create(
           set,
           get,
         });
+      } finally {
+        toast.dismiss(loadingToastId);
+        get().toggleLoading('necklaces', false);
+      }
+    },
+
+    previewNecklaceChainAdjustment: (percent = 0) => {
+      const adjustment = normalizePercent(percent);
+      const { products } = get();
+
+      return createChainAdjustmentPreview({
+        products,
+        filterProducts: (product) =>
+          product?.collection === 'collier' && isActiveProduct(product),
+        deriveKey: (variant) => {
+          const signature = deriveNecklaceSignature(variant);
+          if (!signature?.key) {
+            return null;
+          }
+
+          const fallbackTitle =
+            signature.chain && Number.isFinite(signature.size)
+              ? `${signature.chain} • ${signature.size}cm`
+              : signature.chain ?? signature.key;
+
+          return {
+            key: signature.key,
+            title: variant?.title ?? fallbackTitle,
+          };
+        },
+        adjustment,
+      });
+    },
+
+    applyNecklaceChainAdjustment: async (percent = 0) => {
+      const adjustment = normalizePercent(percent);
+      const { products } = get();
+
+      const plan = createChainAdjustmentPlan({
+        products,
+        filterProducts: (product) => product?.collection === 'collier',
+        deriveKey: (variant) => {
+          const signature = deriveNecklaceSignature(variant);
+          return signature?.key ? { key: signature.key } : null;
+        },
+        adjustment,
+      });
+
+      if (plan.snapshots.length > 0) {
+        const snapshot = {
+          timestamp: new Date().toISOString(),
+          products: plan.snapshots,
+        };
+        set((state) => ({
+          chainAdjustmentBackups: {
+            ...state.chainAdjustmentBackups,
+            necklaces: snapshot,
+          },
+        }));
+      }
+
+      get().toggleLoading('necklaces', true);
+      const loadingToastId = toast.loading('Applying necklace chain adjustment...');
+
+      try {
+        await commitShopifyVariantUpdates({
+          scope: 'necklaces',
+          collection: 'collier',
+          updatedProducts: plan.updatedProducts,
+          updatesByProduct: plan.updatesByProduct,
+          originalVariantLookup: plan.originalVariantLookup,
+          noChangesMessage:
+            'No necklace chain variants required updates for this adjustment.',
+          successLogMessage: 'Necklace chain prices adjusted.',
+          updateLabel: 'necklace chain price adjustment',
+          failureLogMessage: 'Failed to apply necklace chain price adjustment to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        toast.dismiss(loadingToastId);
+        get().toggleLoading('necklaces', false);
+      }
+    },
+
+    restoreNecklaceChainAdjustment: async () => {
+      const backup = get().chainAdjustmentBackups.necklaces;
+
+      if (!backup || !Array.isArray(backup.products) || backup.products.length === 0) {
+        get().log('No saved necklace chain adjustment to restore.', 'necklaces', 'warning');
+        return;
+      }
+
+      if (!hasShopifyProxy()) {
+        get().log(
+          'Shopify proxy missing; unable to restore necklace chain adjustment.',
+          'necklaces',
+          'error',
+        );
+        return;
+      }
+
+      const { products } = get();
+      const plan = createChainAdjustmentRestorePlan({
+        products,
+        filterProducts: (product) => product?.collection === 'collier',
+        backup,
+      });
+
+      if (plan.updatesByProduct.size === 0) {
+        get().log(
+          'Necklace chain prices already match the saved adjustment snapshot.',
+          'necklaces',
+          'info',
+        );
+        set((state) => ({
+          chainAdjustmentBackups: {
+            ...state.chainAdjustmentBackups,
+            necklaces: null,
+          },
+        }));
+        return;
+      }
+
+      get().toggleLoading('necklaces', true);
+      const loadingToastId = toast.loading('Restoring necklace chain prices...');
+
+      try {
+        const result = await commitShopifyVariantUpdates({
+          scope: 'necklaces',
+          collection: 'collier',
+          updatedProducts: plan.updatedProducts,
+          updatesByProduct: plan.updatesByProduct,
+          originalVariantLookup: plan.originalVariantLookup,
+          noChangesMessage:
+            'Necklace chain prices already match the saved adjustment snapshot.',
+          successLogMessage: 'Necklace chain prices restored to the saved snapshot.',
+          updateLabel: 'necklace chain price',
+          failureLogMessage: 'Failed to restore necklace chain prices in Shopify.',
+          set,
+          get,
+        });
+
+        if (!result || result.success) {
+          set((state) => ({
+            chainAdjustmentBackups: {
+              ...state.chainAdjustmentBackups,
+              necklaces: null,
+            },
+          }));
+        }
       } finally {
         toast.dismiss(loadingToastId);
         get().toggleLoading('necklaces', false);
@@ -2738,6 +3292,144 @@ export const usePricingStore = create(
         get().toggleLoading('handchains', false);
       }
 
+    },
+
+    previewHandChainAdjustment: (percent = 0) => {
+      const adjustment = normalizePercent(percent);
+      const { products } = get();
+
+      return createChainAdjustmentPreview({
+        products,
+        filterProducts: (product) => isActiveHandChainProduct(product),
+        deriveKey: (variant) => {
+          const key = deriveHandChainKey(variant);
+          return key ? { key, title: variant?.title ?? key } : null;
+        },
+        adjustment,
+      });
+    },
+
+    applyHandChainAdjustment: async (percent = 0) => {
+      const adjustment = normalizePercent(percent);
+      const { products } = get();
+
+      const plan = createChainAdjustmentPlan({
+        products,
+        filterProducts: (product) => isActiveHandChainProduct(product),
+        deriveKey: (variant) => {
+          const key = deriveHandChainKey(variant);
+          return key ? { key } : null;
+        },
+        adjustment,
+      });
+
+      if (plan.snapshots.length > 0) {
+        const snapshot = {
+          timestamp: new Date().toISOString(),
+          products: plan.snapshots,
+        };
+        set((state) => ({
+          chainAdjustmentBackups: {
+            ...state.chainAdjustmentBackups,
+            handchains: snapshot,
+          },
+        }));
+      }
+
+      get().toggleLoading('handchains', true);
+      const loadingToastId = toast.loading('Applying hand chain adjustment...');
+
+      try {
+        await commitShopifyVariantUpdates({
+          scope: 'handchains',
+          collection: ['hand chains', 'hand-chains'],
+          updatedProducts: plan.updatedProducts,
+          updatesByProduct: plan.updatesByProduct,
+          originalVariantLookup: plan.originalVariantLookup,
+          noChangesMessage:
+            'No hand chain variants required updates for this adjustment.',
+          successLogMessage: 'Hand chain prices adjusted.',
+          updateLabel: 'hand chain price adjustment',
+          failureLogMessage: 'Failed to apply hand chain price adjustment to Shopify.',
+          set,
+          get,
+        });
+      } finally {
+        toast.dismiss(loadingToastId);
+        get().toggleLoading('handchains', false);
+      }
+    },
+
+    restoreHandChainAdjustment: async () => {
+      const backup = get().chainAdjustmentBackups.handchains;
+
+      if (!backup || !Array.isArray(backup.products) || backup.products.length === 0) {
+        get().log('No saved hand chain adjustment to restore.', 'handchains', 'warning');
+        return;
+      }
+
+      if (!hasShopifyProxy()) {
+        get().log(
+          'Shopify proxy missing; unable to restore hand chain adjustment.',
+          'handchains',
+          'error',
+        );
+        return;
+      }
+
+      const { products } = get();
+      const plan = createChainAdjustmentRestorePlan({
+        products,
+        filterProducts: (product) => isActiveHandChainProduct(product),
+        backup,
+      });
+
+      if (plan.updatesByProduct.size === 0) {
+        get().log(
+          'Hand chain prices already match the saved adjustment snapshot.',
+          'handchains',
+          'info',
+        );
+        set((state) => ({
+          chainAdjustmentBackups: {
+            ...state.chainAdjustmentBackups,
+            handchains: null,
+          },
+        }));
+        return;
+      }
+
+      get().toggleLoading('handchains', true);
+      const loadingToastId = toast.loading('Restoring hand chain prices...');
+
+      try {
+        const result = await commitShopifyVariantUpdates({
+          scope: 'handchains',
+          collection: ['hand chains', 'hand-chains'],
+          updatedProducts: plan.updatedProducts,
+          updatesByProduct: plan.updatesByProduct,
+          originalVariantLookup: plan.originalVariantLookup,
+          noChangesMessage:
+            'Hand chain prices already match the saved adjustment snapshot.',
+          successLogMessage: 'Hand chain prices restored to the saved snapshot.',
+          updateLabel: 'hand chain price',
+          failureLogMessage: 'Failed to restore hand chain prices in Shopify.',
+          set,
+          get,
+        });
+
+        if (!result || result.success) {
+          set((state) => ({
+            chainAdjustmentBackups: {
+              ...state.chainAdjustmentBackups,
+              handchains: null,
+            },
+          }));
+        }
+      } finally {
+        toast.dismiss(loadingToastId);
+        get().toggleLoading('handchains', false);
+      }
     },
 
     previewSets: () => {
