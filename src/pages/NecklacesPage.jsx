@@ -35,15 +35,21 @@ export function NecklacesPage() {
 
   const [previews, setPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
-  const [adjustmentPercent, setAdjustmentPercent] = useState('');
+  const [supplementPercent, setSupplementPercent] = useState('');
+  const [perCmPercent, setPerCmPercent] = useState('');
   const [supplementPreview, setSupplementPreview] = useState([]);
 
   const isBusy = loadingScopes.has('necklaces');
 
-  const percentValue = useMemo(() => {
-    const parsed = Number.parseFloat(adjustmentPercent);
+  const supplementPercentValue = useMemo(() => {
+    const parsed = Number.parseFloat(supplementPercent);
     return Number.isFinite(parsed) ? parsed : null;
-  }, [adjustmentPercent]);
+  }, [supplementPercent]);
+
+  const perCmPercentValue = useMemo(() => {
+    const parsed = Number.parseFloat(perCmPercent);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [perCmPercent]);
 
   const formatCurrency = (value) => {
     if (!Number.isFinite(value)) {
@@ -85,12 +91,15 @@ export function NecklacesPage() {
   };
 
   const handleSupplementPreview = () => {
-    if (percentValue === null) {
+    if (supplementPercentValue === null) {
       toast.error(t('supplements.invalidPercent'));
       return;
     }
 
-    const results = previewSupplementAdjustment(percentValue);
+    const results = previewSupplementAdjustment({
+      supplementPercent: supplementPercentValue,
+      perCmPercent: 0,
+    });
     setSupplementPreview(results);
 
     if (!Array.isArray(results) || results.length === 0) {
@@ -98,22 +107,63 @@ export function NecklacesPage() {
       return;
     }
 
-    toast.success(t('toast.supplementPreviewReady', { scope: t('nav.necklaces') }));
+    toast.success(t('toast.necklaceSupplementsPreviewReady'));
   };
 
   const handleSupplementApply = () => {
-    if (percentValue === null) {
+    if (supplementPercentValue === null) {
       toast.error(t('supplements.invalidPercent'));
       return;
     }
 
-    applySupplementAdjustment(percentValue);
-    const preview = previewSupplementAdjustment(percentValue);
+    applySupplementAdjustment({ supplementPercent: supplementPercentValue, perCmPercent: 0 });
+    const preview = previewSupplementAdjustment({
+      supplementPercent: supplementPercentValue,
+      perCmPercent: 0,
+    });
     setSupplementPreview(preview);
     toast.success(
-      t('toast.supplementApplied', {
-        scope: t('nav.necklaces'),
-        percent: percentValue,
+      t('toast.necklaceSupplementsApplied', {
+        percent: supplementPercentValue,
+      }),
+    );
+  };
+
+  const handlePerCmPreview = () => {
+    if (perCmPercentValue === null) {
+      toast.error(t('supplements.invalidPercent'));
+      return;
+    }
+
+    const results = previewSupplementAdjustment({
+      supplementPercent: 0,
+      perCmPercent: perCmPercentValue,
+    });
+    setSupplementPreview(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(t('toast.supplementPreviewEmpty', { scope: t('nav.necklaces') }));
+      return;
+    }
+
+    toast.success(t('toast.necklacePerCmPreviewReady'));
+  };
+
+  const handlePerCmApply = () => {
+    if (perCmPercentValue === null) {
+      toast.error(t('supplements.invalidPercent'));
+      return;
+    }
+
+    applySupplementAdjustment({ supplementPercent: 0, perCmPercent: perCmPercentValue });
+    const preview = previewSupplementAdjustment({
+      supplementPercent: 0,
+      perCmPercent: perCmPercentValue,
+    });
+    setSupplementPreview(preview);
+    toast.success(
+      t('toast.necklacePerCmApplied', {
+        percent: perCmPercentValue,
       }),
     );
   };
@@ -134,9 +184,10 @@ export function NecklacesPage() {
       return;
     }
 
-    const preview = percentValue === null
-      ? previewSupplementAdjustment(0)
-      : previewSupplementAdjustment(percentValue);
+    const preview = previewSupplementAdjustment({
+      supplementPercent: supplementPercentValue ?? 0,
+      perCmPercent: perCmPercentValue ?? 0,
+    });
     setSupplementPreview(preview);
     toast.success(t('toast.supplementRestoreSuccess', { scope: t('nav.necklaces') }));
   };
@@ -224,36 +275,70 @@ export function NecklacesPage() {
         </div>
       </Card>
       <Card title={t('supplements.adjustmentTitle')} subtitle={t('supplements.adjustmentSubtitleNecklaces')}>
-        <div className="grid gap-4 sm:flex sm:items-end">
-          <div className="sm:w-48">
-            <Input
-              label={t('supplements.percentLabel')}
-              type="number"
-              step="0.1"
-              value={adjustmentPercent}
-              onChange={(event) => setAdjustmentPercent(event.target.value)}
-              placeholder="0"
-            />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm">
+            <h3 className="text-base font-semibold text-neutral-900">
+              {t('supplements.sectionSupplementTitle')}
+            </h3>
+            <div className="mt-4 grid gap-4 sm:flex sm:items-end">
+              <div className="sm:w-48">
+                <Input
+                  label={t('supplements.percentLabel')}
+                  type="number"
+                  step="0.1"
+                  value={supplementPercent}
+                  onChange={(event) => setSupplementPercent(event.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" variant="secondary" onClick={handleSupplementPreview}>
+                  {t('supplements.previewSupplementsButton')}
+                </Button>
+                <Button type="button" onClick={handleSupplementApply}>
+                  {t('supplements.applySupplementsButton')}
+                </Button>
+              </div>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button type="button" variant="secondary" onClick={handleSupplementPreview}>
-              {t('supplements.previewButton')}
-            </Button>
-            <Button type="button" onClick={handleSupplementApply}>
-              {t('supplements.applyButton')}
-            </Button>
-            <Button type="button" variant="secondary" onClick={handleSupplementBackup}>
-              {t('supplements.backupButton')}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={handleSupplementRestore}
-              disabled={!hasSupplementBackup}
-            >
-              {t('supplements.restoreButton')}
-            </Button>
+          <div className="rounded-2xl border border-neutral-200 bg-white/80 p-6 shadow-sm">
+            <h3 className="text-base font-semibold text-neutral-900">
+              {t('supplements.sectionPerCmTitle')}
+            </h3>
+            <div className="mt-4 grid gap-4 sm:flex sm:items-end">
+              <div className="sm:w-48">
+                <Input
+                  label={t('supplements.percentLabel')}
+                  type="number"
+                  step="0.1"
+                  value={perCmPercent}
+                  onChange={(event) => setPerCmPercent(event.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" variant="secondary" onClick={handlePerCmPreview}>
+                  {t('supplements.previewPerCmButton')}
+                </Button>
+                <Button type="button" onClick={handlePerCmApply}>
+                  {t('supplements.applyPerCmButton')}
+                </Button>
+              </div>
+            </div>
           </div>
+        </div>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Button type="button" variant="secondary" onClick={handleSupplementBackup}>
+            {t('supplements.backupButton')}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={handleSupplementRestore}
+            disabled={!hasSupplementBackup}
+          >
+            {t('supplements.restoreButton')}
+          </Button>
         </div>
         {supplementPreview.length > 0 && (
           <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-200">

@@ -2842,18 +2842,22 @@ export const usePricingStore = create(
       });
     },
 
-    previewNecklaceSupplementAdjustment: (percent = 0) => {
-      const adjustment = Number(percent);
-      const safePercent = Number.isFinite(adjustment) ? adjustment : 0;
+    previewNecklaceSupplementAdjustment: (options = {}) => {
+      const rawSupplementPercent = Number(options?.supplementPercent);
+      const rawPerCmPercent = Number(options?.perCmPercent);
+      const safeSupplementPercent = Number.isFinite(rawSupplementPercent)
+        ? rawSupplementPercent
+        : 0;
+      const safePerCmPercent = Number.isFinite(rawPerCmPercent) ? rawPerCmPercent : 0;
       const { supplements } = get();
 
       return Object.entries(supplements.necklaces).map(([chainType, values]) => {
         const currentSupplement = Number(values?.supplement) || 0;
         const currentPerCm = Number(values?.perCm) || 0;
-        const nextSupplement = applySupplementPercentage(currentSupplement, safePercent, {
+        const nextSupplement = applySupplementPercentage(currentSupplement, safeSupplementPercent, {
           minimum: 0,
         });
-        const nextPerCm = applySupplementPercentage(currentPerCm, safePercent, {
+        const nextPerCm = applySupplementPercentage(currentPerCm, safePerCmPercent, {
           strategy: 'step',
           step: 5,
           minimum: 0,
@@ -2875,9 +2879,13 @@ export const usePricingStore = create(
       });
     },
 
-    applyNecklaceSupplementAdjustment: (percent = 0) => {
-      const adjustment = Number(percent);
-      const safePercent = Number.isFinite(adjustment) ? adjustment : 0;
+    applyNecklaceSupplementAdjustment: (options = {}) => {
+      const rawSupplementPercent = Number(options?.supplementPercent);
+      const rawPerCmPercent = Number(options?.perCmPercent);
+      const safeSupplementPercent = Number.isFinite(rawSupplementPercent)
+        ? rawSupplementPercent
+        : 0;
+      const safePerCmPercent = Number.isFinite(rawPerCmPercent) ? rawPerCmPercent : 0;
 
       set((state) => {
         const updatedNecklaces = Object.fromEntries(
@@ -2888,10 +2896,10 @@ export const usePricingStore = create(
             return [
               chainType,
               {
-                supplement: applySupplementPercentage(currentSupplement, safePercent, {
+                supplement: applySupplementPercentage(currentSupplement, safeSupplementPercent, {
                   minimum: 0,
                 }),
-                perCm: applySupplementPercentage(currentPerCm, safePercent, {
+                perCm: applySupplementPercentage(currentPerCm, safePerCmPercent, {
                   strategy: 'step',
                   step: 5,
                   minimum: 0,
