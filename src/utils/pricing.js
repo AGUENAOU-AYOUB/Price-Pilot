@@ -29,15 +29,46 @@ export const applyPercentage = (price, percent) => {
   return roundToLuxuryStep(updated);
 };
 
-export const roundSupplementValue = (value, { step = 10, minimum = 0 } = {}) => {
+export const roundSupplementValue = (
+  value,
+  { step = 10, minimum = 0, strategy = 'luxury-ceil' } = {},
+) => {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) {
     return typeof minimum === 'number' && Number.isFinite(minimum) ? minimum : 0;
   }
 
-  const numericStep = Number(step);
-  const safeStep = Number.isFinite(numericStep) && numericStep > 0 ? numericStep : 1;
-  const rounded = Math.round(numericValue / safeStep) * safeStep;
+  let rounded;
+
+  if (strategy === 'step') {
+    const numericStep = Number(step);
+    const safeStep = Number.isFinite(numericStep) && numericStep > 0 ? numericStep : 1;
+    rounded = Math.ceil(numericValue / safeStep) * safeStep;
+  } else {
+    const endings = [0, 50, 90];
+    let hundredBlock = Math.floor(numericValue / 100);
+    let candidate = hundredBlock * 100;
+
+    while (candidate < numericValue) {
+      let found = false;
+      for (const ending of endings) {
+        candidate = hundredBlock * 100 + ending;
+        if (candidate >= numericValue) {
+          found = true;
+          break;
+        }
+      }
+
+      if (found) {
+        break;
+      }
+
+      hundredBlock += 1;
+      candidate = hundredBlock * 100;
+    }
+
+    rounded = candidate;
+  }
 
   if (typeof minimum === 'number' && Number.isFinite(minimum)) {
     return Math.max(rounded, minimum);
@@ -46,7 +77,7 @@ export const roundSupplementValue = (value, { step = 10, minimum = 0 } = {}) => 
   return rounded;
 };
 
-export const applySupplementPercentage = (value, percent, options) => {
+export const applySupplementPercentage = (value, percent, options = {}) => {
   const numericValue = Number(value) || 0;
   const numericPercent = Number(percent);
   const ratio = Number.isFinite(numericPercent) ? numericPercent / 100 : 0;

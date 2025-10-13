@@ -2745,7 +2745,7 @@ export const usePricingStore = create(
 
       return Object.entries(supplements.bracelets).map(([chainType, currentValue]) => {
         const current = Number(currentValue) || 0;
-        const next = applySupplementPercentage(current, safePercent, { step: 10, minimum: 0 });
+        const next = applySupplementPercentage(current, safePercent, { minimum: 0 });
         return {
           chainType,
           current,
@@ -2763,7 +2763,7 @@ export const usePricingStore = create(
         const updatedBracelets = Object.fromEntries(
           Object.entries(state.supplements.bracelets).map(([chainType, value]) => [
             chainType,
-            applySupplementPercentage(value, safePercent, { step: 10, minimum: 0 }),
+            applySupplementPercentage(value, safePercent, { minimum: 0 }),
           ]),
         );
 
@@ -2785,10 +2785,10 @@ export const usePricingStore = create(
         const currentSupplement = Number(values?.supplement) || 0;
         const currentPerCm = Number(values?.perCm) || 0;
         const nextSupplement = applySupplementPercentage(currentSupplement, safePercent, {
-          step: 10,
           minimum: 0,
         });
         const nextPerCm = applySupplementPercentage(currentPerCm, safePercent, {
+          strategy: 'step',
           step: 5,
           minimum: 0,
         });
@@ -2823,10 +2823,10 @@ export const usePricingStore = create(
               chainType,
               {
                 supplement: applySupplementPercentage(currentSupplement, safePercent, {
-                  step: 10,
                   minimum: 0,
                 }),
                 perCm: applySupplementPercentage(currentPerCm, safePercent, {
+                  strategy: 'step',
                   step: 5,
                   minimum: 0,
                 }),
