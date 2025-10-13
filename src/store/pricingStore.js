@@ -2745,7 +2745,7 @@ export const usePricingStore = create(
 
       return Object.entries(supplements.bracelets).map(([chainType, currentValue]) => {
         const current = Number(currentValue) || 0;
-        const next = applySupplementPercentage(current, safePercent);
+        const next = applySupplementPercentage(current, safePercent, { step: 10, minimum: 0 });
         return {
           chainType,
           current,
@@ -2763,7 +2763,7 @@ export const usePricingStore = create(
         const updatedBracelets = Object.fromEntries(
           Object.entries(state.supplements.bracelets).map(([chainType, value]) => [
             chainType,
-            applySupplementPercentage(value, safePercent),
+            applySupplementPercentage(value, safePercent, { step: 10, minimum: 0 }),
           ]),
         );
 
@@ -2784,8 +2784,14 @@ export const usePricingStore = create(
       return Object.entries(supplements.necklaces).map(([chainType, values]) => {
         const currentSupplement = Number(values?.supplement) || 0;
         const currentPerCm = Number(values?.perCm) || 0;
-        const nextSupplement = applySupplementPercentage(currentSupplement, safePercent);
-        const nextPerCm = applySupplementPercentage(currentPerCm, safePercent);
+        const nextSupplement = applySupplementPercentage(currentSupplement, safePercent, {
+          step: 10,
+          minimum: 0,
+        });
+        const nextPerCm = applySupplementPercentage(currentPerCm, safePercent, {
+          step: 5,
+          minimum: 0,
+        });
 
         return {
           chainType,
@@ -2816,8 +2822,14 @@ export const usePricingStore = create(
             return [
               chainType,
               {
-                supplement: applySupplementPercentage(currentSupplement, safePercent),
-                perCm: applySupplementPercentage(currentPerCm, safePercent),
+                supplement: applySupplementPercentage(currentSupplement, safePercent, {
+                  step: 10,
+                  minimum: 0,
+                }),
+                perCm: applySupplementPercentage(currentPerCm, safePercent, {
+                  step: 5,
+                  minimum: 0,
+                }),
               },
             ];
           }),
