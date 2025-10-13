@@ -61,6 +61,75 @@ const persistUsername = (username) => {
   }
 };
 
+const SUPPLEMENT_BACKUP_STORAGE_KEY = 'price-pilot.supplement-backups';
+
+const createEmptySupplementBackups = () => ({
+  bracelets: null,
+  necklaces: null,
+});
+
+const sanitizeBackupSnapshot = (value) => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (error) {
+    console.warn('Failed to sanitize supplement backup snapshot:', error);
+    return null;
+  }
+};
+
+const loadStoredSupplementBackups = () => {
+  if (typeof window === 'undefined') {
+    return createEmptySupplementBackups();
+  }
+
+  try {
+    const stored = window.localStorage.getItem(SUPPLEMENT_BACKUP_STORAGE_KEY);
+    if (!stored) {
+      return createEmptySupplementBackups();
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object') {
+      return createEmptySupplementBackups();
+    }
+
+    return {
+      bracelets: sanitizeBackupSnapshot(parsed.bracelets),
+      necklaces: sanitizeBackupSnapshot(parsed.necklaces),
+    };
+  } catch (error) {
+    console.warn('Failed to load stored supplement backups from localStorage:', error);
+    return createEmptySupplementBackups();
+  }
+};
+
+const persistSupplementBackups = (backups) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (!backups) {
+      window.localStorage.removeItem(SUPPLEMENT_BACKUP_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(
+      SUPPLEMENT_BACKUP_STORAGE_KEY,
+      JSON.stringify({
+        bracelets: sanitizeBackupSnapshot(backups.bracelets),
+        necklaces: sanitizeBackupSnapshot(backups.necklaces),
+      }),
+    );
+  } catch (error) {
+    console.warn('Failed to persist supplement backups to localStorage:', error);
+  }
+};
+
 const defaultSupplements = {
   bracelets: { ...braceletChainTypes },
   necklaces: { ...necklaceChainTypes },
@@ -1335,10 +1404,7 @@ export const usePricingStore = create(
     productsInitialized: false,
     productsSyncing: false,
     supplements: cloneSupplements(),
-    supplementBackups: {
-      bracelets: null,
-      necklaces: null,
-    },
+    supplementBackups: loadStoredSupplementBackups(),
     backups: {},
     logs: [],
     loadingScopes: new Set(),
@@ -2859,12 +2925,18 @@ export const usePricingStore = create(
 
       const snapshot = JSON.parse(JSON.stringify(get().supplements[scope] ?? {}));
 
-      set((state) => ({
-        supplementBackups: {
+      set((state) => {
+        const nextBackups = {
           ...state.supplementBackups,
           [scope]: snapshot,
-        },
-      }));
+        };
+
+        persistSupplementBackups(nextBackups);
+
+        return {
+          supplementBackups: nextBackups,
+        };
+      });
 
       return true;
     },
