@@ -29,7 +29,7 @@ export function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(195,100,149,0.18),_transparent_60%),_linear-gradient(180deg,_rgba(245,230,237,0.7)_0%,_rgba(250,247,248,0.92)_45%,_#faf7f8_100%)]">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.16),_transparent_60%),_linear-gradient(180deg,_rgba(219,234,254,0.78)_0%,_rgba(248,250,252,0.94)_45%,_#f8fafc_100%)]">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-primary-100 blur-[180px]" />
         <div className="absolute -bottom-52 right-[-140px] h-[420px] w-[420px] rounded-full bg-secondary-200/70 blur-[160px]" />
@@ -40,7 +40,7 @@ export function LoginPage() {
         <Button
           type="button"
           variant="ghost"
-          className="h-10 rounded-full border border-brand-blush/60 bg-white/70 px-4 text-sm font-semibold text-brand-charcoal shadow-[0_18px_40px_-24px_rgba(139,58,98,0.45)] backdrop-blur-md hover:bg-brand-blush/40"
+          className="h-10 rounded-full border border-neutral-200/70 bg-white/75 px-4 text-sm font-semibold text-brand-charcoal shadow-[0_18px_42px_-26px_rgba(15,23,42,0.28)] backdrop-blur-md hover:bg-neutral-100"
           onClick={() => setLanguage(language === 'en' ? 'fr' : 'en')}
         >
           {language === 'en' ? 'FR' : 'EN'}
@@ -48,7 +48,7 @@ export function LoginPage() {
       </div>
 
       <div className="relative z-10 w-full max-w-md px-6">
-        <div className="mt-6 rounded-[34px] border border-brand-blush/60 bg-white/85 p-10 text-center shadow-[0_38px_120px_-45px_rgba(139,58,98,0.55)] backdrop-blur-2xl">
+        <div className="mt-6 rounded-[34px] border border-neutral-200/80 bg-white/90 p-10 text-center shadow-[0_42px_120px_-50px_rgba(15,23,42,0.35)] backdrop-blur-2xl">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/85 shadow-inner">
             <Logo />
           </div>

@@ -5,12 +5,12 @@ const baseStyles =
 
 const variants = {
   primary:
-    'bg-gradient-to-r from-primary-600 via-primary-500 to-secondary-500 text-white shadow-[0_18px_40px_-20px_rgba(139,58,98,0.6)] hover:shadow-[0_22px_50px_-22px_rgba(139,58,98,0.65)] disabled:shadow-none',
+    'bg-gradient-to-r from-primary-700 via-primary-600 to-secondary-500 text-white shadow-[0_20px_45px_-24px_rgba(30,64,175,0.55)] hover:shadow-[0_24px_55px_-24px_rgba(30,64,175,0.6)] disabled:shadow-none',
   secondary:
-    'border border-brand-blush/70 bg-white/80 text-brand-charcoal shadow-[0_12px_30px_-20px_rgba(139,58,98,0.35)] hover:border-brand-rose/70 hover:bg-brand-blush/40',
-  ghost: 'bg-transparent text-brand-charcoal hover:bg-brand-blush/35',
+    'border border-neutral-200/80 bg-white/85 text-brand-charcoal shadow-[0_14px_36px_-24px_rgba(15,23,42,0.25)] hover:border-brand-rose/60 hover:bg-neutral-100',
+  ghost: 'bg-transparent text-brand-charcoal hover:bg-neutral-100/80',
   danger:
-    'bg-error-500 text-white shadow-[0_18px_40px_-20px_rgba(217,92,108,0.6)] hover:bg-error-500/90',
+    'bg-error-500 text-white shadow-[0_20px_45px_-24px_rgba(239,68,68,0.55)] hover:bg-error-500/90',
 };
 
 const Spinner = () => (

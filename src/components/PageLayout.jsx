@@ -63,16 +63,16 @@ export function PageLayout({ children }) {
 
   return (
     <div className="relative min-h-screen bg-brand-cream text-brand-charcoal">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(203,166,181,0.18),_transparent_60%),_linear-gradient(180deg,_rgba(245,230,237,0.65)_0%,_rgba(250,247,248,0.9)_40%,_#faf7f8_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.16),_transparent_58%),_linear-gradient(180deg,_rgba(219,234,254,0.78)_0%,_rgba(248,250,252,0.92)_42%,_#f8fafc_100%)]" />
       <header
         className={clsx(
-          'sticky top-0 z-40 w-full border-b border-neutral-200/60 bg-white/70 backdrop-blur-xl transition-all duration-200',
-          hasScrolled ? 'shadow-[0_12px_40px_-20px_rgba(139,58,98,0.35)]' : 'shadow-none',
+          'sticky top-0 z-40 w-full border-b border-neutral-200/70 bg-white/80 backdrop-blur-xl transition-all duration-200',
+          hasScrolled ? 'shadow-[0_18px_48px_-28px_rgba(30,64,175,0.35)]' : 'shadow-none',
         )}
       >
         <div className="mx-auto flex w-full items-center justify-between px-4 py-4 sm:px-6 lg:px-12 xl:px-14">
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-3 rounded-full bg-brand-blush/70 px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+            <div className="flex items-center gap-3 rounded-full bg-white/80 px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ring-1 ring-neutral-200/60">
               <Logo />
               <span className="hidden text-sm font-semibold uppercase tracking-[0.28em] text-neutral-500 sm:block">
                 Azor Admin
@@ -95,9 +95,9 @@ export function PageLayout({ children }) {
                     className={({ isActive }) =>
                       clsx(
                         'rounded-full border border-transparent px-5 py-2 text-sm font-semibold transition-all duration-200',
-                        'hover:-translate-y-[1px] hover:border-brand-rose/40 hover:bg-brand-blush/60 hover:text-brand-charcoal',
+                        'hover:-translate-y-[1px] hover:border-brand-rose/50 hover:bg-white/90 hover:text-brand-charcoal',
                         isActive
-                          ? 'bg-gradient-to-r from-primary-600 to-secondary-500 text-white shadow-[0_10px_30px_-20px_rgba(139,58,98,0.6)]'
+                          ? 'bg-gradient-to-r from-primary-700 via-primary-600 to-secondary-500 text-white shadow-[0_16px_38px_-24px_rgba(30,64,175,0.55)]'
                           : 'text-neutral-500'
                       )
                     }
@@ -111,11 +111,11 @@ export function PageLayout({ children }) {
               <button
                 type="button"
                 onClick={() => setMenuOpen((open) => !open)}
-                className="group flex items-center gap-3 rounded-full border border-brand-blush/60 bg-white/80 px-3 py-2 text-sm font-medium text-brand-charcoal shadow-[0_12px_30px_-18px_rgba(139,58,98,0.4)] transition hover:border-brand-rose/70 hover:shadow-[0_20px_45px_-20px_rgba(139,58,98,0.45)]"
+                className="group flex items-center gap-3 rounded-full border border-neutral-200/70 bg-white/85 px-3 py-2 text-sm font-medium text-brand-charcoal shadow-[0_16px_40px_-26px_rgba(15,23,42,0.25)] transition hover:border-brand-rose/60 hover:shadow-[0_24px_50px_-28px_rgba(15,23,42,0.28)]"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary-600 to-secondary-500 text-base font-semibold text-white shadow-inner">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary-700 via-primary-600 to-secondary-500 text-base font-semibold text-white shadow-inner shadow-primary-900/30">
                   {initials || 'AZ'}
                 </span>
                 <div className="hidden text-left sm:flex sm:flex-col sm:leading-tight">
@@ -137,12 +137,12 @@ export function PageLayout({ children }) {
               {menuOpen && (
                 <div
                   role="menu"
-                  className="absolute right-0 mt-3 w-60 rounded-2xl border border-brand-blush/60 bg-white/95 p-3 text-sm text-brand-charcoal shadow-[0_24px_60px_-28px_rgba(139,58,98,0.45)] backdrop-blur-xl"
+                  className="absolute right-0 mt-3 w-60 rounded-2xl border border-neutral-200/80 bg-white/95 p-3 text-sm text-brand-charcoal shadow-[0_28px_70px_-32px_rgba(15,23,42,0.32)] backdrop-blur-xl"
                 >
                   <Button
                     type="button"
                     variant="ghost"
-                    className="w-full justify-start rounded-xl px-4 py-2 text-sm font-medium text-brand-charcoal hover:bg-brand-blush/40"
+                    className="w-full justify-start rounded-xl px-4 py-2 text-sm font-medium text-brand-charcoal hover:bg-neutral-100"
                     onClick={() => {
                       toggleLanguage();
                       setMenuOpen(false);
@@ -167,7 +167,7 @@ export function PageLayout({ children }) {
           </div>
         </div>
         {!isDashboard && (
-          <div className="block border-t border-brand-blush/70 bg-white/70 px-4 pb-4 pt-2 backdrop-blur-xl lg:hidden">
+          <div className="block border-t border-neutral-200/70 bg-white/75 px-4 pb-4 pt-2 backdrop-blur-xl lg:hidden">
             <div className="flex gap-2 overflow-x-auto">
               {navItems.map((item) => (
                 <NavLink
@@ -177,8 +177,8 @@ export function PageLayout({ children }) {
                     clsx(
                       'whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200',
                       isActive
-                        ? 'bg-gradient-to-r from-primary-600 to-secondary-500 text-white shadow-[0_10px_30px_-18px_rgba(139,58,98,0.55)]'
-                        : 'border border-brand-blush/70 text-neutral-500 hover:bg-brand-blush/40 hover:text-brand-charcoal',
+                        ? 'bg-gradient-to-r from-primary-700 via-primary-600 to-secondary-500 text-white shadow-[0_16px_32px_-22px_rgba(30,64,175,0.45)]'
+                        : 'border border-neutral-200/70 text-neutral-500 hover:bg-neutral-100 hover:text-brand-charcoal',
                     )
                   }
                 >

@@ -4,8 +4,8 @@ export function Card({ title, subtitle, actions, children, className }) {
   return (
     <section
       className={clsx(
-        'relative overflow-hidden rounded-[28px] border border-brand-blush/50 bg-white/80 p-10 shadow-[0_26px_70px_-36px_rgba(139,58,98,0.45)] backdrop-blur-xl transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_30px_80px_-40px_rgba(139,58,98,0.5)]',
-        'before:pointer-events-none before:absolute before:-inset-1 before:bg-[radial-gradient(circle_at_top,_rgba(195,100,149,0.18),_transparent_60%)] before:opacity-70 before:content-[""]',
+        'relative overflow-hidden rounded-[28px] border border-neutral-200/80 bg-white/85 p-10 shadow-[0_30px_80px_-42px_rgba(15,23,42,0.35)] backdrop-blur-xl transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_36px_90px_-44px_rgba(15,23,42,0.4)]',
+        'before:pointer-events-none before:absolute before:-inset-1 before:bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_62%)] before:opacity-70 before:content-[""]',
         className,
       )}
     >
@@ -15,7 +15,7 @@ export function Card({ title, subtitle, actions, children, className }) {
             <div className="space-y-2">
               {title && (
                 <h2 className="text-3xl font-semibold tracking-tight text-brand-charcoal">
-                  <span className="bg-gradient-to-r from-primary-600 via-primary-500 to-secondary-500 bg-clip-text text-transparent">
+                  <span className="bg-gradient-to-r from-primary-700 via-primary-600 to-secondary-500 bg-clip-text text-transparent">
                     {title}
                   </span>
                 </h2>
