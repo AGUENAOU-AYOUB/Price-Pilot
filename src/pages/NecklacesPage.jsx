@@ -38,6 +38,8 @@ export function NecklacesPage() {
   const [supplementPercent, setSupplementPercent] = useState('');
   const [perCmPercent, setPerCmPercent] = useState('');
   const [supplementPreview, setSupplementPreview] = useState([]);
+  const [perCmPreview, setPerCmPreview] = useState([]);
+  const [isMergedPreview, setIsMergedPreview] = useState(false);
 
   const isBusy = loadingScopes.has('necklaces');
 
@@ -65,6 +67,47 @@ export function NecklacesPage() {
     const prefix = value > 0 ? '+' : '−';
     return `${prefix}${Math.abs(Math.round(value)).toLocaleString()} dh`;
   };
+
+  const hasAnyPreview = supplementPreview.length > 0 || perCmPreview.length > 0;
+
+  const mergedPreview = useMemo(() => {
+    if (!hasAnyPreview) {
+      return [];
+    }
+
+    const byChain = new Map();
+
+    supplementPreview.forEach((item) => {
+      if (!item) {
+        return;
+      }
+
+      byChain.set(item.chainType, {
+        chainType: item.chainType,
+        supplement: item.supplement,
+        perCm: item.perCm,
+      });
+    });
+
+    perCmPreview.forEach((item) => {
+      if (!item) {
+        return;
+      }
+
+      const existing = byChain.get(item.chainType) ?? {
+        chainType: item.chainType,
+        supplement: item.supplement,
+      };
+
+      byChain.set(item.chainType, {
+        chainType: item.chainType,
+        supplement: existing.supplement ?? item.supplement,
+        perCm: item.perCm ?? existing.perCm,
+      });
+    });
+
+    return Array.from(byChain.values());
+  }, [hasAnyPreview, supplementPreview, perCmPreview]);
 
   const handlePreview = () => {
     const results = previewNecklaces();
@@ -139,7 +182,7 @@ export function NecklacesPage() {
       supplementPercent: 0,
       perCmPercent: perCmPercentValue,
     });
-    setSupplementPreview(results);
+    setPerCmPreview(results);
 
     if (!Array.isArray(results) || results.length === 0) {
       toast.error(t('toast.supplementPreviewEmpty', { scope: t('nav.necklaces') }));
@@ -160,7 +203,7 @@ export function NecklacesPage() {
       supplementPercent: 0,
       perCmPercent: perCmPercentValue,
     });
-    setSupplementPreview(preview);
+    setPerCmPreview(preview);
     toast.success(
       t('toast.necklacePerCmApplied', {
         percent: perCmPercentValue,
@@ -189,6 +232,7 @@ export function NecklacesPage() {
       perCmPercent: perCmPercentValue ?? 0,
     });
     setSupplementPreview(preview);
+    setPerCmPreview(preview);
     toast.success(t('toast.supplementRestoreSuccess', { scope: t('nav.necklaces') }));
   };
 
@@ -340,64 +384,170 @@ export function NecklacesPage() {
             {t('supplements.restoreButton')}
           </Button>
         </div>
-        {supplementPreview.length > 0 && (
-          <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-200">
-            <table className="min-w-full divide-y divide-neutral-200 text-sm">
-              <thead className="bg-neutral-50/70 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                <tr>
-                  <th className="px-4 py-3">{t('supplements.chainType')}</th>
-                  <th className="px-4 py-3">{t('supplements.fieldLabel')}</th>
-                  <th className="px-4 py-3 text-right">{t('supplements.currentValue')}</th>
-                  <th className="px-4 py-3 text-right">{t('supplements.previewValue')}</th>
-                  <th className="px-4 py-3 text-right">{t('supplements.changeValue')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-200 bg-white/80">
-                {supplementPreview.map((item) => (
-                  <Fragment key={item.chainType}>
-                    <tr>
-                      <td className="px-4 py-3 font-medium text-neutral-900" rowSpan={2}>
-                        {item.chainType}
-                      </td>
-                      <td className="px-4 py-3 text-neutral-600">{t('supplements.fieldSupplement')}</td>
-                      <td className="px-4 py-3 text-right text-neutral-700">{formatCurrency(item.supplement.current)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-primary-600">
-                        {formatCurrency(item.supplement.next)}
-                      </td>
-                      <td
-                        className={
-                          item.supplement.delta > 0
-                            ? 'px-4 py-3 text-right font-semibold text-emerald-600'
-                            : item.supplement.delta < 0
-                              ? 'px-4 py-3 text-right font-semibold text-rose-500'
-                              : 'px-4 py-3 text-right font-semibold text-neutral-500'
-                        }
-                      >
-                        {formatDelta(item.supplement.delta)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 text-neutral-600">{t('supplements.fieldPerCm')}</td>
-                      <td className="px-4 py-3 text-right text-neutral-700">{formatCurrency(item.perCm.current)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-primary-600">
-                        {formatCurrency(item.perCm.next)}
-                      </td>
-                      <td
-                        className={
-                          item.perCm.delta > 0
-                            ? 'px-4 py-3 text-right font-semibold text-emerald-600'
-                            : item.perCm.delta < 0
-                              ? 'px-4 py-3 text-right font-semibold text-rose-500'
-                              : 'px-4 py-3 text-right font-semibold text-neutral-500'
-                        }
-                      >
-                        {formatDelta(item.perCm.delta)}
-                      </td>
-                    </tr>
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
+        {hasAnyPreview && (
+          <div className="mt-6 space-y-4">
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setIsMergedPreview((value) => !value)}
+              >
+                {isMergedPreview
+                  ? t('supplements.separateTables')
+                  : t('supplements.mergeTables')}
+              </Button>
+            </div>
+            {isMergedPreview ? (
+              mergedPreview.length > 0 && (
+                <div className="overflow-hidden rounded-2xl border border-neutral-200">
+                  <table className="min-w-full divide-y divide-neutral-200 text-sm">
+                    <thead className="bg-neutral-50/70 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      <tr>
+                        <th className="px-4 py-3">{t('supplements.chainType')}</th>
+                        <th className="px-4 py-3">{t('supplements.fieldLabel')}</th>
+                        <th className="px-4 py-3 text-right">{t('supplements.currentValue')}</th>
+                        <th className="px-4 py-3 text-right">{t('supplements.previewValue')}</th>
+                        <th className="px-4 py-3 text-right">{t('supplements.changeValue')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-200 bg-white/80">
+                      {mergedPreview.map((item) => (
+                        <Fragment key={item.chainType}>
+                          <tr>
+                            <td className="px-4 py-3 font-medium text-neutral-900" rowSpan={2}>
+                              {item.chainType}
+                            </td>
+                            <td className="px-4 py-3 text-neutral-600">{t('supplements.fieldSupplement')}</td>
+                            <td className="px-4 py-3 text-right text-neutral-700">
+                              {formatCurrency(item.supplement?.current)}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-primary-600">
+                              {formatCurrency(item.supplement?.next)}
+                            </td>
+                            <td
+                              className={
+                                item.supplement?.delta > 0
+                                  ? 'px-4 py-3 text-right font-semibold text-emerald-600'
+                                  : item.supplement?.delta < 0
+                                    ? 'px-4 py-3 text-right font-semibold text-rose-500'
+                                    : 'px-4 py-3 text-right font-semibold text-neutral-500'
+                              }
+                            >
+                              {formatDelta(item.supplement?.delta)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-3 text-neutral-600">{t('supplements.fieldPerCm')}</td>
+                            <td className="px-4 py-3 text-right text-neutral-700">
+                              {formatCurrency(item.perCm?.current)}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-primary-600">
+                              {formatCurrency(item.perCm?.next)}
+                            </td>
+                            <td
+                              className={
+                                item.perCm?.delta > 0
+                                  ? 'px-4 py-3 text-right font-semibold text-emerald-600'
+                                  : item.perCm?.delta < 0
+                                    ? 'px-4 py-3 text-right font-semibold text-rose-500'
+                                    : 'px-4 py-3 text-right font-semibold text-neutral-500'
+                              }
+                            >
+                              {formatDelta(item.perCm?.delta)}
+                            </td>
+                          </tr>
+                        </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : (
+              <div className="space-y-6">
+                {supplementPreview.length > 0 && (
+                  <div className="overflow-hidden rounded-2xl border border-neutral-200">
+                    <div className="bg-neutral-50/70 px-4 py-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                      {t('supplements.supplementTableTitle')}
+                    </div>
+                    <table className="min-w-full divide-y divide-neutral-200 text-sm">
+                      <thead className="bg-neutral-50/70 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        <tr>
+                          <th className="px-4 py-3">{t('supplements.chainType')}</th>
+                          <th className="px-4 py-3 text-right">{t('supplements.currentValue')}</th>
+                          <th className="px-4 py-3 text-right">{t('supplements.previewValue')}</th>
+                          <th className="px-4 py-3 text-right">{t('supplements.changeValue')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-200 bg-white/80">
+                        {supplementPreview.map((item) => (
+                          <tr key={item.chainType}>
+                            <td className="px-4 py-3 font-medium text-neutral-900">{item.chainType}</td>
+                            <td className="px-4 py-3 text-right text-neutral-700">
+                              {formatCurrency(item.supplement.current)}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-primary-600">
+                              {formatCurrency(item.supplement.next)}
+                            </td>
+                            <td
+                              className={
+                                item.supplement.delta > 0
+                                  ? 'px-4 py-3 text-right font-semibold text-emerald-600'
+                                  : item.supplement.delta < 0
+                                    ? 'px-4 py-3 text-right font-semibold text-rose-500'
+                                    : 'px-4 py-3 text-right font-semibold text-neutral-500'
+                              }
+                            >
+                              {formatDelta(item.supplement.delta)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {perCmPreview.length > 0 && (
+                  <div className="overflow-hidden rounded-2xl border border-neutral-200">
+                    <div className="bg-neutral-50/70 px-4 py-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                      {t('supplements.perCmTableTitle')}
+                    </div>
+                    <table className="min-w-full divide-y divide-neutral-200 text-sm">
+                      <thead className="bg-neutral-50/70 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        <tr>
+                          <th className="px-4 py-3">{t('supplements.chainType')}</th>
+                          <th className="px-4 py-3 text-right">{t('supplements.currentValue')}</th>
+                          <th className="px-4 py-3 text-right">{t('supplements.previewValue')}</th>
+                          <th className="px-4 py-3 text-right">{t('supplements.changeValue')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-200 bg-white/80">
+                        {perCmPreview.map((item) => (
+                          <tr key={item.chainType}>
+                            <td className="px-4 py-3 font-medium text-neutral-900">{item.chainType}</td>
+                            <td className="px-4 py-3 text-right text-neutral-700">
+                              {formatCurrency(item.perCm.current)}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-primary-600">
+                              {formatCurrency(item.perCm.next)}
+                            </td>
+                            <td
+                              className={
+                                item.perCm.delta > 0
+                                  ? 'px-4 py-3 text-right font-semibold text-emerald-600'
+                                  : item.perCm.delta < 0
+                                    ? 'px-4 py-3 text-right font-semibold text-rose-500'
+                                    : 'px-4 py-3 text-right font-semibold text-neutral-500'
+                              }
+                            >
+                              {formatDelta(item.perCm.delta)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Card>
