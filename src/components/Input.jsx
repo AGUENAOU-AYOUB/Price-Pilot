@@ -9,7 +9,7 @@ export const Input = forwardRef(({ label, helperText, className, adornment, ...p
           {label}
         </span>
       )}
-      <div className="relative flex h-12 items-center rounded-2xl border border-brand-blush/70 bg-white/80 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition focus-within:border-primary-400 focus-within:shadow-[0_0_0_4px_rgba(195,100,149,0.18)]">
+      <div className="relative flex h-12 items-center rounded-2xl border border-neutral-200/80 bg-white/85 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition focus-within:border-primary-400 focus-within:shadow-[0_0_0_4px_rgba(37,99,235,0.18)]">
         <input
           ref={ref}
           className={clsx(

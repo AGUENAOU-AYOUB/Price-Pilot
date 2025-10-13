@@ -5,7 +5,7 @@ import { usePricingStore } from '../store/pricingStore';
 import { useTranslation } from '../i18n/useTranslation';
 import { hasShopifyProxy } from '../config/shopify';
 
-const iconClassName = 'h-6 w-6 text-brand-burgundy';
+const iconClassName = 'h-6 w-6 text-primary-700';
 
 const GlobalPricingIcon = () => (
   <svg
@@ -101,7 +101,7 @@ const Metric = ({ icon, label, value, tone = 'primary' }) => {
   };
 
   return (
-    <div className="flex items-start gap-4 rounded-3xl border border-brand-blush/60 bg-white/80 p-6 shadow-[0_22px_60px_-40px_rgba(139,58,98,0.55)] backdrop-blur-sm">
+    <div className="flex items-start gap-4 rounded-3xl border border-neutral-200/70 bg-white/85 p-6 shadow-[0_24px_68px_-42px_rgba(30,64,175,0.32)] backdrop-blur-sm">
       <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${toneClasses[tone] ?? toneClasses.primary}`}>
         {icon}
       </div>
@@ -223,7 +223,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-12">
-      <Card className="border border-brand-blush/60 bg-white/85" title={t('dashboard.heroTitle')}>
+      <Card className="border border-neutral-200/80 bg-white/90" title={t('dashboard.heroTitle')}>
         <div className="space-y-6 text-base text-neutral-600">
           <p className="text-lg text-neutral-600">{t('dashboard.heroSubtitle')}</p>
           <p>{t('dashboard.heroBody')}</p>
@@ -247,9 +247,9 @@ export function DashboardPage() {
             <Link
               key={section.to}
               to={section.to}
-              className="group relative block h-full overflow-hidden rounded-[26px] border border-brand-blush/60 bg-white/80 p-8 shadow-[0_24px_60px_-36px_rgba(139,58,98,0.45)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_30px_80px_-40px_rgba(139,58,98,0.55)]"
+              className="group relative block h-full overflow-hidden rounded-[26px] border border-neutral-200/80 bg-white/85 p-8 shadow-[0_26px_70px_-40px_rgba(15,23,42,0.35)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_34px_90px_-44px_rgba(15,23,42,0.4)]"
             >
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(195,100,149,0.15),_transparent_65%)] opacity-80" aria-hidden="true" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_68%)] opacity-80" aria-hidden="true" />
               <div className="relative flex h-full flex-col gap-6">
                 <div className="flex items-center gap-4">
                   <SectionIcon tone={section.tone} icon={section.icon} />
