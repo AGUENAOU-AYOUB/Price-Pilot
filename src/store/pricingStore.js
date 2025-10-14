@@ -1957,7 +1957,7 @@ export const usePricingStore = create(
       try {
         if (!hasShopifyProxy()) {
           get().log('Shopify proxy missing; unable to push global pricing updates.', 'global', 'error');
-          return;
+          return { success: false, reason: 'missing-proxy' };
         }
 
         const products = get().products;
@@ -2022,7 +2022,7 @@ export const usePricingStore = create(
           });
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'global',
           collection: [],
           updatedProducts,
@@ -2199,7 +2199,7 @@ export const usePricingStore = create(
           );
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'bracelets',
           collection: 'bracelet',
           updatedProducts,
@@ -2385,7 +2385,7 @@ export const usePricingStore = create(
           );
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'necklaces',
           collection: 'collier',
           updatedProducts,
@@ -2566,7 +2566,7 @@ export const usePricingStore = create(
           }
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'rings',
           collection: 'bague',
           updatedProducts,
@@ -2745,7 +2745,7 @@ export const usePricingStore = create(
           );
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'handchains',
           collection: 'handchain',
           updatedProducts,
@@ -2932,7 +2932,7 @@ export const usePricingStore = create(
           );
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'sets',
           collection: 'ensemble',
           updatedProducts,
