@@ -5,7 +5,7 @@ const baseStyles =
 
 const variants = {
   primary:
-    'bg-gradient-to-r from-primary-700 via-primary-600 to-secondary-500 text-white shadow-[0_20px_45px_-24px_rgba(30,64,175,0.55)] hover:shadow-[0_24px_55px_-24px_rgba(30,64,175,0.6)] disabled:shadow-none',
+    'bg-primary-600 text-white shadow-[0_20px_45px_-24px_rgba(30,64,175,0.55)] hover:bg-primary-500 hover:shadow-[0_24px_55px_-24px_rgba(30,64,175,0.6)] disabled:shadow-none',
   secondary:
     'border border-neutral-200/80 bg-white/85 text-brand-charcoal shadow-[0_14px_36px_-24px_rgba(15,23,42,0.25)] hover:border-brand-rose/60 hover:bg-neutral-100',
   ghost: 'bg-transparent text-brand-charcoal hover:bg-neutral-100/80',

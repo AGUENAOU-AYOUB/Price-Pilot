@@ -49,10 +49,21 @@ export function SetsPage() {
     toast.success(t('toast.previewReady', { scope: t('nav.sets') }));
   };
 
-  const runAction = async (action, handler) => {
+  const runAction = async (action, handler, options = {}) => {
     setActiveAction(action);
     try {
-      await handler();
+      const result = await handler();
+
+      if (result && result.success) {
+        const updatedCount = Number.isFinite(result.updatedCount) ? result.updatedCount : null;
+        if (updatedCount === 0 && options.noChangeMessage) {
+          toast.info(options.noChangeMessage);
+        } else if ((updatedCount === null || updatedCount > 0) && options.successMessage) {
+          toast.success(options.successMessage);
+        }
+      }
+
+      return result;
     } finally {
       setActiveAction(null);
     }
@@ -115,7 +126,12 @@ export function SetsPage() {
             type="button"
             isLoading={isBusy && activeAction === 'apply'}
             loadingText={t('action.applying')}
-            onClick={() => runAction('apply', applySets)}
+            onClick={() =>
+              runAction('apply', applySets, {
+                successMessage: t('toast.applySuccess', { scope: t('nav.sets') }),
+                noChangeMessage: t('toast.applyNoChanges', { scope: t('nav.sets') }),
+              })
+            }
           >
             {t('action.apply')}
           </Button>

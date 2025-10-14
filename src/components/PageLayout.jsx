@@ -97,7 +97,7 @@ export function PageLayout({ children }) {
                         'rounded-full border border-transparent px-5 py-2 text-sm font-semibold transition-all duration-200',
                         'hover:-translate-y-[1px] hover:border-brand-rose/50 hover:bg-white/90 hover:text-brand-charcoal',
                         isActive
-                          ? 'bg-gradient-to-r from-primary-700 via-primary-600 to-secondary-500 text-white shadow-[0_16px_38px_-24px_rgba(30,64,175,0.55)]'
+                          ? 'bg-primary-600 text-white shadow-[0_16px_38px_-24px_rgba(30,64,175,0.55)] hover:bg-primary-500'
                           : 'text-neutral-500'
                       )
                     }
@@ -115,7 +115,7 @@ export function PageLayout({ children }) {
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary-700 via-primary-600 to-secondary-500 text-base font-semibold text-white shadow-inner shadow-primary-900/30">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-600 text-base font-semibold text-white shadow-inner shadow-primary-900/30">
                   {initials || 'AZ'}
                 </span>
                 <div className="hidden text-left sm:flex sm:flex-col sm:leading-tight">
@@ -177,7 +177,7 @@ export function PageLayout({ children }) {
                     clsx(
                       'whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200',
                       isActive
-                        ? 'bg-gradient-to-r from-primary-700 via-primary-600 to-secondary-500 text-white shadow-[0_16px_32px_-22px_rgba(30,64,175,0.45)]'
+                        ? 'bg-primary-600 text-white shadow-[0_16px_32px_-22px_rgba(30,64,175,0.45)] hover:bg-primary-500'
                         : 'border border-neutral-200/70 text-neutral-500 hover:bg-neutral-100 hover:text-brand-charcoal',
                     )
                   }

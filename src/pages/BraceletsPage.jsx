@@ -141,10 +141,21 @@ export function BraceletsPage() {
     toast.success(t('toast.supplementRestoreSuccess', { scope: t('nav.bracelets') }));
   };
 
-  const runAction = async (action, handler) => {
+  const runAction = async (action, handler, options = {}) => {
     setActiveAction(action);
     try {
-      await handler();
+      const result = await handler();
+
+      if (result && result.success) {
+        const updatedCount = Number.isFinite(result.updatedCount) ? result.updatedCount : null;
+        if (updatedCount === 0 && options.noChangeMessage) {
+          toast.info(options.noChangeMessage);
+        } else if ((updatedCount === null || updatedCount > 0) && options.successMessage) {
+          toast.success(options.successMessage);
+        }
+      }
+
+      return result;
     } finally {
       setActiveAction(null);
     }
@@ -183,7 +194,12 @@ export function BraceletsPage() {
             type="button"
             isLoading={isBusy && activeAction === 'apply'}
             loadingText={t('action.applying')}
-            onClick={() => runAction('apply', applyBracelets)}
+            onClick={() =>
+              runAction('apply', applyBracelets, {
+                successMessage: t('toast.applySuccess', { scope: t('nav.bracelets') }),
+                noChangeMessage: t('toast.applyNoChanges', { scope: t('nav.bracelets') }),
+              })
+            }
           >
             {t('action.apply')}
           </Button>

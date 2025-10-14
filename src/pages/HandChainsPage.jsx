@@ -51,10 +51,21 @@ export function HandChainsPage() {
     toast.success(t('toast.previewReady', { scope: t('nav.handChains') }));
   };
 
-  const runAction = async (action, handler) => {
+  const runAction = async (action, handler, options = {}) => {
     setActiveAction(action);
     try {
-      await handler();
+      const result = await handler();
+
+      if (result && result.success) {
+        const updatedCount = Number.isFinite(result.updatedCount) ? result.updatedCount : null;
+        if (updatedCount === 0 && options.noChangeMessage) {
+          toast.info(options.noChangeMessage);
+        } else if ((updatedCount === null || updatedCount > 0) && options.successMessage) {
+          toast.success(options.successMessage);
+        }
+      }
+
+      return result;
     } finally {
       setActiveAction(null);
     }
@@ -93,7 +104,12 @@ export function HandChainsPage() {
             type="button"
             isLoading={isBusy && activeAction === 'apply'}
             loadingText={t('action.applying')}
-            onClick={() => runAction('apply', applyHandChains)}
+            onClick={() =>
+              runAction('apply', applyHandChains, {
+                successMessage: t('toast.applySuccess', { scope: t('nav.handChains') }),
+                noChangeMessage: t('toast.applyNoChanges', { scope: t('nav.handChains') }),
+              })
+            }
           >
             {t('action.apply')}
           </Button>
