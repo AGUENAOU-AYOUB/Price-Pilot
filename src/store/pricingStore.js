@@ -2291,40 +2291,49 @@ export const usePricingStore = create(
           }
 
           const targetVariants = buildNecklaceVariants(product, supplements.necklaces);
-          const targetByKey = new Map();
+          const targetEntries = targetVariants.map((variant) => ({
+            variant,
+            signature: deriveNecklaceSignature(variant),
+          }));
 
-          for (const target of targetVariants) {
-            const signature = deriveNecklaceSignature(target);
+          const targetByKey = new Map();
+          for (const { variant, signature } of targetEntries) {
             if (signature.key) {
-              targetByKey.set(signature.key, target);
+              targetByKey.set(signature.key, { variant, signature });
             }
           }
 
           const availableKeys = new Set();
           const variantKeyLookup = new Map();
 
-          for (const variant of product.variants) {
+          const productVariantEntries = product.variants.map((variant) => ({
+            variant,
+            signature: deriveNecklaceSignature(variant),
+          }));
+
+          for (const { variant, signature } of productVariantEntries) {
             if (variant?.id) {
               originalVariantLookup.set(String(variant.id), variant);
             }
 
-            const signature = deriveNecklaceSignature(variant);
             if (signature.key && targetByKey.has(signature.key)) {
               availableKeys.add(signature.key);
               variantKeyLookup.set(variant, signature.key);
             }
           }
 
-          const nextVariants = product.variants.map((variant) => {
+          const nextVariants = productVariantEntries.map(({ variant }) => {
             const key = variantKeyLookup.get(variant);
             if (!key) {
               return variant;
             }
 
-            const target = targetByKey.get(key);
-            if (!target) {
+            const targetEntry = targetByKey.get(key);
+            if (!targetEntry) {
               return variant;
             }
+
+            const { variant: target } = targetEntry;
 
             if (
               variant.id &&
@@ -2352,10 +2361,9 @@ export const usePricingStore = create(
             };
           });
 
-          const missingVariants = targetVariants.filter((variant) => {
-            const signature = deriveNecklaceSignature(variant);
-            return signature.key ? !availableKeys.has(signature.key) : true;
-          });
+          const missingVariants = targetEntries
+            .filter(({ signature }) => (signature.key ? !availableKeys.has(signature.key) : true))
+            .map(({ variant }) => variant);
 
           if (missingVariants.length > 0) {
             missingSummaries.push({
