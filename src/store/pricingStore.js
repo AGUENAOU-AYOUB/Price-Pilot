@@ -62,10 +62,36 @@ const persistUsername = (username) => {
 };
 
 const SUPPLEMENT_BACKUP_STORAGE_KEY = 'price-pilot.supplement-backups';
+const SUPPLEMENTS_STORAGE_KEY = 'price-pilot.supplements';
 
 const createEmptySupplementBackups = () => ({
   bracelets: null,
   necklaces: null,
+});
+
+const createDefaultSupplements = () => ({
+  bracelets: { ...braceletChainTypes },
+  necklaces: Object.fromEntries(
+    Object.entries(necklaceChainTypes).map(([chainType, values]) => [
+      chainType,
+      {
+        supplement: Number(values?.supplement) || 0,
+        perCm: Number(values?.perCm) || 0,
+      },
+    ]),
+  ),
+  rings: Object.fromEntries(
+    Object.entries(ringBandSupplements).map(([band, sizes]) => [
+      band,
+      { ...sizes },
+    ]),
+  ),
+  handChains: Object.fromEntries(
+    Object.entries(necklaceChainTypes).map(([title, data]) => [
+      title,
+      (Number(data?.supplement) || 0) * HAND_CHAIN_MULTIPLIER,
+    ]),
+  ),
 });
 
 const sanitizeBackupSnapshot = (value) => {
@@ -79,6 +105,62 @@ const sanitizeBackupSnapshot = (value) => {
     console.warn('Failed to sanitize supplement backup snapshot:', error);
     return null;
   }
+};
+
+const sanitizeBraceletSupplementMap = (value) => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([chainType]) =>
+        Object.prototype.hasOwnProperty.call(braceletChainTypes, chainType),
+      )
+      .map(([chainType, supplement]) => {
+        const numeric = Number(supplement);
+        return Number.isFinite(numeric) ? [chainType, numeric] : null;
+      })
+      .filter(Boolean),
+  );
+};
+
+const sanitizeNecklaceSupplementMap = (value) => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([chainType]) =>
+        Object.prototype.hasOwnProperty.call(necklaceChainTypes, chainType),
+      )
+      .map(([chainType, values]) => {
+        if (!values || typeof values !== 'object') {
+          return null;
+        }
+
+        const supplement = Number(values.supplement);
+        const perCm = Number(values.perCm);
+        const hasSupplement = Number.isFinite(supplement);
+        const hasPerCm = Number.isFinite(perCm);
+
+        if (!hasSupplement && !hasPerCm) {
+          return null;
+        }
+
+        const sanitized = {};
+        if (hasSupplement) {
+          sanitized.supplement = supplement;
+        }
+        if (hasPerCm) {
+          sanitized.perCm = perCm;
+        }
+
+        return [chainType, sanitized];
+      })
+      .filter(Boolean),
+  );
 };
 
 const loadStoredSupplementBackups = () => {
@@ -130,19 +212,77 @@ const persistSupplementBackups = (backups) => {
   }
 };
 
-const defaultSupplements = {
-  bracelets: { ...braceletChainTypes },
-  necklaces: { ...necklaceChainTypes },
-  rings: JSON.parse(JSON.stringify(ringBandSupplements)),
-  handChains: Object.fromEntries(
-    Object.entries(necklaceChainTypes).map(([title, data]) => [
-      title,
-      data.supplement * HAND_CHAIN_MULTIPLIER,
-    ]),
-  ),
+const persistSupplements = (supplements) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    const bracelets = sanitizeBraceletSupplementMap(supplements?.bracelets);
+    const necklaces = sanitizeNecklaceSupplementMap(supplements?.necklaces);
+
+    if (Object.keys(bracelets).length === 0 && Object.keys(necklaces).length === 0) {
+      window.localStorage.removeItem(SUPPLEMENTS_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(
+      SUPPLEMENTS_STORAGE_KEY,
+      JSON.stringify({ bracelets, necklaces }),
+    );
+  } catch (error) {
+    console.warn('Failed to persist supplements to localStorage:', error);
+  }
 };
 
-const cloneSupplements = () => JSON.parse(JSON.stringify(defaultSupplements));
+const loadStoredSupplements = () => {
+  const supplements = createDefaultSupplements();
+
+  if (typeof window === 'undefined') {
+    return supplements;
+  }
+
+  try {
+    const stored = window.localStorage.getItem(SUPPLEMENTS_STORAGE_KEY);
+    if (!stored) {
+      return supplements;
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object') {
+      return supplements;
+    }
+
+    const bracelets = sanitizeBraceletSupplementMap(parsed.bracelets);
+    for (const [chainType, supplement] of Object.entries(bracelets)) {
+      supplements.bracelets[chainType] = supplement;
+    }
+
+    const necklaces = sanitizeNecklaceSupplementMap(parsed.necklaces);
+    for (const [chainType, values] of Object.entries(necklaces)) {
+      const fallbackSupplement = Number(supplements.necklaces?.[chainType]?.supplement) || 0;
+      const fallbackPerCm = Number(supplements.necklaces?.[chainType]?.perCm) || 0;
+
+      supplements.necklaces[chainType] = {
+        supplement: Number.isFinite(values.supplement)
+          ? values.supplement
+          : fallbackSupplement,
+        perCm: Number.isFinite(values.perCm) ? values.perCm : fallbackPerCm,
+      };
+    }
+  } catch (error) {
+    console.warn('Failed to load stored supplements from localStorage:', error);
+  }
+
+  supplements.handChains = Object.fromEntries(
+    Object.entries(supplements.necklaces).map(([chainType, values]) => [
+      chainType,
+      (Number(values?.supplement) || 0) * HAND_CHAIN_MULTIPLIER,
+    ]),
+  );
+
+  return supplements;
+};
 
 const SCOPE_COLLECTIONS = {
   global: [],
@@ -1403,7 +1543,7 @@ export const usePricingStore = create(
     products: mockProducts,
     productsInitialized: false,
     productsSyncing: false,
-    supplements: cloneSupplements(),
+    supplements: loadStoredSupplements(),
     supplementBackups: loadStoredSupplementBackups(),
     backups: {},
     logs: [],
@@ -1817,7 +1957,7 @@ export const usePricingStore = create(
       try {
         if (!hasShopifyProxy()) {
           get().log('Shopify proxy missing; unable to push global pricing updates.', 'global', 'error');
-          return;
+          return { success: false, reason: 'missing-proxy' };
         }
 
         const products = get().products;
@@ -1882,7 +2022,7 @@ export const usePricingStore = create(
           });
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'global',
           collection: [],
           updatedProducts,
@@ -2059,7 +2199,7 @@ export const usePricingStore = create(
           );
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'bracelets',
           collection: 'bracelet',
           updatedProducts,
@@ -2151,40 +2291,49 @@ export const usePricingStore = create(
           }
 
           const targetVariants = buildNecklaceVariants(product, supplements.necklaces);
-          const targetByKey = new Map();
+          const targetEntries = targetVariants.map((variant) => ({
+            variant,
+            signature: deriveNecklaceSignature(variant),
+          }));
 
-          for (const target of targetVariants) {
-            const signature = deriveNecklaceSignature(target);
+          const targetByKey = new Map();
+          for (const { variant, signature } of targetEntries) {
             if (signature.key) {
-              targetByKey.set(signature.key, target);
+              targetByKey.set(signature.key, { variant, signature });
             }
           }
 
           const availableKeys = new Set();
           const variantKeyLookup = new Map();
 
-          for (const variant of product.variants) {
+          const productVariantEntries = product.variants.map((variant) => ({
+            variant,
+            signature: deriveNecklaceSignature(variant),
+          }));
+
+          for (const { variant, signature } of productVariantEntries) {
             if (variant?.id) {
               originalVariantLookup.set(String(variant.id), variant);
             }
 
-            const signature = deriveNecklaceSignature(variant);
             if (signature.key && targetByKey.has(signature.key)) {
               availableKeys.add(signature.key);
               variantKeyLookup.set(variant, signature.key);
             }
           }
 
-          const nextVariants = product.variants.map((variant) => {
+          const nextVariants = productVariantEntries.map(({ variant }) => {
             const key = variantKeyLookup.get(variant);
             if (!key) {
               return variant;
             }
 
-            const target = targetByKey.get(key);
-            if (!target) {
+            const targetEntry = targetByKey.get(key);
+            if (!targetEntry) {
               return variant;
             }
+
+            const { variant: target } = targetEntry;
 
             if (
               variant.id &&
@@ -2212,10 +2361,9 @@ export const usePricingStore = create(
             };
           });
 
-          const missingVariants = targetVariants.filter((variant) => {
-            const signature = deriveNecklaceSignature(variant);
-            return signature.key ? !availableKeys.has(signature.key) : true;
-          });
+          const missingVariants = targetEntries
+            .filter(({ signature }) => (signature.key ? !availableKeys.has(signature.key) : true))
+            .map(({ variant }) => variant);
 
           if (missingVariants.length > 0) {
             missingSummaries.push({
@@ -2237,7 +2385,7 @@ export const usePricingStore = create(
           );
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'necklaces',
           collection: 'collier',
           updatedProducts,
@@ -2418,7 +2566,7 @@ export const usePricingStore = create(
           }
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'rings',
           collection: 'bague',
           updatedProducts,
@@ -2597,7 +2745,7 @@ export const usePricingStore = create(
           );
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'handchains',
           collection: 'handchain',
           updatedProducts,
@@ -2784,7 +2932,7 @@ export const usePricingStore = create(
           );
         }
 
-        await commitShopifyVariantUpdates({
+        return await commitShopifyVariantUpdates({
           scope: 'sets',
           collection: 'ensemble',
           updatedProducts,
@@ -2833,11 +2981,15 @@ export const usePricingStore = create(
           ]),
         );
 
+        const nextSupplements = {
+          ...state.supplements,
+          bracelets: updatedBracelets,
+        };
+
+        persistSupplements(nextSupplements);
+
         return {
-          supplements: {
-            ...state.supplements,
-            bracelets: updatedBracelets,
-          },
+          supplements: nextSupplements,
         };
       });
     },
@@ -2916,12 +3068,16 @@ export const usePricingStore = create(
           ]),
         );
 
+        const nextSupplements = {
+          ...state.supplements,
+          necklaces: updatedNecklaces,
+          handChains: updatedHandChains,
+        };
+
+        persistSupplements(nextSupplements);
+
         return {
-          supplements: {
-            ...state.supplements,
-            necklaces: updatedNecklaces,
-            handChains: updatedHandChains,
-          },
+          supplements: nextSupplements,
         };
       });
     },
@@ -2971,12 +3127,18 @@ export const usePricingStore = create(
       const restored = JSON.parse(JSON.stringify(backup));
 
       if (scope === 'bracelets') {
-        set((state) => ({
-          supplements: {
+        set((state) => {
+          const nextSupplements = {
             ...state.supplements,
             bracelets: restored,
-          },
-        }));
+          };
+
+          persistSupplements(nextSupplements);
+
+          return {
+            supplements: nextSupplements,
+          };
+        });
         return true;
       }
 
@@ -2988,12 +3150,16 @@ export const usePricingStore = create(
           ]),
         );
 
+        const nextSupplements = {
+          ...state.supplements,
+          necklaces: restored,
+          handChains: updatedHandChains,
+        };
+
+        persistSupplements(nextSupplements);
+
         return {
-          supplements: {
-            ...state.supplements,
-            necklaces: restored,
-            handChains: updatedHandChains,
-          },
+          supplements: nextSupplements,
         };
       });
 
@@ -3001,37 +3167,53 @@ export const usePricingStore = create(
     },
 
     updateBraceletSupplement: (title, value) => {
-      set((state) => ({
-        supplements: {
+      set((state) => {
+        const nextSupplements = {
           ...state.supplements,
           bracelets: {
             ...state.supplements.bracelets,
             [title]: value,
           },
-        },
-      }));
+        };
+
+        persistSupplements(nextSupplements);
+
+        return {
+          supplements: nextSupplements,
+        };
+      });
     },
 
     updateNecklaceSupplement: (title, field, value) => {
-      set((state) => ({
-        supplements: {
+      set((state) => {
+        const nextNecklaces = {
+          ...state.supplements.necklaces,
+          [title]: {
+            ...state.supplements.necklaces[title],
+            [field]: value,
+          },
+        };
+
+        const nextHandChains = {
+          ...state.supplements.handChains,
+          [title]:
+            field === 'supplement'
+              ? value * HAND_CHAIN_MULTIPLIER
+              : state.supplements.handChains[title],
+        };
+
+        const nextSupplements = {
           ...state.supplements,
-          necklaces: {
-            ...state.supplements.necklaces,
-            [title]: {
-              ...state.supplements.necklaces[title],
-              [field]: value,
-            },
-          },
-          handChains: {
-            ...state.supplements.handChains,
-            [title]:
-              field === 'supplement'
-                ? value * HAND_CHAIN_MULTIPLIER
-                : state.supplements.handChains[title],
-          },
-        },
-      }));
+          necklaces: nextNecklaces,
+          handChains: nextHandChains,
+        };
+
+        persistSupplements(nextSupplements);
+
+        return {
+          supplements: nextSupplements,
+        };
+      });
     },
 
     updateRingSupplement: (band, size, value) => {
