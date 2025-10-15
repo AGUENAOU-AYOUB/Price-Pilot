@@ -1,12 +1,9 @@
 import './loadEnv.js';
 import express from 'express';
 import crypto from 'node:crypto';
-
-import {
-  braceletChainTypes,
-  necklaceChainTypes,
-  necklaceSizes,
-} from '../src/data/supplements.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const {
   VITE_SHOPIFY_STORE_DOMAIN,
@@ -23,7 +20,110 @@ if (!VITE_SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN || !SHOPIFY_WEBHOOK_SECR
   process.exit(1);
 }
 
-const DEFAULT_CHAIN_SIZE = 41;
+const SUPPLEMENTS_PATH = path.resolve(process.cwd(), 'src/data/supplements.js');
+const DEFAULT_NECKLACE_SIZE = 41;
+const FORSAT_S_KEY = 'forsat s';
+
+const stripDiacritics = (value = '') =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const normalize = (value = '') => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  return stripDiacritics(String(value)).trim().toLowerCase();
+};
+
+const moneyToNumber = (value) => {
+  const numeric = Number.parseFloat(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const formatMoney = (value) => (Math.round(value * 100) / 100).toFixed(2);
+
+const parseTags = (tags = '') => {
+  const list = Array.isArray(tags) ? tags : String(tags).split(',');
+  return new Set(list.map((tag) => normalize(tag)).filter(Boolean));
+};
+
+const findSizeInText = (value) => {
+  const normalized = normalize(value);
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*cm/);
+  if (match) {
+    return Number.parseFloat(match[1]);
+  }
+
+  const fallback = normalized.match(/(\d+(?:\.\d+)?)/);
+  if (fallback) {
+    return Number.parseFloat(fallback[1]);
+  }
+
+  return null;
+};
+
+const collectVariantFields = (variant) =>
+  [variant.title, variant.option1, variant.option2, variant.option3]
+    .filter(Boolean)
+    .map((value) => normalize(value));
+
+const supplementsState = {
+  bracelet: new Map(),
+  necklace: new Map(),
+  necklaceSizes: [],
+};
+
+const refreshDerivedSupplements = (module) => {
+  supplementsState.bracelet.clear();
+  supplementsState.necklace.clear();
+  supplementsState.braceletBase = module?.braceletChainTypes ?? {};
+  supplementsState.necklaceBase = module?.necklaceChainTypes ?? {};
+  supplementsState.necklaceSizes = Array.isArray(module?.necklaceSizes) ? [...module.necklaceSizes] : [];
+
+  if (supplementsState.braceletBase) {
+    for (const [name, supplement] of Object.entries(supplementsState.braceletBase)) {
+      supplementsState.bracelet.set(normalize(name), { name, supplement: Number(supplement) || 0 });
+    }
+  }
+
+  if (supplementsState.necklaceBase) {
+    for (const [name, config] of Object.entries(supplementsState.necklaceBase)) {
+      const normalizedName = normalize(name);
+      const supplement = Number(config?.supplement) || 0;
+      const perCm = Number(config?.perCm) || 0;
+      supplementsState.necklace.set(normalizedName, {
+        name,
+        supplement,
+        perCm,
+      });
+    }
+  }
+};
+
+const loadSupplements = async () => {
+  try {
+    const moduleUrl = `${pathToFileURL(SUPPLEMENTS_PATH).href}?t=${Date.now()}`;
+    const module = await import(moduleUrl);
+    refreshDerivedSupplements(module);
+    console.info('Webhook supplements loaded.');
+  } catch (error) {
+    console.error('Failed to load supplements.', error);
+  }
+};
+
+let supplementsReady = loadSupplements();
+
+try {
+  fs.watch(SUPPLEMENTS_PATH, { persistent: false }, (eventType) => {
+    if (eventType === 'change' || eventType === 'rename') {
+      supplementsReady = loadSupplements();
+    }
+  });
+} catch (error) {
+  console.warn('Could not watch supplement file for changes:', error);
+}
 
 const app = express();
 app.use(
@@ -35,413 +135,278 @@ app.use(
   }),
 );
 
-const stripDiacritics = (value) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-const normalize = (value = '') => {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  return stripDiacritics(String(value)).trim().toLowerCase();
-};
-
-const parseTags = (tags = '') => {
-  const values = Array.isArray(tags)
-    ? tags
-    : String(tags)
-        .split(',')
-        .map((tag) => tag);
-
-  return new Set(values.map((tag) => normalize(tag)).filter(Boolean));
-};
-
-const parseNumber = (value, fallback = 0) => {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const splitVariantDescriptor = (value) => {
-  if (!value) {
-    return [];
+const verifyShopifySignature = (req) => {
+  const header = req.get('X-Shopify-Hmac-Sha256');
+  if (!header) {
+    return false;
   }
 
-  return String(value)
-    .split(/[\\/•|,;\-–—]/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-};
+  const digest = crypto.createHmac('sha256', SHOPIFY_WEBHOOK_SECRET).update(req.rawBody).digest('base64');
 
-const collectVariantTokens = (variant) => {
-  const rawTokens = [
-    variant?.option1,
-    variant?.option2,
-    variant?.option3,
-    ...(Array.isArray(variant?.options) ? variant.options : []),
-    variant?.title,
-  ];
-
-  return rawTokens.flatMap((token) => splitVariantDescriptor(token));
-};
-
-const KNOWN_CHAIN_TYPES = new Map(
-  [
-    ...Object.keys(braceletChainTypes),
-    ...Object.keys(necklaceChainTypes),
-  ].map((name) => [normalize(name), name]),
-);
-
-const KNOWN_CHAIN_TYPE_ENTRIES = [...KNOWN_CHAIN_TYPES.entries()];
-
-const findChainType = (variant) => {
-  for (const token of collectVariantTokens(variant)) {
-    const normalizedToken = normalize(token);
-
-    const directMatch = KNOWN_CHAIN_TYPES.get(normalizedToken);
-    if (directMatch) {
-      return directMatch;
-    }
-
-    for (const [normalizedName, canonical] of KNOWN_CHAIN_TYPE_ENTRIES) {
-      if (normalizedToken.includes(normalizedName)) {
-        return canonical;
-      }
-    }
-  }
-
-  return null;
-};
-
-const KNOWN_NECKLACE_SIZES = new Set(necklaceSizes);
-
-const findNecklaceSize = (variant) => {
-  for (const token of collectVariantTokens(variant)) {
-    const match = token.match(/(\d+(?:\.\d+)?)/);
-    if (!match) {
-      continue;
-    }
-
-    const numeric = Number.parseFloat(match[1]);
-    if (!Number.isFinite(numeric)) {
-      continue;
-    }
-
-    if (KNOWN_NECKLACE_SIZES.has(numeric)) {
-      return numeric;
-    }
-
-    const rounded = Math.round(numeric);
-    if (KNOWN_NECKLACE_SIZES.has(rounded)) {
-      return rounded;
-    }
-  }
-
-  return null;
-};
-
-const isForsatS = (value) => normalize(value) === 'forsat s';
-
-const normalizeCollection = (...values) =>
-  values
-    .flat()
-    .map((value) => normalize(value ?? ''))
-    .filter(Boolean);
-
-const BRACELET_KEYWORDS = {
-  tags: ['brac', 'bracelet', 'bracelets'],
-  text: ['bracelet', 'bracelets', 'gourmette'],
-};
-
-const NECKLACE_KEYWORDS = {
-  tags: [
-    'nckl',
-    'necklace',
-    'necklaces',
-    'collier',
-    'colliers',
-    'chaine',
-    'chaines',
-    'sautoir',
-    'pendentif',
-    'pendentifs',
-    'pendant',
-    'pendants',
-  ],
-  text: [
-    'necklace',
-    'necklaces',
-    'collier',
-    'colliers',
-    'chaine',
-    'chaines',
-    'sautoir',
-    'sautoirs',
-    'pendentif',
-    'pendentifs',
-    'pendant',
-    'pendants',
-    (value) => value.includes('neck') && !value.includes('hand'),
-  ],
-};
-
-const SET_KEYWORDS = {
-  tags: ['set', 'sets', 'ensemble', 'ensembles', 'parure', 'parures'],
-  text: ['ensemble', 'ensembles', 'parure', 'parures'],
-};
-
-const matchesKeywords = (candidates, keywords) =>
-  candidates.some((candidate) =>
-    keywords.some((keyword) =>
-      typeof keyword === 'function' ? keyword(candidate) : candidate.includes(keyword),
-    ),
-  );
-
-const determineFamily = (product) => {
-  const tags = parseTags(product.tags);
-  const types = normalizeCollection(
-    product.product_type,
-    product.custom_product_type,
-    product?.standardized_product_type?.product_type,
-    product?.standardized_product_type?.product_taxonomy_node?.full_path,
-  );
-  const metadata = normalizeCollection(
-    product.title,
-    product.handle,
-    product.vendor,
-    product.template_suffix,
-    product?.options?.map((option) => option.name),
-  );
-
-  const hasTag = (keywordList) => keywordList.some((keyword) => tags.has(keyword));
-  const matchesType = (keywordList) => matchesKeywords(types, keywordList);
-  const matchesMetadata = (keywordList) => matchesKeywords(metadata, keywordList);
-
-  if (
-    hasTag(SET_KEYWORDS.tags) ||
-    matchesType([...SET_KEYWORDS.tags, ...SET_KEYWORDS.text]) ||
-    matchesMetadata(SET_KEYWORDS.text)
-  ) {
-    return 'set';
-  }
-
-  if (
-    hasTag(NECKLACE_KEYWORDS.tags) ||
-    matchesType([...NECKLACE_KEYWORDS.tags, ...NECKLACE_KEYWORDS.text]) ||
-    matchesMetadata(NECKLACE_KEYWORDS.text)
-  ) {
-    return 'necklace';
-  }
-
-  if (
-    hasTag(BRACELET_KEYWORDS.tags) ||
-    matchesType([...BRACELET_KEYWORDS.tags, ...BRACELET_KEYWORDS.text]) ||
-    matchesMetadata(BRACELET_KEYWORDS.text)
-  ) {
-    return 'bracelet';
-  }
-
-  return null;
-};
-
-const findBaseVariant = (product) => {
-  if (!Array.isArray(product.variants)) {
-    return null;
-  }
-
-  return (
-    product.variants.find((variant) => {
-      const chainType = findChainType(variant);
-      if (!chainType || !isForsatS(chainType)) {
-        return false;
-      }
-
-      const size = findNecklaceSize(variant);
-      if (size === null) {
-        return true;
-      }
-
-      return Math.abs(size - DEFAULT_CHAIN_SIZE) < 0.5;
-    }) ?? null
-  );
-};
-
-const moneyString = (value) => (Math.round(value * 100) / 100).toFixed(2);
-
-const computeBraceletSupplement = (variant) => {
-  const chainType = findChainType(variant);
-  if (!chainType || !Object.prototype.hasOwnProperty.call(braceletChainTypes, chainType)) {
-    return null;
-  }
-  return braceletChainTypes[chainType];
-};
-
-const computeNecklaceSupplement = (variant) => {
-  const chainType = findChainType(variant);
-  const chainData = necklaceChainTypes[chainType];
-  if (!chainData) return null;
-  const size = findNecklaceSize(variant) ?? DEFAULT_CHAIN_SIZE;
-  const sizeDelta = Math.max(0, size - DEFAULT_CHAIN_SIZE);
-  return chainData.supplement + sizeDelta * chainData.perCm;
-};
-
-const computeSetSupplement = (variant) => {
-  const chainType = findChainType(variant);
-  const necklaceData = necklaceChainTypes[chainType];
-  if (!necklaceData) return null;
-  const braceletSupplement = braceletChainTypes[chainType] ?? 0;
-  const size = findNecklaceSize(variant) ?? DEFAULT_CHAIN_SIZE;
-  const sizeDelta = Math.max(0, size - DEFAULT_CHAIN_SIZE);
-  return braceletSupplement + necklaceData.supplement + sizeDelta * necklaceData.perCm;
-};
-
-const buildVariantUpdates = (product, family) => {
-  const baseVariant = findBaseVariant(product);
-  if (!baseVariant) {
-    return { baseVariant: null, updates: [], message: 'No Forsat S base variant found.' };
-  }
-
-  const basePrice = parseNumber(baseVariant.price, 0);
-  const baseCompare = parseNumber(baseVariant.compare_at_price, basePrice);
-
-  const computeSupplement =
-    family === 'bracelet'
-      ? computeBraceletSupplement
-      : family === 'necklace'
-      ? computeNecklaceSupplement
-      : computeSetSupplement;
-
-  const updates = [];
-
-  for (const variant of product.variants) {
-    if (variant.id === baseVariant.id) {
-      continue;
-    }
-    const supplement = computeSupplement(variant);
-    if (supplement === null) {
-      continue;
-    }
-    const price = basePrice + supplement;
-    const compareAt = baseCompare + supplement;
-    const priceNumber = parseNumber(variant.price, 0);
-    const compareNumber = parseNumber(variant.compare_at_price, priceNumber);
-
-    if (Math.abs(priceNumber - price) < 0.1 && Math.abs(compareNumber - compareAt) < 0.1) {
-      continue;
-    }
-
-    updates.push({
-      id: variant.id,
-      price: moneyString(price),
-      compare_at_price: moneyString(compareAt),
-      title: variant.title,
-    });
-  }
-
-  return { baseVariant, updates };
-};
-
-const verifyShopifyRequest = (req) => {
-  const shopifyHmac = req.get('X-Shopify-Hmac-Sha256');
-  if (!shopifyHmac) return false;
-  const digest = crypto
-    .createHmac('sha256', SHOPIFY_WEBHOOK_SECRET)
-    .update(req.rawBody)
-    .digest('base64');
   try {
-    return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(shopifyHmac));
+    return crypto.timingSafeEqual(Buffer.from(header, 'base64'), Buffer.from(digest, 'base64'));
   } catch (error) {
-    console.warn('Failed to perform timing-safe comparison:', error);
+    console.warn('Failed to verify webhook signature:', error);
     return false;
   }
 };
 
-const updateShopifyVariant = async (variant) => {
-  const response = await fetch(
-    `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variant.id}.json`,
-    {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-      },
-      body: JSON.stringify({
-        variant: {
-          id: variant.id,
-          price: variant.price,
-          compare_at_price: variant.compare_at_price,
-        },
-      }),
+const collectionCache = new Map();
+const COLLECTION_TTL = 5 * 60 * 1000;
+
+const fetchProductCollections = async (productId) => {
+  if (!productId) {
+    return [];
+  }
+
+  const cached = collectionCache.get(productId);
+  if (cached && Date.now() - cached.timestamp < COLLECTION_TTL) {
+    return cached.collections;
+  }
+
+  const url = `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${productId}/collections.json`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
     },
-  );
+  });
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    return {
-      id: variant.id,
-      title: variant.title,
-      ok: false,
-      status: response.status,
-      statusText: response.statusText,
-      body: errorBody,
-    };
+    console.warn('Failed to load product collections', productId, response.status, await response.text());
+    return [];
   }
 
-  return { id: variant.id, title: variant.title, ok: true };
+  const payload = await response.json();
+  const collections = Array.isArray(payload?.collections) ? payload.collections : [];
+  collectionCache.set(productId, { timestamp: Date.now(), collections });
+  return collections;
 };
 
-app.post('/webhooks/product-update', async (req, res) => {
-  if (!verifyShopifyRequest(req)) {
-    return res.status(401).send('Invalid webhook signature');
+const productBelongsTo = (collections, target) => {
+  const normalizedTarget = normalize(target);
+  return collections.some((collection) => normalize(collection?.title) === normalizedTarget);
+};
+
+const resolveProductKind = async (product) => {
+  const tags = parseTags(product?.tags);
+  const collections = await fetchProductCollections(product?.id);
+
+  if (tags.has('brac') && productBelongsTo(collections, 'Bracelet')) {
+    return 'bracelet';
   }
 
-  const product = req.body;
-  if (!product || product.status !== 'active') {
-    return res.status(200).json({ skipped: true, reason: 'Product inactive or missing.' });
+  if (tags.has('nckl') && productBelongsTo(collections, 'Colliers')) {
+    return 'necklace';
   }
 
-  const family = determineFamily(product);
-  if (!family) {
-    return res.status(200).json({ skipped: true, reason: 'Product does not match bracelet/necklace/set tags.' });
+  if (tags.has('brac')) {
+    console.warn(`Product ${product?.id} missing Bracelet collection membership; falling back to tag.`);
+    return 'bracelet';
   }
 
-  const { baseVariant, updates, message } = buildVariantUpdates(product, family);
-  if (!baseVariant) {
-    console.warn(`Product ${product.id}: ${message}`);
-    return res.status(200).json({ skipped: true, reason: message });
+  if (tags.has('nckl')) {
+    console.warn(`Product ${product?.id} missing Colliers collection membership; falling back to tag.`);
+    return 'necklace';
   }
 
-  if (updates.length === 0) {
-    return res.status(200).json({ updated: 0, message: 'No variant prices required updates.' });
-  }
+  return null;
+};
 
-  const results = [];
-  for (const variant of updates) {
-    try {
-      const result = await updateShopifyVariant(variant);
-      results.push(result);
-    } catch (error) {
-      results.push({ id: variant.id, title: variant.title, ok: false, error: error.message });
+const identifyChainType = (variant, productKind) => {
+  const fields = collectVariantFields(variant);
+  const source = productKind === 'necklace' ? supplementsState.necklace : supplementsState.bracelet;
+
+  for (const field of fields) {
+    for (const [normalizedName, config] of source) {
+      if (field.includes(normalizedName)) {
+        return { key: normalizedName, config };
+      }
     }
   }
 
-  const successCount = results.filter((item) => item.ok).length;
+  return null;
+};
 
-  console.info(
-    `Product ${product.id}: updated ${successCount}/${updates.length} variants after Forsat S change.`,
-  );
+const extractVariantSize = (variant) => {
+  const fields = [variant.option1, variant.option2, variant.option3, variant.title];
+  for (const field of fields) {
+    if (!field) continue;
+    const size = findSizeInText(field);
+    if (Number.isFinite(size)) {
+      return size;
+    }
+  }
+  return null;
+};
 
-  return res.status(200).json({
-    updated: successCount,
-    attempted: updates.length,
-    variants: results,
+const pickForsatBaseVariant = (variants, productKind) => {
+  const candidates = [];
+  for (const variant of variants) {
+    const chainType = identifyChainType(variant, productKind);
+    if (!chainType || chainType.key !== FORSAT_S_KEY) {
+      continue;
+    }
+
+    const size = productKind === 'necklace' ? extractVariantSize(variant) : null;
+    candidates.push({ variant, size });
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  if (productKind !== 'necklace') {
+    return candidates[0].variant;
+  }
+
+  let best = candidates[0];
+  for (const candidate of candidates) {
+    if (!Number.isFinite(candidate.size)) {
+      continue;
+    }
+    if (!Number.isFinite(best.size)) {
+      best = candidate;
+      continue;
+    }
+    const candidateDiff = Math.abs(candidate.size - DEFAULT_NECKLACE_SIZE);
+    const bestDiff = Math.abs(best.size - DEFAULT_NECKLACE_SIZE);
+    if (candidateDiff < bestDiff) {
+      best = candidate;
+    }
+  }
+
+  return best.variant;
+};
+
+const calculateBraceletPrice = (basePrice, chainConfig) => basePrice + chainConfig.supplement;
+
+const calculateNecklacePrice = (basePrice, chainConfig, size) => {
+  const normalizedSize = Number.isFinite(size) ? size : DEFAULT_NECKLACE_SIZE;
+  const delta = normalizedSize - DEFAULT_NECKLACE_SIZE;
+  return basePrice + chainConfig.supplement + delta * chainConfig.perCm;
+};
+
+const pricesEqual = (current, target) => Math.abs(moneyToNumber(current) - target) < 0.005;
+
+const updateVariantPrice = async (variantId, price, compareAtPrice) => {
+  const url = `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/variants/${variantId}.json`;
+  const payload = {
+    variant: {
+      id: variantId,
+      price: formatMoney(price),
+    },
+  };
+
+  if (compareAtPrice !== null && compareAtPrice !== undefined) {
+    payload.variant.compare_at_price = formatMoney(compareAtPrice);
+  }
+
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+    },
+    body: JSON.stringify(payload),
   });
-});
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to update variant ${variantId}: ${response.status} ${text}`);
+  }
+};
 
 app.get('/healthz', (_req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.json({ ok: true });
 });
 
-app.listen(Number(PORT), () => {
-  console.log(`Shopify webhook listener running on port ${PORT}`);
+app.post('/webhooks/product-update', async (req, res) => {
+  if (!verifyShopifySignature(req)) {
+    return res.status(401).send('Invalid signature');
+  }
+
+  const product = req.body;
+  if (!product?.variants?.length) {
+    return res.status(200).json({ skipped: true, reason: 'No variants found' });
+  }
+
+  try {
+    await supplementsReady;
+    const productKind = await resolveProductKind(product);
+    if (!productKind) {
+      return res.status(200).json({ skipped: true, reason: 'Product not bracelet or necklace' });
+    }
+
+    const baseVariant = pickForsatBaseVariant(product.variants, productKind);
+    if (!baseVariant) {
+      return res.status(200).json({ skipped: true, reason: 'Forsat S base variant missing' });
+    }
+
+    const basePrice = moneyToNumber(baseVariant.price);
+    const baseCompareAt = baseVariant.compare_at_price ? moneyToNumber(baseVariant.compare_at_price) : null;
+
+    const updates = [];
+
+    for (const variant of product.variants) {
+      if (variant.id === baseVariant.id) {
+        continue;
+      }
+
+      const chainType = identifyChainType(variant, productKind);
+      if (!chainType) {
+        continue;
+      }
+
+      let targetPrice = null;
+      if (productKind === 'bracelet') {
+        targetPrice = calculateBraceletPrice(basePrice, chainType.config);
+      } else if (productKind === 'necklace') {
+        const size = extractVariantSize(variant);
+        targetPrice = calculateNecklacePrice(basePrice, chainType.config, size);
+      } else {
+        continue;
+      }
+
+      const targetCompareAt = baseCompareAt !== null ? baseCompareAt + (targetPrice - basePrice) : null;
+
+      if (targetPrice === null) {
+        continue;
+      }
+
+      if (pricesEqual(variant.price, targetPrice) && pricesEqual(variant.compare_at_price, targetCompareAt ?? variant.compare_at_price)) {
+        continue;
+      }
+
+      updates.push({
+        variant,
+        targetPrice,
+        targetCompareAt,
+      });
+    }
+
+    if (updates.length === 0) {
+      return res.status(200).json({ updated: 0 });
+    }
+
+    let success = 0;
+    for (const update of updates) {
+      try {
+        await updateVariantPrice(update.variant.id, update.targetPrice, update.targetCompareAt);
+        success += 1;
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    return res.status(200).json({ updated: success, attempted: updates.length });
+  } catch (error) {
+    console.error('Failed to process product update webhook:', error);
+    return res.status(500).json({ error: 'Failed to process webhook' });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Webhook server listening on port ${PORT}`);
 });
