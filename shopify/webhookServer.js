@@ -92,11 +92,21 @@ const KNOWN_CHAIN_TYPES = new Map(
   ].map((name) => [normalize(name), name]),
 );
 
+const KNOWN_CHAIN_TYPE_ENTRIES = [...KNOWN_CHAIN_TYPES.entries()];
+
 const findChainType = (variant) => {
   for (const token of collectVariantTokens(variant)) {
-    const canonical = KNOWN_CHAIN_TYPES.get(normalize(token));
-    if (canonical) {
-      return canonical;
+    const normalizedToken = normalize(token);
+
+    const directMatch = KNOWN_CHAIN_TYPES.get(normalizedToken);
+    if (directMatch) {
+      return directMatch;
+    }
+
+    for (const [normalizedName, canonical] of KNOWN_CHAIN_TYPE_ENTRIES) {
+      if (normalizedToken.includes(normalizedName)) {
+        return canonical;
+      }
     }
   }
 
