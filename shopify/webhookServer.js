@@ -196,6 +196,7 @@ const resolveProductKind = async (product) => {
   if (tags.has('brac') && productBelongsTo(collections, 'Bracelet')) {
     return 'bracelet';
   }
+};
 
   if (tags.has('nckl') && productBelongsTo(collections, 'Colliers')) {
     return 'necklace';
