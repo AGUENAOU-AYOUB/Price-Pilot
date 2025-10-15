@@ -222,103 +222,139 @@ const findNecklaceSize = (variant) => {
 
 const isForsatS = (value) => normalize(value) === 'forsat s';
 
-const normalizeCollection = (...values) =>
-  values
-    .flat()
-    .map((value) => normalize(value ?? ''))
-    .filter(Boolean);
+const TARGET_COLLECTION_RULES = [
+  {
+    family: 'bracelet',
+    requiredTag: 'brac',
+    collectionKeys: ['bracelet'],
+  },
+  {
+    family: 'necklace',
+    requiredTag: 'nckl',
+    collectionKeys: ['colliers', 'collier'],
+  },
+];
 
-const BRACELET_KEYWORDS = {
-  tags: ['brac', 'bracelet', 'bracelets'],
-  text: ['bracelet', 'bracelets', 'gourmette'],
-};
+const collectionCache = new Map();
+const COLLECTION_CACHE_TTL = 5 * 60 * 1000;
 
-const NECKLACE_KEYWORDS = {
-  tags: [
-    'nckl',
-    'necklace',
-    'necklaces',
-    'collier',
-    'colliers',
-    'chaine',
-    'chaines',
-    'sautoir',
-    'pendentif',
-    'pendentifs',
-    'pendant',
-    'pendants',
-  ],
-  text: [
-    'necklace',
-    'necklaces',
-    'collier',
-    'colliers',
-    'chaine',
-    'chaines',
-    'sautoir',
-    'sautoirs',
-    'pendentif',
-    'pendentifs',
-    'pendant',
-    'pendants',
-    (value) => value.includes('neck') && !value.includes('hand'),
-  ],
-};
-
-const SET_KEYWORDS = {
-  tags: ['set', 'sets', 'ensemble', 'ensembles', 'parure', 'parures'],
-  text: ['ensemble', 'ensembles', 'parure', 'parures'],
-};
-
-const matchesKeywords = (candidates, keywords) =>
-  candidates.some((candidate) =>
-    keywords.some((keyword) =>
-      typeof keyword === 'function' ? keyword(candidate) : candidate.includes(keyword),
-    ),
-  );
-
-const determineFamily = (product) => {
-  const tags = parseTags(product.tags);
-  const types = normalizeCollection(
-    product.product_type,
-    product.custom_product_type,
-    product?.standardized_product_type?.product_type,
-    product?.standardized_product_type?.product_taxonomy_node?.full_path,
-  );
-  const metadata = normalizeCollection(
-    product.title,
-    product.handle,
-    product.vendor,
-    product.template_suffix,
-    product?.options?.map((option) => option.name),
-  );
-
-  const hasTag = (keywordList) => keywordList.some((keyword) => tags.has(keyword));
-  const matchesType = (keywordList) => matchesKeywords(types, keywordList);
-  const matchesMetadata = (keywordList) => matchesKeywords(metadata, keywordList);
-
-  if (
-    hasTag(SET_KEYWORDS.tags) ||
-    matchesType([...SET_KEYWORDS.tags, ...SET_KEYWORDS.text]) ||
-    matchesMetadata(SET_KEYWORDS.text)
-  ) {
-    return 'set';
+const fetchCollectionById = async (collectionId) => {
+  const idKey = String(collectionId);
+  const cached = collectionCache.get(idKey);
+  if (cached && Date.now() - cached.timestamp < COLLECTION_CACHE_TTL) {
+    return cached.value;
   }
 
-  if (
-    hasTag(NECKLACE_KEYWORDS.tags) ||
-    matchesType([...NECKLACE_KEYWORDS.tags, ...NECKLACE_KEYWORDS.text]) ||
-    matchesMetadata(NECKLACE_KEYWORDS.text)
-  ) {
-    return 'necklace';
+  try {
+    const response = await fetch(
+      `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/collections/${encodeURIComponent(
+        idKey,
+      )}.json?fields=id,title,handle`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn(
+        `Failed to load collection ${idKey} metadata: ${response.status} ${response.statusText} - ${body}`,
+      );
+      collectionCache.set(idKey, { value: null, timestamp: Date.now() });
+      return null;
+    }
+
+    const payload = await response.json();
+    const collection = payload?.collection;
+    if (!collection) {
+      collectionCache.set(idKey, { value: null, timestamp: Date.now() });
+      return null;
+    }
+
+    const normalized = {
+      id: String(collection.id ?? idKey),
+      title: collection.title ?? '',
+      handle: collection.handle ?? '',
+    };
+
+    collectionCache.set(idKey, { value: normalized, timestamp: Date.now() });
+    return normalized;
+  } catch (error) {
+    console.warn(`Unexpected error fetching collection ${idKey}:`, error);
+    return null;
+  }
+};
+
+const fetchProductCollections = async (productId) => {
+  const productIdParam = encodeURIComponent(productId);
+  try {
+    const response = await fetch(
+      `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/collects.json?product_id=${productIdParam}&fields=collection_id`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn(
+        `Failed to load collection memberships for product ${productId}: ${response.status} ${response.statusText} - ${body}`,
+      );
+      return [];
+    }
+
+    const payload = await response.json();
+    const collects = Array.isArray(payload?.collects) ? payload.collects : [];
+    if (collects.length === 0) {
+      return [];
+    }
+
+    const uniqueIds = [
+      ...new Set(
+        collects
+          .map((collect) => collect?.collection_id)
+          .map((value) => (value !== undefined && value !== null ? String(value) : null))
+          .filter(Boolean),
+      ),
+    ];
+
+    const results = await Promise.all(uniqueIds.map((id) => fetchCollectionById(id)));
+    return results.filter((collection) => collection !== null);
+  } catch (error) {
+    console.warn(`Unexpected error loading collections for product ${productId}:`, error);
+    return [];
+  }
+};
+
+const determineFamily = (product, collections, tagsOverride) => {
+  const tags = tagsOverride ?? parseTags(product.tags);
+  if (!collections || collections.length === 0) {
+    return null;
   }
 
-  if (
-    hasTag(BRACELET_KEYWORDS.tags) ||
-    matchesType([...BRACELET_KEYWORDS.tags, ...BRACELET_KEYWORDS.text]) ||
-    matchesMetadata(BRACELET_KEYWORDS.text)
-  ) {
-    return 'bracelet';
+  const normalizedCollections = new Set(
+    collections
+      .flatMap((collection) => [collection.title, collection.handle])
+      .map((value) => normalize(value))
+      .filter(Boolean),
+  );
+
+  for (const rule of TARGET_COLLECTION_RULES) {
+    if (!tags.has(rule.requiredTag)) {
+      continue;
+    }
+
+    const matchesCollection = rule.collectionKeys.some((key) =>
+      normalizedCollections.has(normalize(key)),
+    );
+
+    if (matchesCollection) {
+      return rule.family;
+    }
   }
 
   return null;
@@ -505,9 +541,22 @@ app.post('/webhooks/product-update', async (req, res) => {
     return res.status(200).json({ skipped: true, reason: 'Product inactive or missing.' });
   }
 
-  const family = determineFamily(product);
+  const tags = parseTags(product.tags);
+  const requiresCollectionLookup = TARGET_COLLECTION_RULES.some((rule) => tags.has(rule.requiredTag));
+  if (!requiresCollectionLookup) {
+    return res.status(200).json({
+      skipped: true,
+      reason: 'Product not in targeted collections with required tags.',
+    });
+  }
+
+  const collections = await fetchProductCollections(product.id);
+  const family = determineFamily(product, collections, tags);
   if (!family) {
-    return res.status(200).json({ skipped: true, reason: 'Product does not match bracelet/necklace/set tags.' });
+    return res.status(200).json({
+      skipped: true,
+      reason: 'Product not in targeted collections with required tags.',
+    });
   }
 
   const { baseVariant, updates, message } = buildVariantUpdates(product, family);
