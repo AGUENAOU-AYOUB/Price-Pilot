@@ -12,6 +12,7 @@ import {
 import { mockProducts } from '../data/products';
 import { hasShopifyProxy } from '../config/shopify';
 import { fetchActiveProducts, fetchProductsByCollections, pushVariantUpdates } from '../services/shopify';
+import { syncSupplementsFile } from '../services/supplements';
 import {
   applyPercentage,
   applySupplementPercentage,
@@ -230,6 +231,8 @@ const persistSupplements = (supplements) => {
       SUPPLEMENTS_STORAGE_KEY,
       JSON.stringify({ bracelets, necklaces }),
     );
+
+    void syncSupplementsFile({ bracelets, necklaces });
   } catch (error) {
     console.warn('Failed to persist supplements to localStorage:', error);
   }
