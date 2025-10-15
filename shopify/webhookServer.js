@@ -34,14 +34,27 @@ app.use(
   }),
 );
 
-const normalize = (value = '') => value.trim().toLowerCase();
-const parseTags = (tags = '') =>
-  new Set(
-    tags
-      .split(',')
-      .map((tag) => normalize(tag))
-      .filter(Boolean),
-  );
+const stripDiacritics = (value) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const normalize = (value = '') => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return stripDiacritics(String(value)).trim().toLowerCase();
+};
+
+const parseTags = (tags = '') => {
+  const values = Array.isArray(tags)
+    ? tags
+    : String(tags)
+        .split(',')
+        .map((tag) => tag);
+
+  return new Set(values.map((tag) => normalize(tag)).filter(Boolean));
+};
 
 const parseNumber = (value, fallback = 0) => {
   const parsed = Number.parseFloat(value);
@@ -62,40 +75,97 @@ const normalizeCollection = (...values) =>
     .map((value) => normalize(value ?? ''))
     .filter(Boolean);
 
-const includesAny = (haystack, needles) => needles.some((needle) => haystack.includes(needle));
+const BRACELET_KEYWORDS = {
+  tags: ['brac', 'bracelet', 'bracelets'],
+  text: ['bracelet', 'bracelets', 'gourmette'],
+};
+
+const NECKLACE_KEYWORDS = {
+  tags: [
+    'nckl',
+    'necklace',
+    'necklaces',
+    'collier',
+    'colliers',
+    'chaine',
+    'chaines',
+    'sautoir',
+    'pendentif',
+    'pendentifs',
+    'pendant',
+    'pendants',
+  ],
+  text: [
+    'necklace',
+    'necklaces',
+    'collier',
+    'colliers',
+    'chaine',
+    'chaines',
+    'sautoir',
+    'sautoirs',
+    'pendentif',
+    'pendentifs',
+    'pendant',
+    'pendants',
+    (value) => value.includes('neck') && !value.includes('hand'),
+  ],
+};
+
+const SET_KEYWORDS = {
+  tags: ['set', 'sets', 'ensemble', 'ensembles', 'parure', 'parures'],
+  text: ['ensemble', 'ensembles', 'parure', 'parures'],
+};
+
+const matchesKeywords = (candidates, keywords) =>
+  candidates.some((candidate) =>
+    keywords.some((keyword) =>
+      typeof keyword === 'function' ? keyword(candidate) : candidate.includes(keyword),
+    ),
+  );
 
 const determineFamily = (product) => {
   const tags = parseTags(product.tags);
-  const normalizedTags = new Set([...tags].map((tag) => normalize(tag)));
   const types = normalizeCollection(
     product.product_type,
     product.custom_product_type,
     product?.standardized_product_type?.product_type,
+    product?.standardized_product_type?.product_taxonomy_node?.full_path,
+  );
+  const metadata = normalizeCollection(
+    product.title,
+    product.handle,
+    product.vendor,
+    product.template_suffix,
+    product?.options?.map((option) => option.name),
   );
 
+  const hasTag = (keywordList) => keywordList.some((keyword) => tags.has(keyword));
+  const matchesType = (keywordList) => matchesKeywords(types, keywordList);
+  const matchesMetadata = (keywordList) => matchesKeywords(metadata, keywordList);
+
   if (
-    normalizedTags.has('brac') ||
-    normalizedTags.has('bracelet') ||
-    types.some((type) => includesAny(type, ['bracelet']))
+    hasTag(SET_KEYWORDS.tags) ||
+    matchesType([...SET_KEYWORDS.tags, ...SET_KEYWORDS.text]) ||
+    matchesMetadata(SET_KEYWORDS.text)
   ) {
-    return 'bracelet';
+    return 'set';
   }
 
   if (
-    normalizedTags.has('nckl') ||
-    normalizedTags.has('necklace') ||
-    normalizedTags.has('collier') ||
-    types.some((type) => includesAny(type, ['necklace', 'collier']))
+    hasTag(NECKLACE_KEYWORDS.tags) ||
+    matchesType([...NECKLACE_KEYWORDS.tags, ...NECKLACE_KEYWORDS.text]) ||
+    matchesMetadata(NECKLACE_KEYWORDS.text)
   ) {
     return 'necklace';
   }
 
   if (
-    normalizedTags.has('set') ||
-    normalizedTags.has('ensemble') ||
-    types.some((type) => includesAny(type, ['ensemble', 'set']))
+    hasTag(BRACELET_KEYWORDS.tags) ||
+    matchesType([...BRACELET_KEYWORDS.tags, ...BRACELET_KEYWORDS.text]) ||
+    matchesMetadata(BRACELET_KEYWORDS.text)
   ) {
-    return 'set';
+    return 'bracelet';
   }
 
   return null;
