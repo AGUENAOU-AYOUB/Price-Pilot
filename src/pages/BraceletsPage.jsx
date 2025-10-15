@@ -24,8 +24,12 @@ export function BraceletsPage() {
   );
   const backupSupplements = usePricingStore((state) => state.backupSupplements);
   const restoreSupplementBackup = usePricingStore((state) => state.restoreSupplementBackup);
+  const saveSupplementChanges = usePricingStore((state) => state.saveSupplementChanges);
   const hasSupplementBackup = usePricingStore((state) =>
     state.hasSupplementBackup('bracelets'),
+  );
+  const hasPendingBraceletChanges = usePricingStore(
+    (state) => state.supplementChangesPending.bracelets,
   );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
@@ -37,6 +41,7 @@ export function BraceletsPage() {
   const [activeAction, setActiveAction] = useState(null);
   const [adjustmentPercent, setAdjustmentPercent] = useState('');
   const [supplementPreview, setSupplementPreview] = useState([]);
+  const [isSavingSupplements, setIsSavingSupplements] = useState(false);
 
   const isBusy = loadingScopes.has('bracelets');
 
@@ -118,6 +123,27 @@ export function BraceletsPage() {
     );
   };
 
+  const handleSupplementSave = async () => {
+    setIsSavingSupplements(true);
+    try {
+      const result = await saveSupplementChanges();
+
+      if (!result?.localSuccess) {
+        toast.error(t('toast.supplementSaveLocalFailed', { scope: t('nav.bracelets') }));
+        return;
+      }
+
+      if (!result.remoteSuccess) {
+        toast.error(t('toast.supplementSaveRemoteFailed', { scope: t('nav.bracelets') }));
+        return;
+      }
+
+      toast.success(t('toast.supplementSaveSuccess', { scope: t('nav.bracelets') }));
+    } finally {
+      setIsSavingSupplements(false);
+    }
+  };
+
   const handleSupplementBackup = () => {
     const success = backupSupplements('bracelets');
     if (success) {
@@ -177,6 +203,15 @@ export function BraceletsPage() {
           ))}
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
+          <Button
+            type="button"
+            onClick={handleSupplementSave}
+            disabled={!hasPendingBraceletChanges || isBusy}
+            isLoading={isSavingSupplements}
+            loadingText={t('supplements.saving')}
+          >
+            {t('supplements.saveButton')}
+          </Button>
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
           </Button>

@@ -213,30 +213,56 @@ const persistSupplementBackups = (backups) => {
   }
 };
 
-const persistSupplements = (supplements) => {
-  if (typeof window === 'undefined') {
-    return;
-  }
+const persistSupplements = async (supplements) => {
+  const bracelets = sanitizeBraceletSupplementMap(supplements?.bracelets);
+  const necklaces = sanitizeNecklaceSupplementMap(supplements?.necklaces);
 
-  try {
-    const bracelets = sanitizeBraceletSupplementMap(supplements?.bracelets);
-    const necklaces = sanitizeNecklaceSupplementMap(supplements?.necklaces);
+  let localSuccess = true;
 
-    if (Object.keys(bracelets).length === 0 && Object.keys(necklaces).length === 0) {
-      window.localStorage.removeItem(SUPPLEMENTS_STORAGE_KEY);
-      return;
+  if (typeof window !== 'undefined') {
+    try {
+      if (Object.keys(bracelets).length === 0 && Object.keys(necklaces).length === 0) {
+        window.localStorage.removeItem(SUPPLEMENTS_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(
+          SUPPLEMENTS_STORAGE_KEY,
+          JSON.stringify({ bracelets, necklaces }),
+        );
+      }
+    } catch (error) {
+      localSuccess = false;
+      console.warn('Failed to persist supplements to localStorage:', error);
     }
-
-    window.localStorage.setItem(
-      SUPPLEMENTS_STORAGE_KEY,
-      JSON.stringify({ bracelets, necklaces }),
-    );
-
-    void syncSupplementsFile({ bracelets, necklaces });
-  } catch (error) {
-    console.warn('Failed to persist supplements to localStorage:', error);
   }
+
+  let remoteSuccess = true;
+  if (hasShopifyProxy()) {
+    const response = await syncSupplementsFile({ bracelets, necklaces });
+    remoteSuccess = Boolean(response);
+
+    if (!remoteSuccess) {
+      console.warn('Failed to persist supplements via Shopify proxy.');
+    }
+  }
+
+  return {
+    bracelets,
+    necklaces,
+    success: localSuccess && remoteSuccess,
+    localSuccess,
+    remoteSuccess,
+  };
 };
+
+const createSupplementChangeFlags = () => ({
+  bracelets: false,
+  necklaces: false,
+});
+
+const markSupplementScopeDirty = (flags, scope) => ({
+  ...flags,
+  [scope]: true,
+});
 
 const loadStoredSupplements = () => {
   const supplements = createDefaultSupplements();
@@ -1548,6 +1574,7 @@ export const usePricingStore = create(
     productsSyncing: false,
     supplements: loadStoredSupplements(),
     supplementBackups: loadStoredSupplementBackups(),
+    supplementChangesPending: createSupplementChangeFlags(),
     backups: {},
     logs: [],
     loadingScopes: new Set(),
@@ -2989,10 +3016,12 @@ export const usePricingStore = create(
           bracelets: updatedBracelets,
         };
 
-        persistSupplements(nextSupplements);
-
         return {
           supplements: nextSupplements,
+          supplementChangesPending: markSupplementScopeDirty(
+            state.supplementChangesPending,
+            'bracelets',
+          ),
         };
       });
     },
@@ -3077,10 +3106,12 @@ export const usePricingStore = create(
           handChains: updatedHandChains,
         };
 
-        persistSupplements(nextSupplements);
-
         return {
           supplements: nextSupplements,
+          supplementChangesPending: markSupplementScopeDirty(
+            state.supplementChangesPending,
+            'necklaces',
+          ),
         };
       });
     },
@@ -3136,10 +3167,12 @@ export const usePricingStore = create(
             bracelets: restored,
           };
 
-          persistSupplements(nextSupplements);
-
           return {
             supplements: nextSupplements,
+            supplementChangesPending: markSupplementScopeDirty(
+              state.supplementChangesPending,
+              'bracelets',
+            ),
           };
         });
         return true;
@@ -3159,14 +3192,29 @@ export const usePricingStore = create(
           handChains: updatedHandChains,
         };
 
-        persistSupplements(nextSupplements);
-
         return {
           supplements: nextSupplements,
+          supplementChangesPending: markSupplementScopeDirty(
+            state.supplementChangesPending,
+            'necklaces',
+          ),
         };
       });
 
       return true;
+    },
+
+    saveSupplementChanges: async () => {
+      const supplements = get().supplements;
+      const result = await persistSupplements(supplements);
+
+      if (result.success) {
+        set(() => ({
+          supplementChangesPending: createSupplementChangeFlags(),
+        }));
+      }
+
+      return result;
     },
 
     updateBraceletSupplement: (title, value) => {
@@ -3179,10 +3227,12 @@ export const usePricingStore = create(
           },
         };
 
-        persistSupplements(nextSupplements);
-
         return {
           supplements: nextSupplements,
+          supplementChangesPending: markSupplementScopeDirty(
+            state.supplementChangesPending,
+            'bracelets',
+          ),
         };
       });
     },
@@ -3211,10 +3261,12 @@ export const usePricingStore = create(
           handChains: nextHandChains,
         };
 
-        persistSupplements(nextSupplements);
-
         return {
           supplements: nextSupplements,
+          supplementChangesPending: markSupplementScopeDirty(
+            state.supplementChangesPending,
+            'necklaces',
+          ),
         };
       });
     },
