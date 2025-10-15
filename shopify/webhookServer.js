@@ -310,28 +310,113 @@ const determineFamilyFromMetadata = (product, tags) => {
   const matchesType = (keywordList) => matchesKeywords(types, keywordList);
   const matchesMetadata = (keywordList) => matchesKeywords(metadata, keywordList);
 
-  if (
-    hasTag(SET_KEYWORDS.tags) ||
-    matchesType([...SET_KEYWORDS.tags, ...SET_KEYWORDS.text]) ||
-    matchesMetadata(SET_KEYWORDS.text)
-  ) {
-    return 'set';
+    const uniqueIds = [
+      ...new Set(
+        collects
+          .map((collect) => collect?.collection_id)
+          .map((value) => (value !== undefined && value !== null ? String(value) : null))
+          .filter(Boolean),
+      ),
+    ];
+
+    const results = await Promise.all(uniqueIds.map((id) => fetchCollectionById(id)));
+    return results.filter((collection) => collection !== null);
+  } catch (error) {
+    console.warn(`Unexpected error loading collections for product ${productId}:`, error);
+    return [];
+  }
+};
+
+const determineFamily = (product, collections, tagsOverride) => {
+  const tags = tagsOverride ?? parseTags(product.tags);
+  if (!collections || collections.length === 0) {
+    return null;
   }
 
-  if (
-    hasTag(NECKLACE_KEYWORDS.tags) ||
-    matchesType([...NECKLACE_KEYWORDS.tags, ...NECKLACE_KEYWORDS.text]) ||
-    matchesMetadata(NECKLACE_KEYWORDS.text)
-  ) {
-    return 'necklace';
+  const normalizedCollections = new Set(
+    collections
+      .flatMap((collection) => [collection.title, collection.handle])
+      .map((value) => normalize(value))
+      .filter(Boolean),
+  );
+
+  for (const rule of TARGET_COLLECTION_RULES) {
+    if (!tags.has(rule.requiredTag)) {
+      continue;
+    }
+
+    const matchesCollection = rule.collectionKeys.some((key) =>
+      normalizedCollections.has(normalize(key)),
+    );
+
+    if (matchesCollection) {
+      return rule.family;
+    }
   }
 
-  if (
-    hasTag(BRACELET_KEYWORDS.tags) ||
-    matchesType([...BRACELET_KEYWORDS.tags, ...BRACELET_KEYWORDS.text]) ||
-    matchesMetadata(BRACELET_KEYWORDS.text)
-  ) {
-    return 'bracelet';
+  return null;
+};
+
+const fetchProductCollections = async (productId) => {
+  const productIdParam = encodeURIComponent(productId);
+  try {
+    const response = await fetch(
+      `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${productIdParam}/collections.json?fields=id,title,handle`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn(
+        `Failed to load collection memberships for product ${productId}: ${response.status} ${response.statusText} - ${body}`,
+      );
+      return { collections: [], reliable: false };
+    }
+
+    const payload = await response.json();
+    const collections = Array.isArray(payload?.collections) ? payload.collections : [];
+    return {
+      collections: collections.map((collection) => ({
+        id: String(collection?.id ?? ''),
+        title: collection?.title ?? '',
+        handle: collection?.handle ?? '',
+      })),
+      reliable: true,
+    };
+  } catch (error) {
+    console.warn(`Unexpected error loading collections for product ${productId}:`, error);
+    return { collections: [], reliable: false };
+  }
+};
+
+const determineFamilyFromCollections = (collections, tags) => {
+  if (!collections || collections.length === 0) {
+    return null;
+  }
+
+  const normalizedCollections = new Set(
+    collections
+      .flatMap((collection) => [collection.title, collection.handle])
+      .map((value) => normalize(value))
+      .filter(Boolean),
+  );
+
+  for (const rule of TARGET_COLLECTION_RULES) {
+    if (!tags.has(rule.requiredTag)) {
+      continue;
+    }
+
+    const matchesCollection = rule.collectionKeys.some((key) =>
+      normalizedCollections.has(normalize(key)),
+    );
+
+    if (matchesCollection) {
+      return rule.family;
+    }
   }
 
   return null;
