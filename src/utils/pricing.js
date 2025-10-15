@@ -105,7 +105,7 @@ export const buildBraceletVariants = (product, supplements) => {
 
 const DEFAULT_NECKLACE_SIZE = necklaceSizes[0] ?? 41;
 
-const resolveNecklaceSupplement = (data, size) => {
+export const resolveNecklaceSupplement = (data, size) => {
   if (data && typeof data === 'object') {
     const sizes = data.sizes;
     if (sizes && typeof sizes === 'object') {
@@ -124,24 +124,89 @@ const resolveNecklaceSupplement = (data, size) => {
   return baseSupplement + incremental;
 };
 
-export const buildNecklaceVariants = (product, chainTypeSupplements) => {
+const DEFAULT_GROUP_ENTRY = (product) => ({
+  key: null,
+  label: null,
+  basePrice: Number(product.basePrice ?? 0),
+  baseCompareAtPrice: Number(
+    product.baseCompareAtPrice ?? product.basePrice ?? 0,
+  ),
+});
+
+const buildGroupList = (product, groupsOption) => {
+  if (Array.isArray(groupsOption) && groupsOption.length > 0) {
+    return groupsOption.map((group) => ({
+      key: group?.key ?? null,
+      label: group?.label ?? null,
+      basePrice: Number.isFinite(group?.basePrice)
+        ? group.basePrice
+        : Number(product.basePrice ?? 0),
+      baseCompareAtPrice: Number.isFinite(group?.baseCompareAtPrice)
+        ? group.baseCompareAtPrice
+        : Number(product.baseCompareAtPrice ?? product.basePrice ?? 0),
+    }));
+  }
+
+  return [DEFAULT_GROUP_ENTRY(product)];
+};
+
+const buildGroupIdentifier = (group) => {
+  if (!group || !group.key) {
+    return 'g-base';
+  }
+
+  return `g-${group.key}`;
+};
+
+export const buildNecklaceVariants = (
+  product,
+  chainTypeSupplements,
+  options = {},
+) => {
   const variants = [];
-  for (const [chainType, data] of Object.entries(chainTypeSupplements)) {
-    for (const size of necklaceSizes) {
-      const supplementValue = resolveNecklaceSupplement(data, size);
-      const title = `${chainType} • ${size}cm`;
-      const priceBase = product.basePrice + supplementValue;
-      const compareBase = product.baseCompareAtPrice + supplementValue;
-      variants.push({
-        id: `${product.id}-${chainType}-${size}`,
-        title,
-        chainType,
-        size,
-        price: priceBase,
-        compareAtPrice: compareBase,
-      });
+  const groups = buildGroupList(product, options.groups);
+
+  for (const group of groups) {
+    const basePrice = Number.isFinite(group.basePrice)
+      ? group.basePrice
+      : Number(product.basePrice ?? 0);
+    const baseCompare = Number.isFinite(group.baseCompareAtPrice)
+      ? group.baseCompareAtPrice
+      : Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
+
+    for (const [chainType, data] of Object.entries(chainTypeSupplements)) {
+      for (const size of necklaceSizes) {
+        const supplementValue = resolveNecklaceSupplement(data, size);
+        const priceBase = basePrice + supplementValue;
+        const compareBase = baseCompare + supplementValue;
+        const titleParts = [];
+        if (group.label) {
+          titleParts.push(group.label);
+        }
+        titleParts.push(chainType);
+        titleParts.push(`${size}cm`);
+        const optionsList = [];
+        if (group.label) {
+          optionsList.push(group.label);
+        }
+        optionsList.push(chainType);
+        optionsList.push(`${size}cm`);
+
+        variants.push({
+          id: `${product.id}-${buildGroupIdentifier(group)}-${chainType}-${size}`,
+          title: titleParts.join(' • '),
+          chainType,
+          size,
+          groupKey: group.key ?? null,
+          groupLabel: group.label ?? null,
+          options: optionsList,
+          price: priceBase,
+          compareAtPrice: compareBase,
+        });
+      }
     }
   }
+
   return variants;
 };
 

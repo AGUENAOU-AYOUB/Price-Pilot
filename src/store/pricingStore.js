@@ -21,6 +21,7 @@ import {
   buildNecklaceVariants,
   buildRingVariants,
   buildSetVariants,
+  resolveNecklaceSupplement,
 } from '../utils/pricing';
 import {
   parseBandType,
@@ -558,6 +559,7 @@ const CHAIN_NAME_CACHE = new Map();
 const NECKLACE_SIZE_CACHE = new Map();
 const RING_BAND_CACHE = new Map();
 const RING_SIZE_CACHE = new Map();
+const NECKLACE_GROUP_CACHE = new Map();
 
 const canonicalChainName = (value, contextLabel = 'chain types') => {
   if (value === null || value === undefined) {
@@ -1154,8 +1156,53 @@ const deriveRingIdentity = (variant) => {
   return { key: null, band, size };
 };
 
-const buildChainSizeKey = (chain, size) =>
-  chain && Number.isFinite(size) ? `${chain}::${size}` : null;
+const buildChainSizeKey = (chain, size, groupKey = null) => {
+  if (!chain || !Number.isFinite(size)) {
+    return null;
+  }
+
+  if (!groupKey) {
+    return `${chain}::${size}`;
+  }
+
+  return `${groupKey}::${chain}::${size}`;
+};
+
+const canonicalNecklaceGroup = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  if (NECKLACE_GROUP_CACHE.has(raw)) {
+    return NECKLACE_GROUP_CACHE.get(raw);
+  }
+
+  const normalized = sanitizeVariantKey(raw);
+  if (!normalized) {
+    NECKLACE_GROUP_CACHE.set(raw, null);
+    return null;
+  }
+
+  if (CHAIN_LOOKUP.has(normalized)) {
+    NECKLACE_GROUP_CACHE.set(raw, null);
+    return null;
+  }
+
+  const parsedSize = parseNecklaceSize(raw);
+  if (Number.isFinite(parsedSize) && necklaceSizes.includes(parsedSize)) {
+    NECKLACE_GROUP_CACHE.set(raw, null);
+    return null;
+  }
+
+  const result = { key: normalized, label: raw };
+  NECKLACE_GROUP_CACHE.set(raw, result);
+  return result;
+};
 
 const deriveBraceletKey = (variant, contextLabel = 'bracelet chain options') => {
   if (!variant || typeof variant !== 'object') {
@@ -1189,11 +1236,52 @@ const deriveHandChainKey = (variant) =>
 
 const deriveNecklaceSignature = (variant, contextLabel = 'necklace') => {
   if (!variant || typeof variant !== 'object') {
-    return { key: null, chain: null, size: null };
+    return { key: null, chain: null, size: null, groupKey: null, groupLabel: null };
   }
 
   let chain = null;
   let size = null;
+  let groupKey = null;
+  let groupLabel = null;
+
+  const registerGroupCandidate = (value) => {
+    const candidate = canonicalNecklaceGroup(value);
+    if (!candidate) {
+      return;
+    }
+
+    if (!groupKey) {
+      groupKey = candidate.key;
+    }
+
+    if (!groupLabel) {
+      groupLabel = candidate.label;
+    }
+  };
+
+  if (variant.groupKey) {
+    const sanitized = sanitizeVariantKey(variant.groupKey);
+    if (sanitized) {
+      groupKey = sanitized;
+    }
+  }
+
+  if (variant.groupLabel) {
+    registerGroupCandidate(variant.groupLabel);
+  }
+
+  if (!groupLabel && typeof variant.group === 'string') {
+    registerGroupCandidate(variant.group);
+  }
+
+  if (Array.isArray(variant.options)) {
+    for (const option of variant.options) {
+      registerGroupCandidate(option);
+      if (groupKey && groupLabel) {
+        break;
+      }
+    }
+  }
 
   if (variant.chainType) {
     chain = canonicalChainName(variant.chainType, `${contextLabel} chain options`) ?? chain;
@@ -1230,11 +1318,104 @@ const deriveNecklaceSignature = (variant, contextLabel = 'necklace') => {
       const parsedChain = canonicalChainName(fragment, `${contextLabel} chain options`);
       if (parsedChain) {
         chain = parsedChain;
+        continue;
       }
+    }
+
+    registerGroupCandidate(fragment);
+  }
+
+  if (groupKey && !groupLabel && typeof variant.groupLabel === 'string') {
+    groupLabel = variant.groupLabel;
+  }
+
+  return {
+    key: buildChainSizeKey(chain, size, groupKey),
+    chain,
+    size,
+    groupKey,
+    groupLabel,
+  };
+};
+
+const collectNecklaceGroupsFromProduct = (product, chainTypeSupplements = {}) => {
+  const fallbackBasePrice = Number(product?.basePrice ?? 0);
+  const fallbackCompare = Number(
+    product?.baseCompareAtPrice ?? product?.basePrice ?? 0,
+  );
+
+  const entries = new Map();
+  entries.set(null, {
+    key: null,
+    label: null,
+    basePrice: fallbackBasePrice,
+    baseCompareAtPrice: fallbackCompare,
+    preference: Number.POSITIVE_INFINITY,
+  });
+
+  if (!Array.isArray(product?.variants)) {
+    return Array.from(entries.values()).map(({ preference, ...rest }) => rest);
+  }
+
+  for (const variant of product.variants) {
+    if (!variant) {
+      continue;
+    }
+
+    const signature = deriveNecklaceSignature(variant);
+    const chain = signature.chain;
+    const size = signature.size;
+    if (!chain || !Number.isFinite(size)) {
+      continue;
+    }
+
+    const supplementData = chainTypeSupplements[chain];
+    if (!supplementData) {
+      continue;
+    }
+
+    const supplementValue = resolveNecklaceSupplement(supplementData, size);
+    const variantPrice = resolveVariantPrice(variant, product);
+    const variantCompare = resolveVariantCompareAt(variant, product);
+
+    const basePrice = Number(variantPrice - supplementValue);
+    const baseCompare = Number(variantCompare - supplementValue);
+
+    if (!Number.isFinite(basePrice) && !Number.isFinite(baseCompare)) {
+      continue;
+    }
+
+    const groupKey = signature.groupKey ?? null;
+    const preference = Number.isFinite(size)
+      ? Math.abs(size - DEFAULT_NECKLACE_SIZE)
+      : Number.POSITIVE_INFINITY;
+
+    const existing = entries.get(groupKey);
+    const resolvedBasePrice = Number.isFinite(basePrice)
+      ? basePrice
+      : existing?.basePrice ?? fallbackBasePrice;
+    const resolvedBaseCompare = Number.isFinite(baseCompare)
+      ? baseCompare
+      : existing?.baseCompareAtPrice ?? fallbackCompare;
+    const label = signature.groupLabel ?? existing?.label ?? null;
+
+    if (!existing || preference <= existing.preference) {
+      entries.set(groupKey, {
+        key: groupKey,
+        label,
+        basePrice: resolvedBasePrice,
+        baseCompareAtPrice: resolvedBaseCompare,
+        preference,
+      });
+    } else if (!existing.label && label) {
+      entries.set(groupKey, {
+        ...existing,
+        label,
+      });
     }
   }
 
-  return { key: buildChainSizeKey(chain, size), chain, size };
+  return Array.from(entries.values()).map(({ preference, ...rest }) => rest);
 };
 
 const SET_CHAIN_NECKLACE_KEYWORDS = [/collier/i, /necklace/i, /neck/i];
@@ -1526,6 +1707,29 @@ const alignNecklaceVariantOptions = (product) => {
   let applied = false;
   let changed = false;
 
+  const resolveGroupDisplay = (variant, chainDisplay, sizeDisplay, signature) => {
+    if (signature?.groupLabel) {
+      return signature.groupLabel;
+    }
+
+    if (!Array.isArray(variant?.options)) {
+      return null;
+    }
+
+    for (const option of variant.options) {
+      if (option === chainDisplay || option === sizeDisplay) {
+        continue;
+      }
+
+      const candidate = canonicalNecklaceGroup(option);
+      if (candidate) {
+        return candidate.label;
+      }
+    }
+
+    return null;
+  };
+
   const updatedVariants = product.variants.map((variant) => {
     const signature = deriveNecklaceSignature(variant);
     const chain = signature.chain;
@@ -1541,7 +1745,10 @@ const alignNecklaceVariantOptions = (product) => {
     }
 
     applied = true;
-    const nextOptions = [chainDisplay, sizeDisplay];
+    const groupDisplay = resolveGroupDisplay(variant, chainDisplay, sizeDisplay, signature);
+    const nextOptions = groupDisplay
+      ? [groupDisplay, chainDisplay, sizeDisplay]
+      : [chainDisplay, sizeDisplay];
     if (!arraysEqual(variant.options, nextOptions)) {
       changed = true;
       return { ...variant, options: nextOptions };
@@ -2348,6 +2555,7 @@ export const usePricingStore = create(
       return products
         .filter((product) => product.collection === 'collier' && product.status === 'active')
         .map((product) => {
+          const groups = collectNecklaceGroupsFromProduct(product, supplements.necklaces);
           const lookup = new Map();
           for (const existingVariant of product.variants) {
             const signature = deriveNecklaceSignature(existingVariant);
@@ -2360,7 +2568,7 @@ export const usePricingStore = create(
             product,
             updatedBasePrice: product.basePrice,
             updatedCompareAtPrice: product.baseCompareAtPrice,
-            variants: buildNecklaceVariants(product, supplements.necklaces).map((variant) => {
+            variants: buildNecklaceVariants(product, supplements.necklaces, { groups }).map((variant) => {
               const signature = deriveNecklaceSignature(variant);
               const currentVariant = signature.key ? lookup.get(signature.key) : null;
               const matched = Boolean(currentVariant);
@@ -2414,7 +2622,8 @@ export const usePricingStore = create(
             continue;
           }
 
-          const targetVariants = buildNecklaceVariants(product, supplements.necklaces);
+          const groups = collectNecklaceGroupsFromProduct(product, supplements.necklaces);
+          const targetVariants = buildNecklaceVariants(product, supplements.necklaces, { groups });
           const targetEntries = targetVariants.map((variant) => ({
             variant,
             signature: deriveNecklaceSignature(variant),
