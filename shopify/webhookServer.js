@@ -35,6 +35,7 @@ if (!VITE_SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN || !SHOPIFY_WEBHOOK_SECR
 log.info(`Node ${process.version} starting webhook server…`);
 
 const SUPPLEMENTS_PATH = path.resolve(process.cwd(), 'src/data/supplements.js');
+const DEFAULT_BRACELET_SIZE = 41;
 const DEFAULT_NECKLACE_SIZE = 41;
 const FORSAT_S_KEY = 'forsat s';
 
@@ -79,6 +80,35 @@ const supplementsState = {
   necklaceSizes: [],
 };
 
+const sanitizeNecklaceSizeMap = (value, allowedSizes = []) => {
+  const sizeSet = Array.isArray(allowedSizes) ? new Set(allowedSizes.map(Number)) : null;
+  const result = new Map();
+
+  if (!value || typeof value !== 'object') {
+    return result;
+  }
+
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const size = Number(rawKey);
+    if (!Number.isFinite(size)) {
+      continue;
+    }
+
+    if (sizeSet && sizeSet.size > 0 && !sizeSet.has(size)) {
+      continue;
+    }
+
+    const numeric = Number(rawValue);
+    if (!Number.isFinite(numeric)) {
+      continue;
+    }
+
+    result.set(size, numeric);
+  }
+
+  return result;
+};
+
 const refreshDerivedSupplements = (module) => {
   supplementsState.bracelet.clear();
   supplementsState.necklace.clear();
@@ -91,10 +121,12 @@ const refreshDerivedSupplements = (module) => {
   }
   for (const [name, config] of Object.entries(supplementsState.necklaceBase)) {
     const key = normalize(name);
+    const sizes = sanitizeNecklaceSizeMap(config?.sizes, supplementsState.necklaceSizes);
     supplementsState.necklace.set(key, {
       name,
       supplement: Number(config?.supplement) || 0,
       perCm: Number(config?.perCm) || 0,
+      sizes,
     });
   }
 
@@ -252,7 +284,7 @@ const pickForsatBaseVariant = (variants, productKind, reqId) => {
   for (const v of variants) {
     const chainType = identifyChainType(v, productKind);
     if (chainType?.key === FORSAT_S_KEY) {
-      const size = productKind === 'necklace' ? extractVariantSize(v) : null;
+      const size = extractVariantSize(v);
       candidates.push({ variant: v, size });
     }
   }
@@ -269,30 +301,43 @@ const pickForsatBaseVariant = (variants, productKind, reqId) => {
   }
 
   log.debug(`[${reqId}] Forsat S candidates: ${candidates.length}`);
-  if (productKind !== 'necklace') return candidates[0].variant;
 
-  // For necklaces, choose size closest to DEFAULT_NECKLACE_SIZE
+  const targetSize = productKind === 'necklace' ? DEFAULT_NECKLACE_SIZE : DEFAULT_BRACELET_SIZE;
+
   let best = candidates[0];
   for (const c of candidates) {
     if (!Number.isFinite(c.size)) continue;
+
     if (!Number.isFinite(best.size)) {
       best = c;
       continue;
     }
-    const d1 = Math.abs(c.size - DEFAULT_NECKLACE_SIZE);
-    const d2 = Math.abs(best.size - DEFAULT_NECKLACE_SIZE);
+
+    const d1 = Math.abs(c.size - targetSize);
+    const d2 = Math.abs(best.size - targetSize);
     if (d1 < d2) best = c;
   }
+
   return best.variant;
 };
 
 // ---------- pricing ----------
 const calculateBraceletPrice = (basePrice, chainConfig) => basePrice + chainConfig.supplement;
 
-const calculateNecklacePrice = (basePrice, chainConfig, size) => {
+const calculateNecklacePrice = (basePrice, chainConfig = {}, size) => {
   const normalizedSize = Number.isFinite(size) ? size : DEFAULT_NECKLACE_SIZE;
+  const override =
+    chainConfig?.sizes instanceof Map ? chainConfig.sizes.get(normalizedSize) : undefined;
+  if (Number.isFinite(override)) {
+    return basePrice + override;
+  }
+
+  const baseSupplement = Number(chainConfig?.supplement) || 0;
+  const perCm = Number(chainConfig?.perCm) || 0;
   const delta = normalizedSize - DEFAULT_NECKLACE_SIZE;
-  return basePrice + chainConfig.supplement + delta * chainConfig.perCm;
+  const incremental = delta > 0 ? delta * perCm : 0;
+
+  return basePrice + baseSupplement + incremental;
 };
 
 const pricesEqual = (current, target) =>

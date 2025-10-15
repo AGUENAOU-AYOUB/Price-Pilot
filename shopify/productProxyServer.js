@@ -1,4 +1,7 @@
 import './loadEnv.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import express from 'express';
 
 const {
@@ -28,6 +31,7 @@ const MAX_SHOPIFY_RETRIES = 5;
 const SHOPIFY_NEAR_LIMIT_THRESHOLD = 0.75;
 const SHOPIFY_LIMIT_MINIMUM_REMAINING = 2;
 const SHOPIFY_NEAR_LIMIT_COOLDOWN_MS = 1500;
+const SUPPLEMENTS_PATH = path.resolve(process.cwd(), 'src/data/supplements.js');
 
 const delay = (ms) =>
   new Promise((resolve) => {
@@ -37,6 +41,252 @@ const delay = (ms) =>
 let lastShopifyRequestTime = Date.now() - MIN_SHOPIFY_INTERVAL_MS;
 let enforcedCooldownUntil = 0;
 let shopifyRequestQueue = Promise.resolve();
+
+const loadSupplementsModule = async () => {
+  const moduleUrl = `${pathToFileURL(SUPPLEMENTS_PATH).href}?t=${Date.now()}`;
+  return import(moduleUrl);
+};
+
+const sanitizeBraceletUpdates = (updates, base) => {
+  if (!updates || typeof updates !== 'object') {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(base ?? {})
+      .map(([chainType]) => {
+        if (!Object.prototype.hasOwnProperty.call(updates, chainType)) {
+          return null;
+        }
+
+        const numeric = Number(updates[chainType]);
+        return Number.isFinite(numeric) ? [chainType, numeric] : null;
+      })
+      .filter(Boolean),
+  );
+};
+
+const sanitizeSizeOverrides = (value, allowedSizes = []) => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  const sizeSet = Array.isArray(allowedSizes)
+    ? new Set(allowedSizes.map((entry) => Number(entry)))
+    : null;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([rawKey, rawValue]) => {
+        const size = Number(rawKey);
+        if (!Number.isFinite(size)) {
+          return null;
+        }
+
+        if (sizeSet && sizeSet.size > 0 && !sizeSet.has(size)) {
+          return null;
+        }
+
+        const numeric = Number(rawValue);
+        if (!Number.isFinite(numeric)) {
+          return null;
+        }
+
+        return [size, numeric];
+      })
+      .filter(Boolean),
+  );
+};
+
+const sanitizeNecklaceUpdates = (updates, base, allowedSizes) => {
+  if (!updates || typeof updates !== 'object') {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(base ?? {})
+      .map(([chainType]) => {
+        if (!Object.prototype.hasOwnProperty.call(updates, chainType)) {
+          return null;
+        }
+
+        const values = updates[chainType];
+        if (!values || typeof values !== 'object') {
+          return null;
+        }
+
+        const supplement = Number(values.supplement);
+        const perCm = Number(values.perCm);
+        const sizes = sanitizeSizeOverrides(values.sizes, allowedSizes);
+
+        const sanitized = {};
+        if (Number.isFinite(supplement)) {
+          sanitized.supplement = supplement;
+        }
+        if (Number.isFinite(perCm)) {
+          sanitized.perCm = perCm;
+        }
+        if (Object.keys(sizes).length > 0) {
+          sanitized.sizes = sizes;
+        }
+
+        return Object.keys(sanitized).length > 0 ? [chainType, sanitized] : null;
+      })
+      .filter(Boolean),
+  );
+};
+
+const buildBraceletSupplements = (base, updates) =>
+  Object.fromEntries(
+    Object.entries(base ?? {}).map(([chainType, supplement]) => [
+      chainType,
+      Object.prototype.hasOwnProperty.call(updates ?? {}, chainType)
+        ? updates[chainType]
+        : Number(supplement) || 0,
+    ]),
+  );
+
+const buildNecklaceSupplements = (base, updates, allowedSizes) =>
+  Object.fromEntries(
+    Object.entries(base ?? {}).map(([chainType, values]) => {
+      const baseSupplement = Number(values?.supplement) || 0;
+      const basePerCm = Number(values?.perCm) || 0;
+      const baseSizes = sanitizeSizeOverrides(values?.sizes, allowedSizes);
+      const next = updates?.[chainType] ?? {};
+      const nextSizes = sanitizeSizeOverrides(next?.sizes, allowedSizes);
+      const mergedSizes = { ...baseSizes, ...nextSizes };
+
+      const entry = {
+        supplement: Object.prototype.hasOwnProperty.call(next, 'supplement')
+          ? next.supplement
+          : baseSupplement,
+        perCm: Object.prototype.hasOwnProperty.call(next, 'perCm') ? next.perCm : basePerCm,
+      };
+
+      if (Object.keys(mergedSizes).length > 0) {
+        entry.sizes = mergedSizes;
+      }
+
+      return [chainType, entry];
+    }),
+  );
+
+const formatString = (value) =>
+  `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+
+const formatValue = (value, indentLevel = 0) => {
+  const indent = '  '.repeat(indentLevel);
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return '[]';
+    }
+
+    const lines = value.map(
+      (entry) => `${'  '.repeat(indentLevel + 1)}${formatValue(entry, indentLevel + 1)},`,
+    );
+    return `[
+${lines.join('\n')}
+${indent}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value);
+    if (entries.length === 0) {
+      return '{}';
+    }
+
+    const lines = entries.map(
+      ([key, entry]) =>
+        `${'  '.repeat(indentLevel + 1)}${formatString(key)}: ${formatValue(
+          entry,
+          indentLevel + 1,
+        )},`,
+    );
+    return `{
+${lines.join('\n')}
+${indent}}`;
+  }
+
+  if (typeof value === 'string') {
+    return formatString(value);
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : '0';
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  if (value === null) {
+    return 'null';
+  }
+
+  return String(value);
+};
+
+const buildSupplementSource = (data) => {
+  const sections = [
+    `export const braceletChainTypes = ${formatValue(data.braceletChainTypes)};`,
+    '',
+    `export const necklaceChainTypes = ${formatValue(data.necklaceChainTypes)};`,
+    '',
+    `export const necklaceSizes = ${formatValue(data.necklaceSizes)};`,
+    '',
+    `export const ringBandSupplements = ${formatValue(data.ringBandSupplements)};`,
+    '',
+    `export const ringSizes = ${formatValue(data.ringSizes)};`,
+    '',
+    `export const HAND_CHAIN_MULTIPLIER = ${formatValue(data.HAND_CHAIN_MULTIPLIER)};`,
+    '',
+  ];
+
+  return `${sections.join('\n')}\n`;
+};
+
+const persistSupplementSource = async ({ bracelets, necklaces }) => {
+  const module = await loadSupplementsModule();
+
+  const baseBracelets = module?.braceletChainTypes ?? {};
+  const baseNecklaces = module?.necklaceChainTypes ?? {};
+  const allowedNecklaceSizes = Array.isArray(module?.necklaceSizes)
+    ? module.necklaceSizes
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isFinite(entry))
+    : [];
+
+  const sanitizedBracelets = sanitizeBraceletUpdates(bracelets, baseBracelets);
+  const sanitizedNecklaces = sanitizeNecklaceUpdates(
+    necklaces,
+    baseNecklaces,
+    allowedNecklaceSizes,
+  );
+
+  const nextBracelets = buildBraceletSupplements(baseBracelets, sanitizedBracelets);
+  const nextNecklaces = buildNecklaceSupplements(
+    baseNecklaces,
+    sanitizedNecklaces,
+    allowedNecklaceSizes,
+  );
+
+  const data = {
+    braceletChainTypes: nextBracelets,
+    necklaceChainTypes: nextNecklaces,
+    necklaceSizes: Array.isArray(module?.necklaceSizes) ? [...module.necklaceSizes] : [],
+    ringBandSupplements: module?.ringBandSupplements ?? {},
+    ringSizes: Array.isArray(module?.ringSizes) ? [...module.ringSizes] : [],
+    HAND_CHAIN_MULTIPLIER: Number(module?.HAND_CHAIN_MULTIPLIER) || 0,
+  };
+
+  const source = buildSupplementSource(data);
+  await fs.writeFile(SUPPLEMENTS_PATH, source, 'utf8');
+
+  return {
+    braceletChainTypes: nextBracelets,
+    necklaceChainTypes: nextNecklaces,
+  };
+};
 
 const requestAdditionalCooldown = (durationMs) => {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
@@ -473,6 +723,28 @@ app.post(`${basePath}/variants/bulk-update`, async (req, res) => {
 
   const statusCode = summary.failedCount > 0 ? 207 : 200;
   res.status(statusCode).json(summary);
+});
+
+app.post(`${basePath}/supplements`, async (req, res) => {
+  const body = req.body ?? {};
+  const bracelets = body.bracelets;
+  const necklaces = body.necklaces;
+
+  if (!bracelets && !necklaces) {
+    res.status(400).json({ error: 'No supplement updates provided.' });
+    return;
+  }
+
+  try {
+    const supplements = await persistSupplementSource({ bracelets, necklaces });
+    res.json({ success: true, supplements });
+  } catch (error) {
+    console.error('Failed to persist supplements to source file:', error);
+    res.status(500).json({
+      error: 'Failed to update supplements.',
+      details: error.message,
+    });
+  }
 });
 
 app.listen(Number(SHOPIFY_PROXY_PORT), () => {

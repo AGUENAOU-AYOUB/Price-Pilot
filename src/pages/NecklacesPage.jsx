@@ -24,8 +24,12 @@ export function NecklacesPage() {
   );
   const backupSupplements = usePricingStore((state) => state.backupSupplements);
   const restoreSupplementBackup = usePricingStore((state) => state.restoreSupplementBackup);
+  const saveSupplementChanges = usePricingStore((state) => state.saveSupplementChanges);
   const hasSupplementBackup = usePricingStore((state) =>
     state.hasSupplementBackup('necklaces'),
+  );
+  const hasPendingNecklaceChanges = usePricingStore(
+    (state) => state.supplementChangesPending.necklaces,
   );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
@@ -40,6 +44,7 @@ export function NecklacesPage() {
   const [supplementPreview, setSupplementPreview] = useState([]);
   const [perCmPreview, setPerCmPreview] = useState([]);
   const [isMergedPreview, setIsMergedPreview] = useState(false);
+  const [isSavingSupplements, setIsSavingSupplements] = useState(false);
 
   const isBusy = loadingScopes.has('necklaces');
 
@@ -211,6 +216,27 @@ export function NecklacesPage() {
     );
   };
 
+  const handleSupplementSave = async () => {
+    setIsSavingSupplements(true);
+    try {
+      const result = await saveSupplementChanges();
+
+      if (!result?.localSuccess) {
+        toast.error(t('toast.supplementSaveLocalFailed', { scope: t('nav.necklaces') }));
+        return;
+      }
+
+      if (!result.remoteSuccess) {
+        toast.error(t('toast.supplementSaveRemoteFailed', { scope: t('nav.necklaces') }));
+        return;
+      }
+
+      toast.success(t('toast.supplementSaveSuccess', { scope: t('nav.necklaces') }));
+    } finally {
+      setIsSavingSupplements(false);
+    }
+  };
+
   const handleSupplementBackup = () => {
     const success = backupSupplements('necklaces');
     if (success) {
@@ -288,6 +314,15 @@ export function NecklacesPage() {
           ))}
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
+          <Button
+            type="button"
+            onClick={handleSupplementSave}
+            disabled={!hasPendingNecklaceChanges || isBusy}
+            isLoading={isSavingSupplements}
+            loadingText={t('supplements.saving')}
+          >
+            {t('supplements.saveButton')}
+          </Button>
           <Button type="button" variant="secondary" onClick={handlePreview} disabled={isBusy}>
             {t('action.preview')}
           </Button>
