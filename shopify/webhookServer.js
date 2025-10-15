@@ -422,6 +422,87 @@ const determineFamilyFromCollections = (collections, tags) => {
   return null;
 };
 
+/**
+ * @typedef {Object} ShopifyCollection
+ * @property {string} id
+ * @property {string} title
+ * @property {string} handle
+ */
+
+/**
+ * @param {number|string} productId
+ * @returns {Promise<{collections: ShopifyCollection[], reliable: boolean}>}
+ */
+const fetchProductCollections = async (productId) => {
+  const productIdParam = encodeURIComponent(productId);
+  try {
+    const response = await fetch(
+      `https://${VITE_SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/products/${productIdParam}/collections.json?fields=id,title,handle`,
+      {
+        headers: {
+          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn(
+        `Failed to load collection memberships for product ${productId}: ${response.status} ${response.statusText} - ${body}`,
+      );
+      return { collections: [], reliable: false };
+    }
+
+    const payload = await response.json();
+    const collections = Array.isArray(payload?.collections) ? payload.collections : [];
+    return {
+      collections: collections.map((collection) => ({
+        id: String(collection?.id ?? ''),
+        title: collection?.title ?? '',
+        handle: collection?.handle ?? '',
+      })),
+      reliable: true,
+    };
+  } catch (error) {
+    console.warn(`Unexpected error loading collections for product ${productId}:`, error);
+    return { collections: [], reliable: false };
+  }
+};
+
+/**
+ * @param {ShopifyCollection[] | undefined | null} collections
+ * @param {Set<string>} tags
+ * @returns {'bracelet' | 'necklace' | null}
+ */
+const determineFamilyFromCollections = (collections, tags = new Set()) => {
+  if (!Array.isArray(collections) || collections.length === 0) {
+    return null;
+  }
+
+  const normalizedCollections = new Set(
+    collections
+      .flatMap((collection) => [collection.title, collection.handle])
+      .map((value) => normalize(value))
+      .filter(Boolean),
+  );
+
+  for (const rule of TARGET_COLLECTION_RULES) {
+    if (!tags.has(rule.requiredTag)) {
+      continue;
+    }
+
+    const matchesCollection = rule.collectionKeys.some((key) =>
+      normalizedCollections.has(normalize(key)),
+    );
+
+    if (matchesCollection) {
+      return rule.family;
+    }
+  }
+
+  return null;
+};
+
 const findBaseVariant = (product) => {
   if (!Array.isArray(product.variants) || product.variants.length === 0) {
     return null;
