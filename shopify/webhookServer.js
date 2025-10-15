@@ -35,6 +35,7 @@ if (!VITE_SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN || !SHOPIFY_WEBHOOK_SECR
 log.info(`Node ${process.version} starting webhook server…`);
 
 const SUPPLEMENTS_PATH = path.resolve(process.cwd(), 'src/data/supplements.js');
+const DEFAULT_BRACELET_SIZE = 41;
 const DEFAULT_NECKLACE_SIZE = 41;
 const FORSAT_S_KEY = 'forsat s';
 
@@ -252,7 +253,7 @@ const pickForsatBaseVariant = (variants, productKind, reqId) => {
   for (const v of variants) {
     const chainType = identifyChainType(v, productKind);
     if (chainType?.key === FORSAT_S_KEY) {
-      const size = productKind === 'necklace' ? extractVariantSize(v) : null;
+      const size = extractVariantSize(v);
       candidates.push({ variant: v, size });
     }
   }
@@ -269,20 +270,23 @@ const pickForsatBaseVariant = (variants, productKind, reqId) => {
   }
 
   log.debug(`[${reqId}] Forsat S candidates: ${candidates.length}`);
-  if (productKind !== 'necklace') return candidates[0].variant;
 
-  // For necklaces, choose size closest to DEFAULT_NECKLACE_SIZE
+  const targetSize = productKind === 'necklace' ? DEFAULT_NECKLACE_SIZE : DEFAULT_BRACELET_SIZE;
+
   let best = candidates[0];
   for (const c of candidates) {
     if (!Number.isFinite(c.size)) continue;
+
     if (!Number.isFinite(best.size)) {
       best = c;
       continue;
     }
-    const d1 = Math.abs(c.size - DEFAULT_NECKLACE_SIZE);
-    const d2 = Math.abs(best.size - DEFAULT_NECKLACE_SIZE);
+
+    const d1 = Math.abs(c.size - targetSize);
+    const d2 = Math.abs(best.size - targetSize);
     if (d1 < d2) best = c;
   }
+
   return best.variant;
 };
 
