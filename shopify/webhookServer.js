@@ -113,12 +113,12 @@ const loadSupplements = async () => {
   }
 };
 
-await loadSupplements();
+let supplementsReady = loadSupplements();
 
 try {
   fs.watch(SUPPLEMENTS_PATH, { persistent: false }, (eventType) => {
     if (eventType === 'change' || eventType === 'rename') {
-      loadSupplements();
+      supplementsReady = loadSupplements();
     }
   });
 } catch (error) {
@@ -334,6 +334,7 @@ app.post('/webhooks/product-update', async (req, res) => {
   }
 
   try {
+    await supplementsReady;
     const productKind = await resolveProductKind(product);
     if (!productKind) {
       return res.status(200).json({ skipped: true, reason: 'Product not bracelet or necklace' });
