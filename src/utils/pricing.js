@@ -103,15 +103,35 @@ export const buildBraceletVariants = (product, supplements) => {
   }));
 };
 
+const DEFAULT_NECKLACE_SIZE = necklaceSizes[0] ?? 41;
+
+const resolveNecklaceSupplement = (data, size) => {
+  if (data && typeof data === 'object') {
+    const sizes = data.sizes;
+    if (sizes && typeof sizes === 'object') {
+      const direct = sizes[size] ?? sizes[String(size)];
+      const numericDirect = Number(direct);
+      if (Number.isFinite(numericDirect)) {
+        return numericDirect;
+      }
+    }
+  }
+
+  const baseSupplement = Number(data?.supplement) || 0;
+  const perCm = Number(data?.perCm) || 0;
+  const delta = size - DEFAULT_NECKLACE_SIZE;
+  const incremental = delta > 0 ? delta * perCm : 0;
+  return baseSupplement + incremental;
+};
+
 export const buildNecklaceVariants = (product, chainTypeSupplements) => {
   const variants = [];
   for (const [chainType, data] of Object.entries(chainTypeSupplements)) {
     for (const size of necklaceSizes) {
-      const sizeDelta = size - 41;
-      const sizeSupplement = sizeDelta > 0 ? sizeDelta * data.perCm : 0;
+      const supplementValue = resolveNecklaceSupplement(data, size);
       const title = `${chainType} • ${size}cm`;
-      const priceBase = product.basePrice + data.supplement + sizeSupplement;
-      const compareBase = product.baseCompareAtPrice + data.supplement + sizeSupplement;
+      const priceBase = product.basePrice + supplementValue;
+      const compareBase = product.baseCompareAtPrice + supplementValue;
       variants.push({
         id: `${product.id}-${chainType}-${size}`,
         title,
@@ -160,13 +180,12 @@ export const buildSetVariants = (product, braceletSupplements, necklaceSupplemen
   const variants = [];
   for (const [chainType, data] of Object.entries(necklaceSupplements)) {
     const braceletSupplement = braceletSupplements[chainType] ?? 0;
-    const chainTypeSupplement = braceletSupplement + data.supplement;
     for (const size of necklaceSizes) {
-      const sizeDelta = size - 41;
-      const sizeSupplement = sizeDelta > 0 ? sizeDelta * data.perCm : 0;
+      const necklaceSupplement = resolveNecklaceSupplement(data, size);
+      const chainTypeSupplement = braceletSupplement + necklaceSupplement;
       const title = `${chainType} • ${size}cm`;
-      const priceBase = product.basePrice + chainTypeSupplement + sizeSupplement;
-      const compareBase = product.baseCompareAtPrice + chainTypeSupplement + sizeSupplement;
+      const priceBase = product.basePrice + chainTypeSupplement;
+      const compareBase = product.baseCompareAtPrice + chainTypeSupplement;
       variants.push({
         id: `${product.id}-${chainType}-${size}`,
         title,

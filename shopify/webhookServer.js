@@ -80,6 +80,35 @@ const supplementsState = {
   necklaceSizes: [],
 };
 
+const sanitizeNecklaceSizeMap = (value, allowedSizes = []) => {
+  const sizeSet = Array.isArray(allowedSizes) ? new Set(allowedSizes.map(Number)) : null;
+  const result = new Map();
+
+  if (!value || typeof value !== 'object') {
+    return result;
+  }
+
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const size = Number(rawKey);
+    if (!Number.isFinite(size)) {
+      continue;
+    }
+
+    if (sizeSet && sizeSet.size > 0 && !sizeSet.has(size)) {
+      continue;
+    }
+
+    const numeric = Number(rawValue);
+    if (!Number.isFinite(numeric)) {
+      continue;
+    }
+
+    result.set(size, numeric);
+  }
+
+  return result;
+};
+
 const refreshDerivedSupplements = (module) => {
   supplementsState.bracelet.clear();
   supplementsState.necklace.clear();
@@ -92,10 +121,12 @@ const refreshDerivedSupplements = (module) => {
   }
   for (const [name, config] of Object.entries(supplementsState.necklaceBase)) {
     const key = normalize(name);
+    const sizes = sanitizeNecklaceSizeMap(config?.sizes, supplementsState.necklaceSizes);
     supplementsState.necklace.set(key, {
       name,
       supplement: Number(config?.supplement) || 0,
       perCm: Number(config?.perCm) || 0,
+      sizes,
     });
   }
 
@@ -293,10 +324,20 @@ const pickForsatBaseVariant = (variants, productKind, reqId) => {
 // ---------- pricing ----------
 const calculateBraceletPrice = (basePrice, chainConfig) => basePrice + chainConfig.supplement;
 
-const calculateNecklacePrice = (basePrice, chainConfig, size) => {
+const calculateNecklacePrice = (basePrice, chainConfig = {}, size) => {
   const normalizedSize = Number.isFinite(size) ? size : DEFAULT_NECKLACE_SIZE;
+  const override =
+    chainConfig?.sizes instanceof Map ? chainConfig.sizes.get(normalizedSize) : undefined;
+  if (Number.isFinite(override)) {
+    return basePrice + override;
+  }
+
+  const baseSupplement = Number(chainConfig?.supplement) || 0;
+  const perCm = Number(chainConfig?.perCm) || 0;
   const delta = normalizedSize - DEFAULT_NECKLACE_SIZE;
-  return basePrice + chainConfig.supplement + delta * chainConfig.perCm;
+  const incremental = delta > 0 ? delta * perCm : 0;
+
+  return basePrice + baseSupplement + incremental;
 };
 
 const pricesEqual = (current, target) =>

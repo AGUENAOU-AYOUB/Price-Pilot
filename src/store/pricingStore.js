@@ -64,6 +64,7 @@ const persistUsername = (username) => {
 
 const SUPPLEMENT_BACKUP_STORAGE_KEY = 'price-pilot.supplement-backups';
 const SUPPLEMENTS_STORAGE_KEY = 'price-pilot.supplements';
+const DEFAULT_NECKLACE_SIZE = necklaceSizes[0] ?? 41;
 
 const createEmptySupplementBackups = () => ({
   bracelets: null,
@@ -78,6 +79,10 @@ const createDefaultSupplements = () => ({
       {
         supplement: Number(values?.supplement) || 0,
         perCm: Number(values?.perCm) || 0,
+        sizes: ensureBaseSizeOverride(
+          sanitizeNecklaceSizeOverrides(values?.sizes),
+          Number(values?.supplement) || 0,
+        ),
       },
     ]),
   ),
@@ -126,6 +131,77 @@ const sanitizeBraceletSupplementMap = (value) => {
   );
 };
 
+const sanitizeNecklaceSizeOverrides = (value) => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  const allowedSizes = new Set(necklaceSizes);
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([rawSize, rawValue]) => {
+        const size = Number(rawSize);
+        if (!Number.isFinite(size) || !allowedSizes.has(size)) {
+          return null;
+        }
+
+        const numeric = Number(rawValue);
+        if (!Number.isFinite(numeric)) {
+          return null;
+        }
+
+        return [size, numeric];
+      })
+      .filter(Boolean),
+  );
+};
+
+const ensureBaseSizeOverride = (sizes, fallbackSupplement = 0) => {
+  const normalized = { ...(sizes ?? {}) };
+  const fallback = Number.isFinite(fallbackSupplement) ? fallbackSupplement : 0;
+
+  const baseEntry = Number(normalized[DEFAULT_NECKLACE_SIZE]);
+  if (Number.isFinite(baseEntry)) {
+    normalized[DEFAULT_NECKLACE_SIZE] = baseEntry;
+  } else {
+    normalized[DEFAULT_NECKLACE_SIZE] = fallback;
+  }
+
+  return normalized;
+};
+
+const mergeNecklaceSizeOverrides = (baseSizes, overrideSizes, fallbackSupplement = 0) => {
+  const merged = {
+    ...(baseSizes ?? {}),
+    ...(overrideSizes ?? {}),
+  };
+
+  return ensureBaseSizeOverride(merged, fallbackSupplement);
+};
+
+const resolveStoredNecklaceSupplement = (entry, size) => {
+  if (!entry || typeof entry !== 'object') {
+    return 0;
+  }
+
+  const sizes = entry.sizes;
+  if (sizes && typeof sizes === 'object') {
+    const direct = sizes[size] ?? sizes[String(size)];
+    const numeric = Number(direct);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+
+  const baseSupplement = Number(entry?.supplement) || 0;
+  const perCm = Number(entry?.perCm) || 0;
+  const delta = size - DEFAULT_NECKLACE_SIZE;
+  const incremental = delta > 0 ? delta * perCm : 0;
+
+  return baseSupplement + incremental;
+};
+
 const sanitizeNecklaceSupplementMap = (value) => {
   if (!value || typeof value !== 'object') {
     return {};
@@ -143,10 +219,11 @@ const sanitizeNecklaceSupplementMap = (value) => {
 
         const supplement = Number(values.supplement);
         const perCm = Number(values.perCm);
+        const sizes = sanitizeNecklaceSizeOverrides(values.sizes);
         const hasSupplement = Number.isFinite(supplement);
         const hasPerCm = Number.isFinite(perCm);
 
-        if (!hasSupplement && !hasPerCm) {
+        if (!hasSupplement && !hasPerCm && Object.keys(sizes).length === 0) {
           return null;
         }
 
@@ -156,6 +233,12 @@ const sanitizeNecklaceSupplementMap = (value) => {
         }
         if (hasPerCm) {
           sanitized.perCm = perCm;
+        }
+        if (Object.keys(sizes).length > 0) {
+          sanitized.sizes = ensureBaseSizeOverride(
+            sizes,
+            hasSupplement ? supplement : 0,
+          );
         }
 
         return [chainType, sanitized];
@@ -291,12 +374,23 @@ const loadStoredSupplements = () => {
     for (const [chainType, values] of Object.entries(necklaces)) {
       const fallbackSupplement = Number(supplements.necklaces?.[chainType]?.supplement) || 0;
       const fallbackPerCm = Number(supplements.necklaces?.[chainType]?.perCm) || 0;
+      const fallbackSizes = ensureBaseSizeOverride(
+        supplements.necklaces?.[chainType]?.sizes,
+        fallbackSupplement,
+      );
+      const sanitizedSizes = sanitizeNecklaceSizeOverrides(values.sizes);
+      const mergedSizes = mergeNecklaceSizeOverrides(
+        fallbackSizes,
+        sanitizedSizes,
+        fallbackSupplement,
+      );
 
       supplements.necklaces[chainType] = {
         supplement: Number.isFinite(values.supplement)
           ? values.supplement
           : fallbackSupplement,
         perCm: Number.isFinite(values.perCm) ? values.perCm : fallbackPerCm,
+        sizes: mergedSizes,
       };
     }
   } catch (error) {
@@ -3076,18 +3170,47 @@ export const usePricingStore = create(
           Object.entries(state.supplements.necklaces).map(([chainType, values]) => {
             const currentSupplement = Number(values?.supplement) || 0;
             const currentPerCm = Number(values?.perCm) || 0;
+            const currentSizes = ensureBaseSizeOverride(values?.sizes, currentSupplement);
+
+            const nextSupplement = applySupplementPercentage(currentSupplement, safeSupplementPercent, {
+              minimum: 0,
+            });
+            const nextPerCm = applySupplementPercentage(currentPerCm, safePerCmPercent, {
+              strategy: 'step',
+              step: 5,
+              minimum: 0,
+            });
+
+            const baseBefore = Number(currentSizes[DEFAULT_NECKLACE_SIZE]) || currentSupplement;
+
+            const adjustedSizes = Object.fromEntries(
+              necklaceSizes.map((size) => {
+                if (size === DEFAULT_NECKLACE_SIZE) {
+                  return [size, nextSupplement];
+                }
+
+                const currentSizeValue = Number(currentSizes[size]);
+                const fallbackValue =
+                  Number.isFinite(currentSizeValue)
+                    ? currentSizeValue
+                    : resolveStoredNecklaceSupplement(values, size);
+                const baseDiff = fallbackValue - baseBefore;
+                const adjustedDiff = applySupplementPercentage(baseDiff, safePerCmPercent, {
+                  strategy: 'step',
+                  step: 5,
+                  minimum: 0,
+                });
+                const normalized = nextSupplement + adjustedDiff;
+                return [size, normalized];
+              }),
+            );
 
             return [
               chainType,
               {
-                supplement: applySupplementPercentage(currentSupplement, safeSupplementPercent, {
-                  minimum: 0,
-                }),
-                perCm: applySupplementPercentage(currentPerCm, safePerCmPercent, {
-                  strategy: 'step',
-                  step: 5,
-                  minimum: 0,
-                }),
+                supplement: nextSupplement,
+                perCm: nextPerCm,
+                sizes: ensureBaseSizeOverride(adjustedSizes, nextSupplement),
               },
             ];
           }),
@@ -3179,8 +3302,28 @@ export const usePricingStore = create(
       }
 
       set((state) => {
+        const normalizedRestored = Object.fromEntries(
+          Object.entries(restored).map(([chainType, values]) => {
+            const supplement = Number(values?.supplement) || 0;
+            const perCm = Number(values?.perCm) || 0;
+            const sizes = ensureBaseSizeOverride(
+              sanitizeNecklaceSizeOverrides(values?.sizes),
+              supplement,
+            );
+
+            return [
+              chainType,
+              {
+                supplement,
+                perCm,
+                sizes,
+              },
+            ];
+          }),
+        );
+
         const updatedHandChains = Object.fromEntries(
-          Object.entries(restored).map(([chainType, values]) => [
+          Object.entries(normalizedRestored).map(([chainType, values]) => [
             chainType,
             (Number(values?.supplement) || 0) * HAND_CHAIN_MULTIPLIER,
           ]),
@@ -3188,7 +3331,7 @@ export const usePricingStore = create(
 
         const nextSupplements = {
           ...state.supplements,
-          necklaces: restored,
+          necklaces: normalizedRestored,
           handChains: updatedHandChains,
         };
 
@@ -3239,20 +3382,74 @@ export const usePricingStore = create(
 
     updateNecklaceSupplement: (title, field, value) => {
       set((state) => {
+        const currentEntry = state.supplements.necklaces[title] ?? {};
+        const previousSupplement = Number(currentEntry?.supplement) || 0;
+        const previousSizes = ensureBaseSizeOverride(currentEntry?.sizes, previousSupplement);
+
+        let nextEntry = {
+          ...currentEntry,
+          [field]: value,
+        };
+
+        if (field === 'supplement') {
+          const nextSupplement = Number(value) || 0;
+          const delta = nextSupplement - previousSupplement;
+          const adjustedSizes = Object.fromEntries(
+            necklaceSizes.map((size) => {
+              if (size === DEFAULT_NECKLACE_SIZE) {
+                return [size, nextSupplement];
+              }
+
+              const currentSizeValue = Number(previousSizes[size]);
+              const fallbackValue =
+                Number.isFinite(currentSizeValue)
+                  ? currentSizeValue
+                  : resolveStoredNecklaceSupplement(currentEntry, size);
+
+              return [size, fallbackValue + delta];
+            }),
+          );
+
+          nextEntry = {
+            ...nextEntry,
+            supplement: nextSupplement,
+            sizes: ensureBaseSizeOverride(adjustedSizes, nextSupplement),
+          };
+        } else if (field === 'perCm') {
+          const nextPerCm = Number(value) || 0;
+          const baseSupplement = Number(nextEntry?.supplement) || previousSupplement;
+          const recalculatedSizes = Object.fromEntries(
+            necklaceSizes.map((size) => {
+              if (size === DEFAULT_NECKLACE_SIZE) {
+                return [size, baseSupplement];
+              }
+
+              const delta = size - DEFAULT_NECKLACE_SIZE;
+              const incremental = delta > 0 ? delta * nextPerCm : 0;
+              return [size, baseSupplement + incremental];
+            }),
+          );
+
+          nextEntry = {
+            ...nextEntry,
+            perCm: nextPerCm,
+            sizes: ensureBaseSizeOverride(recalculatedSizes, baseSupplement),
+          };
+        } else {
+          nextEntry = {
+            ...nextEntry,
+            sizes: ensureBaseSizeOverride(nextEntry?.sizes, Number(nextEntry?.supplement) || 0),
+          };
+        }
+
         const nextNecklaces = {
           ...state.supplements.necklaces,
-          [title]: {
-            ...state.supplements.necklaces[title],
-            [field]: value,
-          },
+          [title]: nextEntry,
         };
 
         const nextHandChains = {
           ...state.supplements.handChains,
-          [title]:
-            field === 'supplement'
-              ? value * HAND_CHAIN_MULTIPLIER
-              : state.supplements.handChains[title],
+          [title]: (Number(nextEntry?.supplement) || 0) * HAND_CHAIN_MULTIPLIER,
         };
 
         const nextSupplements = {

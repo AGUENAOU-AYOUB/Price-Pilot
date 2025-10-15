@@ -66,7 +66,39 @@ const sanitizeBraceletUpdates = (updates, base) => {
   );
 };
 
-const sanitizeNecklaceUpdates = (updates, base) => {
+const sanitizeSizeOverrides = (value, allowedSizes = []) => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  const sizeSet = Array.isArray(allowedSizes)
+    ? new Set(allowedSizes.map((entry) => Number(entry)))
+    : null;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([rawKey, rawValue]) => {
+        const size = Number(rawKey);
+        if (!Number.isFinite(size)) {
+          return null;
+        }
+
+        if (sizeSet && sizeSet.size > 0 && !sizeSet.has(size)) {
+          return null;
+        }
+
+        const numeric = Number(rawValue);
+        if (!Number.isFinite(numeric)) {
+          return null;
+        }
+
+        return [size, numeric];
+      })
+      .filter(Boolean),
+  );
+};
+
+const sanitizeNecklaceUpdates = (updates, base, allowedSizes) => {
   if (!updates || typeof updates !== 'object') {
     return {};
   }
@@ -85,6 +117,7 @@ const sanitizeNecklaceUpdates = (updates, base) => {
 
         const supplement = Number(values.supplement);
         const perCm = Number(values.perCm);
+        const sizes = sanitizeSizeOverrides(values.sizes, allowedSizes);
 
         const sanitized = {};
         if (Number.isFinite(supplement)) {
@@ -92,6 +125,9 @@ const sanitizeNecklaceUpdates = (updates, base) => {
         }
         if (Number.isFinite(perCm)) {
           sanitized.perCm = perCm;
+        }
+        if (Object.keys(sizes).length > 0) {
+          sanitized.sizes = sizes;
         }
 
         return Object.keys(sanitized).length > 0 ? [chainType, sanitized] : null;
@@ -110,22 +146,28 @@ const buildBraceletSupplements = (base, updates) =>
     ]),
   );
 
-const buildNecklaceSupplements = (base, updates) =>
+const buildNecklaceSupplements = (base, updates, allowedSizes) =>
   Object.fromEntries(
     Object.entries(base ?? {}).map(([chainType, values]) => {
       const baseSupplement = Number(values?.supplement) || 0;
       const basePerCm = Number(values?.perCm) || 0;
+      const baseSizes = sanitizeSizeOverrides(values?.sizes, allowedSizes);
       const next = updates?.[chainType] ?? {};
+      const nextSizes = sanitizeSizeOverrides(next?.sizes, allowedSizes);
+      const mergedSizes = { ...baseSizes, ...nextSizes };
 
-      return [
-        chainType,
-        {
-          supplement: Object.prototype.hasOwnProperty.call(next, 'supplement')
-            ? next.supplement
-            : baseSupplement,
-          perCm: Object.prototype.hasOwnProperty.call(next, 'perCm') ? next.perCm : basePerCm,
-        },
-      ];
+      const entry = {
+        supplement: Object.prototype.hasOwnProperty.call(next, 'supplement')
+          ? next.supplement
+          : baseSupplement,
+        perCm: Object.prototype.hasOwnProperty.call(next, 'perCm') ? next.perCm : basePerCm,
+      };
+
+      if (Object.keys(mergedSizes).length > 0) {
+        entry.sizes = mergedSizes;
+      }
+
+      return [chainType, entry];
     }),
   );
 
@@ -208,12 +250,25 @@ const persistSupplementSource = async ({ bracelets, necklaces }) => {
 
   const baseBracelets = module?.braceletChainTypes ?? {};
   const baseNecklaces = module?.necklaceChainTypes ?? {};
+  const allowedNecklaceSizes = Array.isArray(module?.necklaceSizes)
+    ? module.necklaceSizes
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isFinite(entry))
+    : [];
 
   const sanitizedBracelets = sanitizeBraceletUpdates(bracelets, baseBracelets);
-  const sanitizedNecklaces = sanitizeNecklaceUpdates(necklaces, baseNecklaces);
+  const sanitizedNecklaces = sanitizeNecklaceUpdates(
+    necklaces,
+    baseNecklaces,
+    allowedNecklaceSizes,
+  );
 
   const nextBracelets = buildBraceletSupplements(baseBracelets, sanitizedBracelets);
-  const nextNecklaces = buildNecklaceSupplements(baseNecklaces, sanitizedNecklaces);
+  const nextNecklaces = buildNecklaceSupplements(
+    baseNecklaces,
+    sanitizedNecklaces,
+    allowedNecklaceSizes,
+  );
 
   const data = {
     braceletChainTypes: nextBracelets,
