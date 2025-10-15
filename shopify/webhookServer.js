@@ -1,10 +1,11 @@
-import 'dotenv/config';
+import './loadEnv.js';
 import express from 'express';
 import crypto from 'node:crypto';
 
 import {
   braceletChainTypes,
   necklaceChainTypes,
+  necklaceSizes,
 } from '../src/data/supplements.js';
 
 const {
@@ -61,10 +62,72 @@ const parseNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const parseSizeCm = (value) => {
-  if (!value) return DEFAULT_CHAIN_SIZE;
-  const match = `${value}`.match(/(\d+(?:\.\d+)?)/);
-  return match ? Number.parseFloat(match[1]) : DEFAULT_CHAIN_SIZE;
+const splitVariantDescriptor = (value) => {
+  if (!value) {
+    return [];
+  }
+
+  return String(value)
+    .split(/[\\/•|,;\-–—]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+};
+
+const collectVariantTokens = (variant) => {
+  const rawTokens = [
+    variant?.option1,
+    variant?.option2,
+    variant?.option3,
+    ...(Array.isArray(variant?.options) ? variant.options : []),
+    variant?.title,
+  ];
+
+  return rawTokens.flatMap((token) => splitVariantDescriptor(token));
+};
+
+const KNOWN_CHAIN_TYPES = new Map(
+  [
+    ...Object.keys(braceletChainTypes),
+    ...Object.keys(necklaceChainTypes),
+  ].map((name) => [normalize(name), name]),
+);
+
+const findChainType = (variant) => {
+  for (const token of collectVariantTokens(variant)) {
+    const canonical = KNOWN_CHAIN_TYPES.get(normalize(token));
+    if (canonical) {
+      return canonical;
+    }
+  }
+
+  return null;
+};
+
+const KNOWN_NECKLACE_SIZES = new Set(necklaceSizes);
+
+const findNecklaceSize = (variant) => {
+  for (const token of collectVariantTokens(variant)) {
+    const match = token.match(/(\d+(?:\.\d+)?)/);
+    if (!match) {
+      continue;
+    }
+
+    const numeric = Number.parseFloat(match[1]);
+    if (!Number.isFinite(numeric)) {
+      continue;
+    }
+
+    if (KNOWN_NECKLACE_SIZES.has(numeric)) {
+      return numeric;
+    }
+
+    const rounded = Math.round(numeric);
+    if (KNOWN_NECKLACE_SIZES.has(rounded)) {
+      return rounded;
+    }
+  }
+
+  return null;
 };
 
 const isForsatS = (value) => normalize(value) === 'forsat s';
@@ -172,42 +235,52 @@ const determineFamily = (product) => {
 };
 
 const findBaseVariant = (product) => {
-  if (!Array.isArray(product.variants)) return null;
+  if (!Array.isArray(product.variants)) {
+    return null;
+  }
+
   return (
-    product.variants.find(
-      (variant) =>
-        isForsatS(variant.option1) &&
-        (variant.option2 === null || variant.option2 === undefined || parseSizeCm(variant.option2) === DEFAULT_CHAIN_SIZE) &&
-        (variant.option3 === null || variant.option3 === undefined),
-    ) ?? null
+    product.variants.find((variant) => {
+      const chainType = findChainType(variant);
+      if (!chainType || !isForsatS(chainType)) {
+        return false;
+      }
+
+      const size = findNecklaceSize(variant);
+      if (size === null) {
+        return true;
+      }
+
+      return Math.abs(size - DEFAULT_CHAIN_SIZE) < 0.5;
+    }) ?? null
   );
 };
 
 const moneyString = (value) => (Math.round(value * 100) / 100).toFixed(2);
 
 const computeBraceletSupplement = (variant) => {
-  const chainType = variant.option1;
-  if (!Object.prototype.hasOwnProperty.call(braceletChainTypes, chainType)) {
+  const chainType = findChainType(variant);
+  if (!chainType || !Object.prototype.hasOwnProperty.call(braceletChainTypes, chainType)) {
     return null;
   }
   return braceletChainTypes[chainType];
 };
 
 const computeNecklaceSupplement = (variant) => {
-  const chainType = variant.option1;
+  const chainType = findChainType(variant);
   const chainData = necklaceChainTypes[chainType];
   if (!chainData) return null;
-  const size = parseSizeCm(variant.option2);
+  const size = findNecklaceSize(variant) ?? DEFAULT_CHAIN_SIZE;
   const sizeDelta = Math.max(0, size - DEFAULT_CHAIN_SIZE);
   return chainData.supplement + sizeDelta * chainData.perCm;
 };
 
 const computeSetSupplement = (variant) => {
-  const chainType = variant.option1;
+  const chainType = findChainType(variant);
   const necklaceData = necklaceChainTypes[chainType];
   if (!necklaceData) return null;
   const braceletSupplement = braceletChainTypes[chainType] ?? 0;
-  const size = parseSizeCm(variant.option2);
+  const size = findNecklaceSize(variant) ?? DEFAULT_CHAIN_SIZE;
   const sizeDelta = Math.max(0, size - DEFAULT_CHAIN_SIZE);
   return braceletSupplement + necklaceData.supplement + sizeDelta * necklaceData.perCm;
 };
