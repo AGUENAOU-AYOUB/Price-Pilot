@@ -310,28 +310,48 @@ const determineFamilyFromMetadata = (product, tags) => {
   const matchesType = (keywordList) => matchesKeywords(types, keywordList);
   const matchesMetadata = (keywordList) => matchesKeywords(metadata, keywordList);
 
-  if (
-    hasTag(SET_KEYWORDS.tags) ||
-    matchesType([...SET_KEYWORDS.tags, ...SET_KEYWORDS.text]) ||
-    matchesMetadata(SET_KEYWORDS.text)
-  ) {
-    return 'set';
+    const uniqueIds = [
+      ...new Set(
+        collects
+          .map((collect) => collect?.collection_id)
+          .map((value) => (value !== undefined && value !== null ? String(value) : null))
+          .filter(Boolean),
+      ),
+    ];
+
+    const results = await Promise.all(uniqueIds.map((id) => fetchCollectionById(id)));
+    return results.filter((collection) => collection !== null);
+  } catch (error) {
+    console.warn(`Unexpected error loading collections for product ${productId}:`, error);
+    return [];
+  }
+};
+
+const determineFamily = (product, collections, tagsOverride) => {
+  const tags = tagsOverride ?? parseTags(product.tags);
+  if (!collections || collections.length === 0) {
+    return null;
   }
 
-  if (
-    hasTag(NECKLACE_KEYWORDS.tags) ||
-    matchesType([...NECKLACE_KEYWORDS.tags, ...NECKLACE_KEYWORDS.text]) ||
-    matchesMetadata(NECKLACE_KEYWORDS.text)
-  ) {
-    return 'necklace';
-  }
+  const normalizedCollections = new Set(
+    collections
+      .flatMap((collection) => [collection.title, collection.handle])
+      .map((value) => normalize(value))
+      .filter(Boolean),
+  );
 
-  if (
-    hasTag(BRACELET_KEYWORDS.tags) ||
-    matchesType([...BRACELET_KEYWORDS.tags, ...BRACELET_KEYWORDS.text]) ||
-    matchesMetadata(BRACELET_KEYWORDS.text)
-  ) {
-    return 'bracelet';
+  for (const rule of TARGET_COLLECTION_RULES) {
+    if (!tags.has(rule.requiredTag)) {
+      continue;
+    }
+
+    const matchesCollection = rule.collectionKeys.some((key) =>
+      normalizedCollections.has(normalize(key)),
+    );
+
+    if (matchesCollection) {
+      return rule.family;
+    }
   }
 
   return null;
