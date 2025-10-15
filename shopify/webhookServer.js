@@ -61,7 +61,9 @@ const determineFamily = (product) => {
   const type = normalize(product.product_type ?? '');
 
   if (tags.has('brac') || type.includes('bracelet')) return 'bracelet';
-  if (tags.has('nckl') || type.includes('necklace')) return 'necklace';
+  if (tags.has('nckl') || type.includes('necklace') || type.includes('collier')) {
+    return 'necklace';
+  }
   if (tags.has('set') || tags.has('ensemble') || type.includes('ensemble') || type.includes('set')) {
     return 'set';
   }
