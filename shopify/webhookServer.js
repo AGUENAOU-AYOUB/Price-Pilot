@@ -406,17 +406,21 @@ const buildVariantUpdates = (product, family) => {
     }
     const price = basePrice + supplement;
     const compareAt = baseCompare + supplement;
-    const priceNumber = parseNumber(variant.price, 0);
-    const compareNumber = parseNumber(variant.compare_at_price, priceNumber);
+    const nextPrice = moneyString(price);
+    const nextCompareAt = moneyString(compareAt);
+    const currentPriceNumber = parseNumber(variant.price, price);
+    const currentCompareNumber = parseNumber(variant.compare_at_price, currentPriceNumber);
+    const currentPrice = moneyString(currentPriceNumber);
+    const currentCompareAt = moneyString(currentCompareNumber);
 
-    if (Math.abs(priceNumber - price) < 0.1 && Math.abs(compareNumber - compareAt) < 0.1) {
+    if (currentPrice === nextPrice && currentCompareAt === nextCompareAt) {
       continue;
     }
 
     updates.push({
       id: variant.id,
-      price: moneyString(price),
-      compare_at_price: moneyString(compareAt),
+      price: nextPrice,
+      compare_at_price: nextCompareAt,
       title: variant.title,
     });
   }
