@@ -1,11 +1,11 @@
 export const braceletChainTypes = {
   'Forsat S': 0,
-  'Forsat M': 150,
-  'Forsat L': 290,
-  'Gourmette S': 290,
-  'Chopard S': 390,
-  'Gourmette M': 550,
-  'Chopard M': 750,
+  'Forsat M': 250,
+  'Forsat L': 490,
+  'Gourmette S': 490,
+  'Chopard S': 650,
+  'Gourmette M': 890,
+  'Chopard M': 1190,
 };
 
 export const necklaceChainTypes = {
@@ -102,29 +102,43 @@ export const necklaceChainTypes = {
   },
 };
 
-export const necklaceSizes = [41, 45, 50, 55, 60, 70, 80];
+export const necklaceSizes = [
+  41,
+  45,
+  50,
+  55,
+  60,
+  70,
+  80,
+];
 
 export const ringBandSupplements = {
-  Small: {
-    XS: 0,
-    S: 300,
-    L: 500,
-    XL: 700,
+  'Small': {
+    'XS': 0,
+    'S': 300,
+    'L': 500,
+    'XL': 700,
   },
-  Light: {
-    XS: 0,
-    S: 600,
-    L: 900,
-    XL: 1400,
+  'Light': {
+    'XS': 0,
+    'S': 600,
+    'L': 900,
+    'XL': 1400,
   },
-  Big: {
-    XS: 0,
-    S: 1000,
-    L: 1500,
-    XL: 2000,
+  'Big': {
+    'XS': 0,
+    'S': 1000,
+    'L': 1500,
+    'XL': 2000,
   },
 };
 
-export const ringSizes = ['XS', 'S', 'L', 'XL'];
+export const ringSizes = [
+  'XS',
+  'S',
+  'L',
+  'XL',
+];
 
 export const HAND_CHAIN_MULTIPLIER = 1.5;
+
