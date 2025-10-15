@@ -56,15 +56,48 @@ const parseSizeCm = (value) => {
 
 const isForsatS = (value) => normalize(value) === 'forsat s';
 
+const normalizeCollection = (...values) =>
+  values
+    .flat()
+    .map((value) => normalize(value ?? ''))
+    .filter(Boolean);
+
+const includesAny = (haystack, needles) => needles.some((needle) => haystack.includes(needle));
+
 const determineFamily = (product) => {
   const tags = parseTags(product.tags);
-  const type = normalize(product.product_type ?? '');
+  const normalizedTags = new Set([...tags].map((tag) => normalize(tag)));
+  const types = normalizeCollection(
+    product.product_type,
+    product.custom_product_type,
+    product?.standardized_product_type?.product_type,
+  );
 
-  if (tags.has('brac') || type.includes('bracelet')) return 'bracelet';
-  if (tags.has('nckl') || type.includes('necklace')) return 'necklace';
-  if (tags.has('set') || tags.has('ensemble') || type.includes('ensemble') || type.includes('set')) {
+  if (
+    normalizedTags.has('brac') ||
+    normalizedTags.has('bracelet') ||
+    types.some((type) => includesAny(type, ['bracelet']))
+  ) {
+    return 'bracelet';
+  }
+
+  if (
+    normalizedTags.has('nckl') ||
+    normalizedTags.has('necklace') ||
+    normalizedTags.has('collier') ||
+    types.some((type) => includesAny(type, ['necklace', 'collier']))
+  ) {
+    return 'necklace';
+  }
+
+  if (
+    normalizedTags.has('set') ||
+    normalizedTags.has('ensemble') ||
+    types.some((type) => includesAny(type, ['ensemble', 'set']))
+  ) {
     return 'set';
   }
+
   return null;
 };
 
