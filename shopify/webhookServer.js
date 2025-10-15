@@ -1,12 +1,9 @@
 import './loadEnv.js';
 import express from 'express';
 import crypto from 'node:crypto';
-
-import {
-  braceletChainTypes,
-  necklaceChainTypes,
-  necklaceSizes,
-} from '../src/data/supplements.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const {
   VITE_SHOPIFY_STORE_DOMAIN,
@@ -23,18 +20,6 @@ if (!VITE_SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN || !SHOPIFY_WEBHOOK_SECR
   process.exit(1);
 }
 
-const DEFAULT_CHAIN_SIZE = 41;
-
-const app = express();
-app.use(
-  express.json({
-    type: 'application/json',
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
-
 const stripDiacritics = (value) =>
   value
     .normalize('NFD')
@@ -46,6 +31,108 @@ const normalize = (value = '') => {
   }
   return stripDiacritics(String(value)).trim().toLowerCase();
 };
+
+const DEFAULT_CHAIN_SIZE = 41;
+const SUPPLEMENTS_PATH = path.resolve(process.cwd(), 'src/data/supplements.js');
+
+const emptySupplementState = () => ({
+  braceletChainTypes: {},
+  necklaceChainTypes: {},
+  necklaceSizes: [],
+});
+
+let supplementState = emptySupplementState();
+let derivedSupplementState = {
+  knownChainTypes: new Map(),
+  knownChainTypeEntries: [],
+  knownNecklaceSizes: new Set(),
+};
+
+const recomputeDerivedSupplementState = () => {
+  const nextKnownChainTypes = new Map();
+
+  for (const name of Object.keys(supplementState.braceletChainTypes)) {
+    nextKnownChainTypes.set(normalize(name), name);
+  }
+
+  for (const name of Object.keys(supplementState.necklaceChainTypes)) {
+    const normalized = normalize(name);
+    if (!nextKnownChainTypes.has(normalized)) {
+      nextKnownChainTypes.set(normalized, name);
+    }
+  }
+
+  derivedSupplementState = {
+    knownChainTypes: nextKnownChainTypes,
+    knownChainTypeEntries: [...nextKnownChainTypes.entries()],
+    knownNecklaceSizes: new Set(supplementState.necklaceSizes),
+  };
+};
+
+const loadSupplementModule = async () => {
+  const moduleUrl = `${pathToFileURL(SUPPLEMENTS_PATH).href}?t=${Date.now()}`;
+  const module = await import(moduleUrl);
+
+  return {
+    braceletChainTypes: module.braceletChainTypes ?? {},
+    necklaceChainTypes: module.necklaceChainTypes ?? {},
+    necklaceSizes: Array.isArray(module.necklaceSizes) ? module.necklaceSizes : [],
+  };
+};
+
+const hydrateSupplements = async () => {
+  try {
+    const next = await loadSupplementModule();
+    supplementState = {
+      braceletChainTypes: { ...next.braceletChainTypes },
+      necklaceChainTypes: { ...next.necklaceChainTypes },
+      necklaceSizes: [...next.necklaceSizes],
+    };
+    recomputeDerivedSupplementState();
+    console.info('Webhook supplement tables refreshed.');
+  } catch (error) {
+    console.error('Failed to load supplements for webhook calculations:', error);
+  }
+};
+
+const scheduleSupplementReload = (() => {
+  let timer = null;
+  return () => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+
+    timer = setTimeout(() => {
+      timer = null;
+      hydrateSupplements();
+    }, 100);
+  };
+})();
+
+await hydrateSupplements();
+
+try {
+  fs.watch(SUPPLEMENTS_PATH, { persistent: false }, (eventType) => {
+    if (eventType === 'change' || eventType === 'rename') {
+      scheduleSupplementReload();
+    }
+  });
+} catch (error) {
+  console.warn(
+    'Supplement file watch unavailable; restart the webhook server after supplement changes.',
+    error,
+  );
+}
+
+const app = express();
+app.use(
+  express.json({
+    type: 'application/json',
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
 
 const parseTags = (tags = '') => {
   const values = Array.isArray(tags)
@@ -85,25 +172,18 @@ const collectVariantTokens = (variant) => {
   return rawTokens.flatMap((token) => splitVariantDescriptor(token));
 };
 
-const KNOWN_CHAIN_TYPES = new Map(
-  [
-    ...Object.keys(braceletChainTypes),
-    ...Object.keys(necklaceChainTypes),
-  ].map((name) => [normalize(name), name]),
-);
-
-const KNOWN_CHAIN_TYPE_ENTRIES = [...KNOWN_CHAIN_TYPES.entries()];
-
 const findChainType = (variant) => {
+  const { knownChainTypes, knownChainTypeEntries } = derivedSupplementState;
+
   for (const token of collectVariantTokens(variant)) {
     const normalizedToken = normalize(token);
 
-    const directMatch = KNOWN_CHAIN_TYPES.get(normalizedToken);
+    const directMatch = knownChainTypes.get(normalizedToken);
     if (directMatch) {
       return directMatch;
     }
 
-    for (const [normalizedName, canonical] of KNOWN_CHAIN_TYPE_ENTRIES) {
+    for (const [normalizedName, canonical] of knownChainTypeEntries) {
       if (normalizedToken.includes(normalizedName)) {
         return canonical;
       }
@@ -113,9 +193,9 @@ const findChainType = (variant) => {
   return null;
 };
 
-const KNOWN_NECKLACE_SIZES = new Set(necklaceSizes);
-
 const findNecklaceSize = (variant) => {
+  const { knownNecklaceSizes } = derivedSupplementState;
+
   for (const token of collectVariantTokens(variant)) {
     const match = token.match(/(\d+(?:\.\d+)?)/);
     if (!match) {
@@ -127,12 +207,12 @@ const findNecklaceSize = (variant) => {
       continue;
     }
 
-    if (KNOWN_NECKLACE_SIZES.has(numeric)) {
+    if (knownNecklaceSizes.has(numeric)) {
       return numeric;
     }
 
     const rounded = Math.round(numeric);
-    if (KNOWN_NECKLACE_SIZES.has(rounded)) {
+    if (knownNecklaceSizes.has(rounded)) {
       return rounded;
     }
   }
@@ -270,15 +350,18 @@ const moneyString = (value) => (Math.round(value * 100) / 100).toFixed(2);
 
 const computeBraceletSupplement = (variant) => {
   const chainType = findChainType(variant);
-  if (!chainType || !Object.prototype.hasOwnProperty.call(braceletChainTypes, chainType)) {
+  if (
+    !chainType ||
+    !Object.prototype.hasOwnProperty.call(supplementState.braceletChainTypes, chainType)
+  ) {
     return null;
   }
-  return braceletChainTypes[chainType];
+  return supplementState.braceletChainTypes[chainType];
 };
 
 const computeNecklaceSupplement = (variant) => {
   const chainType = findChainType(variant);
-  const chainData = necklaceChainTypes[chainType];
+  const chainData = supplementState.necklaceChainTypes[chainType];
   if (!chainData) return null;
   const size = findNecklaceSize(variant) ?? DEFAULT_CHAIN_SIZE;
   const sizeDelta = Math.max(0, size - DEFAULT_CHAIN_SIZE);
@@ -287,9 +370,9 @@ const computeNecklaceSupplement = (variant) => {
 
 const computeSetSupplement = (variant) => {
   const chainType = findChainType(variant);
-  const necklaceData = necklaceChainTypes[chainType];
+  const necklaceData = supplementState.necklaceChainTypes[chainType];
   if (!necklaceData) return null;
-  const braceletSupplement = braceletChainTypes[chainType] ?? 0;
+  const braceletSupplement = supplementState.braceletChainTypes[chainType] ?? 0;
   const size = findNecklaceSize(variant) ?? DEFAULT_CHAIN_SIZE;
   const sizeDelta = Math.max(0, size - DEFAULT_CHAIN_SIZE);
   return braceletSupplement + necklaceData.supplement + sizeDelta * necklaceData.perCm;
@@ -323,17 +406,21 @@ const buildVariantUpdates = (product, family) => {
     }
     const price = basePrice + supplement;
     const compareAt = baseCompare + supplement;
-    const priceNumber = parseNumber(variant.price, 0);
-    const compareNumber = parseNumber(variant.compare_at_price, priceNumber);
+    const nextPrice = moneyString(price);
+    const nextCompareAt = moneyString(compareAt);
+    const currentPriceNumber = parseNumber(variant.price, price);
+    const currentCompareNumber = parseNumber(variant.compare_at_price, currentPriceNumber);
+    const currentPrice = moneyString(currentPriceNumber);
+    const currentCompareAt = moneyString(currentCompareNumber);
 
-    if (Math.abs(priceNumber - price) < 0.1 && Math.abs(compareNumber - compareAt) < 0.1) {
+    if (currentPrice === nextPrice && currentCompareAt === nextCompareAt) {
       continue;
     }
 
     updates.push({
       id: variant.id,
-      price: moneyString(price),
-      compare_at_price: moneyString(compareAt),
+      price: nextPrice,
+      compare_at_price: nextCompareAt,
       title: variant.title,
     });
   }
