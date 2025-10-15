@@ -27,10 +27,16 @@
 
 #### Necklaces
 - Collection "colliers", tag `nckl`.
-- Chaine type supplements (MAD): Forsat S +0, Forsat M +350, Forsat L +790, Gourmette S +790, Chopard S +990, Gourmette M +1,290, Chopard M +1,890.
-- Chaine size options: 41cm (default), 45, 50, 55, 60, 70, 80.
-- Per-centimeter costs: Forsat S 20, Forsat M 25, Forsat L 35, Gourmette S 35, Chopard S 45, Gourmette M 55, Chopard M 70.
-- Price formula: `base_price (Forsat S @ 41cm) + chain_type_supplement + (chosen_cm - 41) * per_cm_rate_for_chain_type`.
+- Chain size options: 41cm (default), 45, 50, 55, 60, 70, 80.
+- Each chain type has an explicit size matrix (see `src/data/supplements.js`). Supplements listed below already include the 41cm base adjustment and should be added directly to the Forsat S 41cm price:
+  - Forsat S: 41 → 0, 45 → 180, 50 → 280, 55 → 380, 60 → 560, 70 → 780, 80 → 980.
+  - Forsat M: 41 → 180, 45 → 265, 50 → 365, 55 → 465, 60 → 665, 70 → 865, 80 → 1 065.
+  - Forsat L: 41 → 440, 45 → 545, 50 → 665, 55 → 785, 60 → 1 005, 70 → 1 205, 80 → 1 405.
+  - Gourmette S: 41 → 460, 45 → 565, 50 → 685, 55 → 805, 60 → 1 025, 70 → 1 225, 80 → 1 425.
+  - Chopard S: 41 → 590, 45 → 705, 50 → 845, 55 → 995, 60 → 1 255, 70 → 1 505, 80 → 1 755.
+  - Gourmette M: 41 → 790, 45 → 925, 50 → 1 085, 55 → 1 265, 60 → 1 585, 70 → 1 885, 80 → 2 185.
+  - Chopard M: 41 → 1 090, 45 → 1 255, 50 → 1 445, 55 → 1 665, 60 → 2 005, 70 → 2 305, 80 → 2 605.
+- Price formula: `final_price = forsat_s_41cm_price + chain_type_size_supplement`.
 
 #### Rings
 - Collection "BAGUES", tag `rng`.
@@ -48,7 +54,7 @@
 #### Sets
 - Collection "ensemble", tag `set`.
 - Chain type supplement equals `bracelet_chain_type_supplement + necklace_chain_type_supplement`.
-- Chain size adjustments mirror necklace logic using the chosen chain type's per-cm rate.
+  - Chain size adjustments mirror the necklace size matrix for the selected chain type.
 - Supplement tables inherit updates from bracelets/necklaces automatically.
 
 ## Shopify Sync Requirements
@@ -57,9 +63,9 @@
 - Provide a webhook listener (`npm run webhook`) that ingests Shopify `product/update` events, verifies the HMAC secret, and persists the recalculated prices via the Admin API.
 
 ## Example Calculations
-- **Necklace Example**: Base price (Forsat S @ 41cm) = 2,000 MAD. Choosing Chopard M (+1,890 MAD) and 70cm adds `(70 - 41) * 70 = 2,030 MAD`. Final price = `2,000 + 1,890 + 2,030 = 5,920 MAD`.
+- **Necklace Example**: Base price (Forsat S @ 41cm) = 2,000 MAD. Choosing Chopard M @ 70 cm adds +2,305 MAD from the matrix. Final price = `2,000 + 2,305 = 4,305 MAD`.
 - **Ring Example**: Base price (Small @ XS) = 4,000 MAD. Choosing Light band @ XL adds +1,400 MAD. Final price = `4,000 + 1,400 = 5,400 MAD`.
-- **Set Example**: Base price (Forsat S @ 41cm) = 4,500 MAD. Choosing Chopard M chain type adds bracelet supplement (+750 MAD) and necklace supplement (+1,890 MAD). Selecting 60cm adds `(60 - 41) * 70 = 1,330 MAD`. Final price = `4,500 + 750 + 1,890 + 1,330 = 8,470 MAD`.
+- **Set Example**: Base price (Forsat S @ 41cm) = 4,500 MAD. Choosing Chopard M chain type adds bracelet supplement (+750 MAD) and necklace supplement (+2,005 MAD for 60 cm). Final price = `4,500 + 750 + 2,005 = 7,255 MAD`.
 
 ## UX/UI Expectations
 - Tailwind-driven responsive layout with polished interactions, loaders, and status logs.
