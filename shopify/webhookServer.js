@@ -325,25 +325,43 @@ const determineFamily = (product) => {
 };
 
 const findBaseVariant = (product) => {
-  if (!Array.isArray(product.variants)) {
+  if (!Array.isArray(product.variants) || product.variants.length === 0) {
     return null;
   }
 
-  return (
-    product.variants.find((variant) => {
-      const chainType = findChainType(variant);
-      if (!chainType || !isForsatS(chainType)) {
-        return false;
-      }
+  let firstForsatVariant = null;
+  let closestForsatVariant = null;
+  let smallestDelta = Number.POSITIVE_INFINITY;
 
-      const size = findNecklaceSize(variant);
-      if (size === null) {
-        return true;
-      }
+  for (const variant of product.variants) {
+    const chainType = findChainType(variant);
+    if (!chainType || !isForsatS(chainType)) {
+      continue;
+    }
 
-      return Math.abs(size - DEFAULT_CHAIN_SIZE) < 0.5;
-    }) ?? null
-  );
+    if (!firstForsatVariant) {
+      firstForsatVariant = variant;
+    }
+
+    const size = findNecklaceSize(variant);
+    if (size === null) {
+      // Bracelet/base variants often omit a size entirely; accept immediately.
+      return variant;
+    }
+
+    const delta = Math.abs(size - DEFAULT_CHAIN_SIZE);
+    if (delta < 0.5) {
+      // Exact match to the canonical 41cm length.
+      return variant;
+    }
+
+    if (delta < smallestDelta) {
+      smallestDelta = delta;
+      closestForsatVariant = variant;
+    }
+  }
+
+  return closestForsatVariant ?? firstForsatVariant ?? null;
 };
 
 const moneyString = (value) => (Math.round(value * 100) / 100).toFixed(2);
