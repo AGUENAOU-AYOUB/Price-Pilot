@@ -15,6 +15,7 @@ const navItems = [
   { to: '/rings', labelKey: 'nav.rings' },
   { to: '/hand-chains', labelKey: 'nav.handChains' },
   { to: '/sets', labelKey: 'nav.sets' },
+  { to: '/azor-archive', labelKey: 'nav.azorArchive' },
 ];
 
 export function PageLayout({ children }) {

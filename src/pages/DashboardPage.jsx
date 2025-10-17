@@ -93,6 +93,20 @@ const SetsIcon = () => (
   </svg>
 );
 
+const ArchiveIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={iconClassName}
+  >
+    <path d="M4 7h16v3H4z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M6 10h12v9H6z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M10 13h4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 const Metric = ({ icon, label, value, tone = 'primary' }) => {
   const toneClasses = {
     primary: 'bg-brand-blush/60 text-primary-600',
@@ -218,6 +232,13 @@ export function DashboardPage() {
       title: t('dashboard.section.setsTitle'),
       description: t('dashboard.section.setsBody'),
       icon: SetsIcon,
+    },
+    {
+      to: '/azor-archive',
+      tone: 'primary',
+      title: t('dashboard.section.azorArchiveTitle'),
+      description: t('dashboard.section.azorArchiveBody'),
+      icon: ArchiveIcon,
     },
   ];
 

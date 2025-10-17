@@ -11,6 +11,7 @@ import { RingsPage } from './pages/RingsPage';
 import { HandChainsPage } from './pages/HandChainsPage';
 import { SetsPage } from './pages/SetsPage';
 import { LoginPage } from './pages/LoginPage';
+import { AzorArchivePage } from './pages/AzorArchivePage';
 
 function AppRoutes() {
   return (
@@ -22,6 +23,7 @@ function AppRoutes() {
       <Route path="/rings" element={<RingsPage />} />
       <Route path="/hand-chains" element={<HandChainsPage />} />
       <Route path="/sets" element={<SetsPage />} />
+      <Route path="/azor-archive" element={<AzorArchivePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

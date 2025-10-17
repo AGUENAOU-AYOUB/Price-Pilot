@@ -441,6 +441,7 @@ const SCOPE_COLLECTIONS = {
   rings: ['bague'],
   handchains: ['handchain'],
   sets: ['ensemble'],
+  'azor-archive': [],
 };
 
 const BACKUP_SCOPES = Object.keys(SCOPE_COLLECTIONS);
