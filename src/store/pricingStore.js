@@ -2587,6 +2587,130 @@ export const usePricingStore = create(
       }
     },
 
+    previewRestoreScope: (scope) => {
+      if (!(scope in SCOPE_COLLECTIONS)) {
+        return [];
+      }
+
+      const backupEntry = get().backups[scope];
+      if (!hasBackupProducts(backupEntry)) {
+        return [];
+      }
+
+      const backupProducts = cloneProducts(backupEntry.products);
+      const backupById = new Map(backupProducts.map((product) => [product.id, product]));
+      const collectionSet = buildCollectionSet(scope);
+      const includeAllCollections = collectionSet.size === 0;
+      const currentProducts = get().products;
+      const previews = [];
+
+      for (const product of currentProducts) {
+        const productCollection =
+          typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
+        const collectionMatches = includeAllCollections || collectionSet.has(productCollection);
+
+        if (!collectionMatches) {
+          continue;
+        }
+
+        const backupProduct = backupById.get(product.id);
+        if (!backupProduct) {
+          continue;
+        }
+
+        const clonedBackup = cloneProduct(backupProduct);
+        const currentVariants = Array.isArray(product.variants) ? product.variants : [];
+        const currentVariantLookup = new Map(
+          currentVariants.map((variant) => [String(variant?.id ?? ''), variant]),
+        );
+
+        const backupVariants = Array.isArray(clonedBackup.variants) ? clonedBackup.variants : [];
+        const variantPreviews = backupVariants.map((variant, index) => {
+          const variantId = String(variant?.id ?? '');
+          const safeId = variantId || `${clonedBackup.id ?? 'backup'}-${index}`;
+          const currentVariant = variantId ? currentVariantLookup.get(variantId) : null;
+          const targetPrice = resolveVariantPrice(variant, clonedBackup);
+          const targetCompare = resolveVariantCompareAt(variant, clonedBackup);
+          const previousPrice = currentVariant ? resolveVariantPrice(currentVariant, product) : null;
+          const previousCompare = currentVariant
+            ? resolveVariantCompareAt(currentVariant, product)
+            : null;
+
+          const priceChanged = currentVariant ? hasMeaningfulDelta(previousPrice, targetPrice) : false;
+          const compareChanged = currentVariant
+            ? hasMeaningfulDelta(previousCompare, targetCompare)
+            : false;
+
+          let changeType = null;
+          if (currentVariant) {
+            if (priceChanged && compareChanged) {
+              changeType = 'price-compare';
+            } else if (priceChanged) {
+              changeType = 'price';
+            } else if (compareChanged) {
+              changeType = 'compare';
+            }
+          }
+
+          return {
+            id: safeId,
+            title: variant?.title ?? variant?.sku ?? `Variant ${index + 1}`,
+            price: targetPrice,
+            compareAtPrice: targetCompare,
+            previousPrice,
+            previousCompareAtPrice: previousCompare,
+            status: currentVariant ? (changeType ? 'changed' : 'unchanged') : 'missing',
+            changeType,
+          };
+        });
+
+        previews.push({
+          product,
+          updatedBasePrice: clonedBackup.basePrice,
+          updatedCompareAtPrice: clonedBackup.baseCompareAtPrice,
+          variants: variantPreviews,
+        });
+
+        backupById.delete(product.id);
+      }
+
+      for (const backupProduct of backupById.values()) {
+        const clonedBackup = cloneProduct(backupProduct);
+        const backupVariants = Array.isArray(clonedBackup.variants) ? clonedBackup.variants : [];
+
+        const variantPreviews = backupVariants.map((variant, index) => {
+          const variantId = String(variant?.id ?? '');
+          const safeId = variantId || `${clonedBackup.id ?? 'backup'}-${index}`;
+
+          return {
+            id: safeId,
+            title: variant?.title ?? variant?.sku ?? `Variant ${index + 1}`,
+            price: resolveVariantPrice(variant, clonedBackup),
+            compareAtPrice: resolveVariantCompareAt(variant, clonedBackup),
+            previousPrice: null,
+            previousCompareAtPrice: null,
+            status: 'missing',
+            changeType: null,
+          };
+        });
+
+        previews.push({
+          product: {
+            id: clonedBackup.id,
+            title: clonedBackup.title,
+            handle: clonedBackup.handle,
+            basePrice: null,
+            baseCompareAtPrice: null,
+          },
+          updatedBasePrice: clonedBackup.basePrice,
+          updatedCompareAtPrice: clonedBackup.baseCompareAtPrice,
+          variants: variantPreviews,
+        });
+      }
+
+      return previews;
+    },
+
     previewGlobalChange: (percent = 0) => {
       const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
       const { products } = get();
