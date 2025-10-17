@@ -1,11 +1,11 @@
-import { SHOPIFY_PROXY_URL, hasShopifyProxy } from '../config/shopify';
+import { buildShopifyProxyUrl, hasShopifyProxy } from '../config/shopify';
 
 const buildSupplementsEndpoint = () => {
-  if (!SHOPIFY_PROXY_URL) {
+  if (!hasShopifyProxy()) {
     throw new Error('Missing Shopify proxy URL for supplement synchronization.');
   }
 
-  return `${SHOPIFY_PROXY_URL}/supplements`;
+  return buildShopifyProxyUrl('supplements');
 };
 
 export async function syncSupplementsFile({ bracelets = {}, necklaces = {} } = {}) {
