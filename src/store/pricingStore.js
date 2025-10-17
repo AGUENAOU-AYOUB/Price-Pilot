@@ -2208,8 +2208,8 @@ export const usePricingStore = create(
         console.error('Failed to capture Shopify backup', error);
         get().log('Failed to capture Shopify backup. Verify proxy connection.', scope, 'error');
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading(scope, false);
+        toast.dismiss(loadingToastId);
       }
     },
 
@@ -2372,8 +2372,8 @@ export const usePricingStore = create(
           );
         }
       } finally {
-        toast.dismiss(restoreToastId);
         get().toggleLoading(scope, false);
+        toast.dismiss(restoreToastId);
       }
     },
 
@@ -2508,8 +2508,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('global', false);
+        toast.dismiss(loadingToastId);
       }
     },
     previewBracelets: () => {
@@ -2685,8 +2685,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('bracelets', false);
+        toast.dismiss(loadingToastId);
       }
     },
 
@@ -2873,8 +2873,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('necklaces', false);
+        toast.dismiss(loadingToastId);
       }
     },
 
@@ -3054,8 +3054,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('rings', false);
+        toast.dismiss(loadingToastId);
       }
 
     },
@@ -3233,8 +3233,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('handchains', false);
+        toast.dismiss(loadingToastId);
       }
 
     },
@@ -3419,8 +3419,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('sets', false);
+        toast.dismiss(loadingToastId);
       }
 
     },
