@@ -472,7 +472,8 @@ const app = express();
 
 app.use(
   express.json({
-    limit: '1mb',
+    // Backups can include hundreds of products, so allow a larger payload.
+    limit: '10mb',
   }),
 );
 
