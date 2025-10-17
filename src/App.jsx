@@ -30,12 +30,14 @@ function AppRoutes() {
 export default function App() {
   const username = usePricingStore((state) => state.username);
   const syncProductsFromShopify = usePricingStore((state) => state.syncProductsFromShopify);
+  const refreshBackupsFromProxy = usePricingStore((state) => state.refreshBackupsFromProxy);
 
   useEffect(() => {
     if (username) {
       syncProductsFromShopify();
+      refreshBackupsFromProxy();
     }
-  }, [username, syncProductsFromShopify]);
+  }, [username, refreshBackupsFromProxy, syncProductsFromShopify]);
 
   if (!username) {
     return <LoginPage />;
