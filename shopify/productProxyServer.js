@@ -146,6 +146,88 @@ const captureScopeBackup = async (scope) => {
   });
 };
 
+const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const buildVariantFromLegacyItem = (item, index) => {
+  const variantId = item?.variant_id ?? item?.variantId ?? null;
+  const title =
+    item?.variant_title ?? item?.variantTitle ?? item?.title ?? `Variant ${index + 1}`;
+
+  return {
+    id: variantId ? String(variantId) : null,
+    title,
+    sku: item?.variant_sku ?? item?.sku ?? null,
+    price: toNumberOrNull(item?.price),
+    compareAtPrice: toNumberOrNull(item?.compare_at_price ?? item?.compareAtPrice),
+  };
+};
+
+const convertLegacyAzorItemsToProducts = (items = []) => {
+  const grouped = new Map();
+
+  items.forEach((item, index) => {
+    if (!item || typeof item !== 'object') {
+      return;
+    }
+
+    const productId = item?.product_id ?? item?.productId ?? null;
+    const productTitle = item?.product_title ?? item?.productTitle ?? 'Product';
+    const productHandle = item?.product_handle ?? item?.handle ?? null;
+    const key = productId ? String(productId) : `${productTitle ?? 'product'}::${index}`;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        id: productId ? String(productId) : key,
+        title: productTitle,
+        handle: productHandle,
+        basePrice: toNumberOrNull(item?.base_price ?? item?.price),
+        baseCompareAtPrice: toNumberOrNull(
+          item?.base_compare_at_price ?? item?.compare_at_price ?? item?.compareAtPrice,
+        ),
+        variants: new Map(),
+      });
+    }
+
+    const productEntry = grouped.get(key);
+    const variant = buildVariantFromLegacyItem(item, index);
+    const variantKey = variant.id ?? `${variant.title ?? 'variant'}::${productEntry.variants.size}`;
+
+    if (!productEntry.variants.has(variantKey)) {
+      productEntry.variants.set(variantKey, variant);
+    }
+  });
+
+  return Array.from(grouped.values()).map((productEntry) => {
+    const variants = Array.from(productEntry.variants.values());
+
+    const resolvedBasePrice =
+      toNumberOrNull(productEntry.basePrice) ??
+      variants.find((variant) => toNumberOrNull(variant.price) !== null)?.price ??
+      null;
+
+    const resolvedBaseCompare =
+      toNumberOrNull(productEntry.baseCompareAtPrice) ??
+      variants.find((variant) => toNumberOrNull(variant.compareAtPrice) !== null)?.compareAtPrice ??
+      resolvedBasePrice;
+
+    return {
+      id: productEntry.id,
+      title: productEntry.title,
+      handle: productEntry.handle ?? null,
+      basePrice: resolvedBasePrice,
+      baseCompareAtPrice: resolvedBaseCompare,
+      variants,
+    };
+  });
+};
+
 const readBackupFromFile = async (scope) => {
   try {
     const source = await fs.readFile(getBackupFilePath(scope), 'utf8');
@@ -154,12 +236,22 @@ const readBackupFromFile = async (scope) => {
       return null;
     }
 
+    const fallbackTimestamp = new Date().toISOString();
+    const timestamp =
+      typeof parsed.timestamp === 'string' && parsed.timestamp.trim()
+        ? parsed.timestamp
+        : typeof parsed.created_at === 'string' && parsed.created_at.trim()
+          ? parsed.created_at
+          : fallbackTimestamp;
+
+    let products = Array.isArray(parsed.products) ? parsed.products : null;
+    if (!products && Array.isArray(parsed.items)) {
+      products = convertLegacyAzorItemsToProducts(parsed.items);
+    }
+
     return {
-      timestamp:
-        typeof parsed.timestamp === 'string' && parsed.timestamp.trim()
-          ? parsed.timestamp
-          : new Date().toISOString(),
-      products: Array.isArray(parsed.products) ? parsed.products : [],
+      timestamp,
+      products: Array.isArray(products) ? products : [],
     };
   } catch (error) {
     if (error && error.code === 'ENOENT') {
