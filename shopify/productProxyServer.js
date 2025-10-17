@@ -32,6 +32,72 @@ const SHOPIFY_NEAR_LIMIT_THRESHOLD = 0.75;
 const SHOPIFY_LIMIT_MINIMUM_REMAINING = 2;
 const SHOPIFY_NEAR_LIMIT_COOLDOWN_MS = 1500;
 const SUPPLEMENTS_PATH = path.resolve(process.cwd(), 'src/data/supplements.js');
+const BACKUPS_DIR = path.resolve(process.cwd(), 'shopify/backups');
+const BACKUP_SCOPES = new Set(['global', 'bracelets', 'necklaces', 'rings', 'handchains', 'sets']);
+
+const normalizeBackupScope = (scope) =>
+  typeof scope === 'string' ? scope.trim().toLowerCase() : '';
+
+const isValidBackupScope = (scope) => BACKUP_SCOPES.has(scope);
+
+const getBackupFilePath = (scope) => path.resolve(BACKUPS_DIR, `${scope}.json`);
+
+const ensureBackupsDirectory = async () => {
+  await fs.mkdir(BACKUPS_DIR, { recursive: true });
+};
+
+const cloneForStorage = (value) => {
+  if (!value) {
+    return value;
+  }
+
+  return JSON.parse(JSON.stringify(value));
+};
+
+const sanitizeBackupPayload = (payload = {}) => {
+  const timestamp =
+    typeof payload.timestamp === 'string' && payload.timestamp.trim()
+      ? payload.timestamp
+      : new Date().toISOString();
+
+  const products = Array.isArray(payload.products) ? payload.products : [];
+
+  return {
+    timestamp,
+    products: cloneForStorage(products),
+  };
+};
+
+const persistBackupToFile = async (scope, payload = {}) => {
+  await ensureBackupsDirectory();
+  const sanitized = sanitizeBackupPayload(payload);
+  await fs.writeFile(getBackupFilePath(scope), `${JSON.stringify(sanitized, null, 2)}\n`, 'utf8');
+  return sanitized;
+};
+
+const readBackupFromFile = async (scope) => {
+  try {
+    const source = await fs.readFile(getBackupFilePath(scope), 'utf8');
+    const parsed = JSON.parse(source);
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+
+    return {
+      timestamp:
+        typeof parsed.timestamp === 'string' && parsed.timestamp.trim()
+          ? parsed.timestamp
+          : new Date().toISOString(),
+      products: Array.isArray(parsed.products) ? parsed.products : [],
+    };
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return null;
+    }
+
+    throw error;
+  }
+};
 
 const delay = (ms) =>
   new Promise((resolve) => {
@@ -723,6 +789,43 @@ app.post(`${basePath}/variants/bulk-update`, async (req, res) => {
 
   const statusCode = summary.failedCount > 0 ? 207 : 200;
   res.status(statusCode).json(summary);
+});
+
+app.get(`${basePath}/backups/:scope`, async (req, res) => {
+  const scope = normalizeBackupScope(req.params?.scope);
+  if (!isValidBackupScope(scope)) {
+    res.status(400).json({ error: 'Unknown backup scope.' });
+    return;
+  }
+
+  try {
+    const backup = await readBackupFromFile(scope);
+    if (!backup) {
+      res.status(404).json({ error: 'No backup available.' });
+      return;
+    }
+
+    res.json({ success: true, backup });
+  } catch (error) {
+    console.error(`Failed to load backup for scope ${scope}:`, error);
+    res.status(500).json({ error: 'Failed to load backup.', details: error.message });
+  }
+});
+
+app.post(`${basePath}/backups/:scope`, async (req, res) => {
+  const scope = normalizeBackupScope(req.params?.scope);
+  if (!isValidBackupScope(scope)) {
+    res.status(400).json({ error: 'Unknown backup scope.' });
+    return;
+  }
+
+  try {
+    const backup = await persistBackupToFile(scope, req.body ?? {});
+    res.json({ success: true, backup });
+  } catch (error) {
+    console.error(`Failed to persist backup for scope ${scope}:`, error);
+    res.status(500).json({ error: 'Failed to persist backup.', details: error.message });
+  }
 });
 
 app.post(`${basePath}/supplements`, async (req, res) => {
