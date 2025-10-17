@@ -27,7 +27,7 @@ const REQUEST_HEADERS = {
   'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
 };
 
-const MIN_SHOPIFY_INTERVAL_MS = 750;
+const MIN_SHOPIFY_INTERVAL_MS = 250;
 const MAX_SHOPIFY_RETRIES = 5;
 const SHOPIFY_NEAR_LIMIT_THRESHOLD = 0.75;
 const SHOPIFY_LIMIT_MINIMUM_REMAINING = 2;
@@ -412,11 +412,7 @@ const scheduleShopifyRequest = (runner) => {
     }
 
     lastShopifyRequestTime = Date.now();
-    try {
-      return await runner();
-    } finally {
-      requestAdditionalCooldown(MIN_SHOPIFY_INTERVAL_MS);
-    }
+    return runner();
   };
 
   shopifyRequestQueue = shopifyRequestQueue.then(execute, execute);
