@@ -13,6 +13,12 @@ import { mockProducts } from '../data/products';
 import { hasShopifyProxy } from '../config/shopify';
 import { fetchActiveProducts, fetchProductsByCollections, pushVariantUpdates } from '../services/shopify';
 import { syncSupplementsFile } from '../services/supplements';
+import { fetchScopeBackup, persistScopeBackup } from '../services/backups';
+import {
+  captureScopeBackup,
+  fetchScopeBackup,
+  persistScopeBackup,
+} from '../services/backups';
 import {
   captureScopeBackup,
   fetchScopeBackup,
@@ -2146,6 +2152,17 @@ export const usePricingStore = create(
           }
         }
       }
+    },
+
+    isScopeLoading: (scope) => {
+      const key = typeof scope === 'string' ? scope.trim() : '';
+      if (!key) {
+        return false;
+      }
+
+      const counts = get().loadingCounts || {};
+      const currentValue = Number(counts[key]);
+      return Number.isFinite(currentValue) && currentValue > 0;
     },
 
     isScopeLoading: (scope) => {
