@@ -549,6 +549,53 @@ const CHAIN_LOOKUP = new Map(
   UNIQUE_CHAIN_NAMES.map((name) => [sanitizeVariantKey(name), name]),
 );
 
+const escapeRegExp = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildChainRemovalPatterns = (lookup) => {
+  const patterns = [];
+  const seen = new Set();
+
+  for (const name of lookup.values()) {
+    if (!name) {
+      continue;
+    }
+
+    const basePattern = escapeRegExp(name);
+    if (!seen.has(basePattern)) {
+      patterns.push(new RegExp(basePattern, 'ig'));
+      seen.add(basePattern);
+    }
+
+    const collapsed = name.replace(/\s+/g, '');
+    if (collapsed && collapsed !== name) {
+      const collapsedPattern = escapeRegExp(collapsed);
+      if (!seen.has(collapsedPattern)) {
+        patterns.push(new RegExp(collapsedPattern, 'ig'));
+        seen.add(collapsedPattern);
+      }
+    }
+  }
+
+  return patterns;
+};
+
+const BRACELET_CHAIN_KEYS = Array.from(CHAIN_LOOKUP.keys());
+const BRACELET_CHAIN_REMOVAL_PATTERNS = buildChainRemovalPatterns(CHAIN_LOOKUP);
+
+const stripBraceletChainFragments = (value) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  let working = String(value);
+  for (const pattern of BRACELET_CHAIN_REMOVAL_PATTERNS) {
+    working = working.replace(pattern, ' ');
+  }
+
+  return working.replace(/[(){}\[\]]/g, ' ').replace(/[\-_/•]+/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
 const RING_BAND_NAMES = Object.keys(ringBandSupplements);
 
 const RING_BAND_LOOKUP = new Map(
@@ -1241,7 +1288,12 @@ const normalizeBraceletParentCandidate = (value) => {
     return null;
   }
 
-  const lower = raw.toLowerCase();
+  const cleaned = stripBraceletChainFragments(raw);
+  if (!cleaned) {
+    return null;
+  }
+
+  const lower = cleaned.toLowerCase();
   if (lower === 'default' || lower === 'default title' || lower === 'defaulttitle') {
     return null;
   }
@@ -1250,7 +1302,24 @@ const normalizeBraceletParentCandidate = (value) => {
     return null;
   }
 
-  return raw;
+  const sanitized = sanitizeVariantKey(cleaned);
+  if (!sanitized) {
+    return null;
+  }
+
+  let remainder = sanitized;
+  for (const chainKey of BRACELET_CHAIN_KEYS) {
+    if (!chainKey) {
+      continue;
+    }
+    remainder = remainder.split(chainKey).join('');
+  }
+
+  if (!remainder) {
+    return null;
+  }
+
+  return { label: cleaned, key: remainder };
 };
 
 const deriveBraceletVariantSignature = (variant, contextLabel = 'bracelet chain options') => {
@@ -1271,9 +1340,8 @@ const deriveBraceletVariantSignature = (variant, contextLabel = 'bracelet chain 
 
   for (const part of collectVariantParts(variant)) {
     const canonical = canonicalChainName(part, contextLabel);
-    if (canonical) {
+    if (canonical && !chain) {
       chain = canonical;
-      continue;
     }
 
     const normalizedParent = normalizeBraceletParentCandidate(part);
@@ -1281,13 +1349,12 @@ const deriveBraceletVariantSignature = (variant, contextLabel = 'bracelet chain 
       continue;
     }
 
-    const sanitized = sanitizeVariantKey(normalizedParent);
-    if (!sanitized || parentKeyParts.includes(sanitized)) {
+    if (parentKeyParts.includes(normalizedParent.key)) {
       continue;
     }
 
-    parentKeyParts.push(sanitized);
-    parentValues.push(normalizedParent);
+    parentKeyParts.push(normalizedParent.key);
+    parentValues.push(normalizedParent.label);
   }
 
   const chainKey = chain ? sanitizeVariantKey(chain) : null;

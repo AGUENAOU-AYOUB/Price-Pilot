@@ -56,6 +56,34 @@ const sanitizeVariantKey = (value = '') => {
   return normalized || null;
 };
 
+const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildChainRemovalPatterns = (names = []) => {
+  const patterns = [];
+  const seen = new Set();
+
+  for (const name of names) {
+    if (!name) continue;
+
+    const base = escapeRegExp(name);
+    if (!seen.has(base)) {
+      patterns.push(new RegExp(base, 'ig'));
+      seen.add(base);
+    }
+
+    const collapsed = name.replace(/\s+/g, '');
+    if (collapsed && collapsed !== name) {
+      const collapsedPattern = escapeRegExp(collapsed);
+      if (!seen.has(collapsedPattern)) {
+        patterns.push(new RegExp(collapsedPattern, 'ig'));
+        seen.add(collapsedPattern);
+      }
+    }
+  }
+
+  return patterns;
+};
+
 const moneyToNumber = (value) => {
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : 0;
@@ -101,6 +129,22 @@ const collectVariantFields = (variant) => {
 
 const DEFAULT_BRACELET_PARENT_KEY = 'default';
 
+let braceletChainSanitizedKeys = [];
+let braceletChainRemovalPatterns = [];
+
+const stripBraceletChainFragments = (value) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  let working = String(value);
+  for (const pattern of braceletChainRemovalPatterns) {
+    working = working.replace(pattern, ' ');
+  }
+
+  return working.replace(/[(){}\[\]]/g, ' ').replace(/[\-_/•]+/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
 const identifyBraceletParentKey = (variant, chainKeyNormalized) => {
   const chainKeySanitized = chainKeyNormalized ? sanitizeVariantKey(chainKeyNormalized) : null;
   const parentParts = [];
@@ -109,19 +153,33 @@ const identifyBraceletParentKey = (variant, chainKeyNormalized) => {
   const register = (raw) => {
     if (!raw) return;
 
-    const normalized = normalize(raw);
+    const cleaned = stripBraceletChainFragments(raw);
+    if (!cleaned) return;
+
+    const normalized = normalize(cleaned);
     if (!normalized) return;
-    if (chainKeyNormalized && normalized.includes(chainKeyNormalized)) return;
     if (normalized === 'default' || normalized === 'default title' || normalized === 'defaulttitle') return;
     if (/\b(cm|centim|millim|mm)\b/.test(normalized)) return;
 
-    const sanitized = sanitizeVariantKey(raw);
+    const sanitized = sanitizeVariantKey(cleaned);
     if (!sanitized) return;
     if (chainKeySanitized && sanitized.includes(chainKeySanitized)) return;
-    if (seen.has(sanitized)) return;
 
-    seen.add(sanitized);
-    parentParts.push(sanitized);
+    let remainder = sanitized;
+    for (const key of braceletChainSanitizedKeys) {
+      if (!key) continue;
+      remainder = remainder.split(key).join('');
+    }
+
+    if (chainKeySanitized) {
+      remainder = remainder.split(chainKeySanitized).join('');
+    }
+
+    if (!remainder) return;
+    if (seen.has(remainder)) return;
+
+    seen.add(remainder);
+    parentParts.push(remainder);
   };
 
   register(variant?.option1);
@@ -132,33 +190,6 @@ const identifyBraceletParentKey = (variant, chainKeyNormalized) => {
     for (const fragment of splitVariantDescriptor(variant.title)) {
       register(fragment);
     }
-  }
-
-  if (parentParts.length === 0) {
-    return DEFAULT_BRACELET_PARENT_KEY;
-  }
-
-  return parentParts.join('::');
-};
-
-const DEFAULT_BRACELET_PARENT_KEY = 'default';
-
-const identifyBraceletParentKey = (variant, chainKeyNormalized) => {
-  const fields = collectVariantFields(variant);
-  const parentParts = [];
-
-  for (const field of fields) {
-    if (!field) continue;
-    if (field === chainKeyNormalized) continue;
-    if (field === 'default' || field === 'default title' || field === 'defaulttitle') continue;
-    if (/\b(cm|centim|millim|mm)\b/.test(field)) continue;
-
-    const sanitized = sanitizeVariantKey(field);
-    if (!sanitized || parentParts.includes(sanitized)) {
-      continue;
-    }
-
-    parentParts.push(sanitized);
   }
 
   if (parentParts.length === 0) {
@@ -224,6 +255,12 @@ const refreshDerivedSupplements = (module) => {
       sizes,
     });
   }
+
+  braceletChainSanitizedKeys = Array.from(supplementsState.bracelet.keys());
+  const braceletNames = Array.from(supplementsState.bracelet.values())
+    .map((entry) => entry?.name)
+    .filter(Boolean);
+  braceletChainRemovalPatterns = buildChainRemovalPatterns(braceletNames);
 
   log.debug('Supplements refreshed.', {
     braceletKeys: Array.from(supplementsState.bracelet.keys()),
