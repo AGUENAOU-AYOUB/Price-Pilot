@@ -469,7 +469,30 @@ const basePath = SHOPIFY_PROXY_BASE_PATH.endsWith('/')
   ? SHOPIFY_PROXY_BASE_PATH.slice(0, -1)
   : SHOPIFY_PROXY_BASE_PATH;
 
+const applyCorsHeaders = (res, origin) => {
+  if (allowedOrigins.length === 0) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+};
+
 const app = express();
+
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  applyCorsHeaders(res, origin);
+
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+
+  next();
+});
 
 app.use(
   express.json({
@@ -480,6 +503,8 @@ app.use(
 
 app.use((error, req, res, next) => {
   if (error?.type === 'entity.too.large') {
+    const origin = req.get('Origin');
+    applyCorsHeaders(res, origin);
     console.warn(
       `Received payload exceeding limit (${SHOPIFY_PROXY_JSON_LIMIT}). ` +
         'Increase SHOPIFY_PROXY_JSON_LIMIT if your store snapshot is larger.',
@@ -492,25 +517,6 @@ app.use((error, req, res, next) => {
   }
 
   next(error);
-});
-
-app.use((req, res, next) => {
-  const origin = req.get('Origin');
-  if (allowedOrigins.length === 0) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  } else if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(204);
-    return;
-  }
-
-  next();
 });
 
 const parseNumber = (value, fallback = 0) => {
