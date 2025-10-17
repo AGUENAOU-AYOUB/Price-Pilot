@@ -20,6 +20,11 @@ import {
   persistScopeBackup,
 } from '../services/backups';
 import {
+  captureScopeBackup,
+  fetchScopeBackup,
+  persistScopeBackup,
+} from '../services/backups';
+import {
   applyPercentage,
   applySupplementPercentage,
   buildBraceletVariants,
@@ -38,6 +43,24 @@ import {
 import { toast } from '../utils/toast';
 
 const USERNAME_STORAGE_KEY = 'price-pilot.username';
+
+const dispatchToastNotification = (level, message) => {
+  switch (level) {
+    case 'success':
+      toast.success(message);
+      break;
+    case 'error':
+      toast.error(message);
+      break;
+    case 'warning':
+      toast.warning(message);
+      break;
+    case 'info':
+    default:
+      toast.info(message);
+      break;
+  }
+};
 
 const loadStoredUsername = () => {
   if (typeof window === 'undefined') {
@@ -2031,6 +2054,7 @@ export const usePricingStore = create(
     logs: [],
     loadingCounts: {},
     loadingScopes: new Set(),
+    pendingToasts: {},
 
     setUsername: (username) =>
       set(() => {
@@ -2055,24 +2079,27 @@ export const usePricingStore = create(
         return;
       }
 
-      switch (level) {
-        case 'success':
-          toast.success(message);
-          break;
-        case 'error':
-          toast.error(message);
-          break;
-        case 'warning':
-          toast.warning(message);
-          break;
-        case 'info':
-        default:
-          toast.info(message);
-          break;
+      const key = typeof scope === 'string' ? scope.trim() : '';
+      const counts = get().loadingCounts || {};
+      const currentValue = key ? Number(counts[key]) : NaN;
+      const scopeBusy = key ? Number.isFinite(currentValue) && currentValue > 0 : false;
+
+      if (scopeBusy && level === 'success') {
+        set((state) => {
+          const pendingToasts = { ...(state.pendingToasts ?? {}) };
+          const existing = Array.isArray(pendingToasts[key]) ? pendingToasts[key] : [];
+          pendingToasts[key] = [...existing, { level, message }];
+          return { pendingToasts };
+        });
+        return;
       }
+
+      dispatchToastNotification(level, message);
     },
 
     toggleLoading: (scope, loading) => {
+      const flushEntries = [];
+
       set((state) => {
         const key = typeof scope === 'string' ? scope.trim() : '';
         if (!key) {
@@ -2085,17 +2112,57 @@ export const usePricingStore = create(
         const previous = Number.isFinite(previousValue) && previousValue > 0 ? previousValue : 0;
         const nextValue = loading ? previous + 1 : Math.max(0, previous - 1);
 
+        let nextPendingToasts = state.pendingToasts;
+
         if (nextValue <= 0) {
           delete nextCounts[key];
+
+          if (!loading) {
+            const pendingForScope = Array.isArray(state.pendingToasts?.[key])
+              ? state.pendingToasts[key]
+              : [];
+
+            if (pendingForScope.length > 0) {
+              flushEntries.push(...pendingForScope);
+              const pendingClone = { ...(state.pendingToasts ?? {}) };
+              delete pendingClone[key];
+              nextPendingToasts = pendingClone;
+            }
+          }
         } else {
           nextCounts[key] = nextValue;
         }
 
-        return {
+        const update = {
           loadingCounts: nextCounts,
           loadingScopes: new Set(Object.keys(nextCounts)),
         };
+
+        if (nextPendingToasts !== state.pendingToasts) {
+          update.pendingToasts = nextPendingToasts;
+        }
+
+        return update;
       });
+
+      if (flushEntries.length > 0) {
+        for (const entry of flushEntries) {
+          if (entry?.level && entry?.message) {
+            dispatchToastNotification(entry.level, entry.message);
+          }
+        }
+      }
+    },
+
+    isScopeLoading: (scope) => {
+      const key = typeof scope === 'string' ? scope.trim() : '';
+      if (!key) {
+        return false;
+      }
+
+      const counts = get().loadingCounts || {};
+      const currentValue = Number(counts[key]);
+      return Number.isFinite(currentValue) && currentValue > 0;
     },
 
     isScopeLoading: (scope) => {
