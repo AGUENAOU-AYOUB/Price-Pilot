@@ -25,6 +25,11 @@ import {
   persistScopeBackup,
 } from '../services/backups';
 import {
+  captureScopeBackup,
+  fetchScopeBackup,
+  persistScopeBackup,
+} from '../services/backups';
+import {
   applyPercentage,
   applySupplementPercentage,
   buildBraceletVariants,
@@ -2053,7 +2058,7 @@ export const usePricingStore = create(
     backups: {},
     logs: [],
     loadingCounts: {},
-    loadingScopes: new Set(),
+    loadingScopes: [],
     pendingToasts: {},
 
     setUsername: (username) =>
@@ -2135,7 +2140,7 @@ export const usePricingStore = create(
 
         const update = {
           loadingCounts: nextCounts,
-          loadingScopes: new Set(Object.keys(nextCounts)),
+          loadingScopes: Object.keys(nextCounts),
         };
 
         if (nextPendingToasts !== state.pendingToasts) {
@@ -2152,17 +2157,6 @@ export const usePricingStore = create(
           }
         }
       }
-    },
-
-    isScopeLoading: (scope) => {
-      const key = typeof scope === 'string' ? scope.trim() : '';
-      if (!key) {
-        return false;
-      }
-
-      const counts = get().loadingCounts || {};
-      const currentValue = Number(counts[key]);
-      return Number.isFinite(currentValue) && currentValue > 0;
     },
 
     isScopeLoading: (scope) => {
