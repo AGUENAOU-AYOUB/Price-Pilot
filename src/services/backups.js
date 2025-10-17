@@ -7,6 +7,7 @@ const VALID_BACKUP_SCOPES = new Set([
   'rings',
   'handchains',
   'sets',
+  'azor-archive',
 ]);
 
 const normalizeScope = (scope) => {

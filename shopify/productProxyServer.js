@@ -34,7 +34,24 @@ const SHOPIFY_LIMIT_MINIMUM_REMAINING = 2;
 const SHOPIFY_NEAR_LIMIT_COOLDOWN_MS = 1500;
 const SUPPLEMENTS_PATH = path.resolve(process.cwd(), 'src/data/supplements.js');
 const BACKUPS_DIR = path.resolve(process.cwd(), 'shopify/backups');
-const BACKUP_SCOPES = new Set(['global', 'bracelets', 'necklaces', 'rings', 'handchains', 'sets']);
+const AZOR_ARCHIVE_SCOPE = 'azor-archive';
+const AZOR_ARCHIVE_FILE_PATH = path.resolve(
+  process.cwd(),
+  'azor-backup/pct-backup-2025-10-08T16-48-56-745Z.json',
+);
+const CUSTOM_BACKUP_PATHS = {
+  [AZOR_ARCHIVE_SCOPE]: AZOR_ARCHIVE_FILE_PATH,
+};
+const READ_ONLY_BACKUP_SCOPES = new Set([AZOR_ARCHIVE_SCOPE]);
+const BACKUP_SCOPES = new Set([
+  'global',
+  'bracelets',
+  'necklaces',
+  'rings',
+  'handchains',
+  'sets',
+  AZOR_ARCHIVE_SCOPE,
+]);
 const BACKUP_COLLECTIONS = {
   global: [],
   bracelets: ['bracelet'],
@@ -42,6 +59,7 @@ const BACKUP_COLLECTIONS = {
   rings: ['bague'],
   handchains: ['handchain'],
   sets: ['ensemble'],
+  [AZOR_ARCHIVE_SCOPE]: [],
 };
 
 const normalizeBackupScope = (scope) =>
@@ -49,10 +67,16 @@ const normalizeBackupScope = (scope) =>
 
 const isValidBackupScope = (scope) => BACKUP_SCOPES.has(scope);
 
-const getBackupFilePath = (scope) => path.resolve(BACKUPS_DIR, `${scope}.json`);
+const getBackupFilePath = (scope) =>
+  CUSTOM_BACKUP_PATHS[scope] ?? path.resolve(BACKUPS_DIR, `${scope}.json`);
 
 const ensureBackupsDirectory = async () => {
   await fs.mkdir(BACKUPS_DIR, { recursive: true });
+};
+
+const ensureDirectoryForFile = async (filePath) => {
+  const directory = path.dirname(filePath);
+  await fs.mkdir(directory, { recursive: true });
 };
 
 const cloneForStorage = (value) => {
@@ -78,9 +102,17 @@ const sanitizeBackupPayload = (payload = {}) => {
 };
 
 const persistBackupToFile = async (scope, payload = {}) => {
-  await ensureBackupsDirectory();
+  if (READ_ONLY_BACKUP_SCOPES.has(scope)) {
+    throw new Error('Backup scope is read-only.');
+  }
+
+  const targetPath = getBackupFilePath(scope);
+  if (!CUSTOM_BACKUP_PATHS[scope]) {
+    await ensureBackupsDirectory();
+  }
+  await ensureDirectoryForFile(targetPath);
   const sanitized = sanitizeBackupPayload(payload);
-  await fs.writeFile(getBackupFilePath(scope), `${JSON.stringify(sanitized, null, 2)}\n`, 'utf8');
+  await fs.writeFile(targetPath, `${JSON.stringify(sanitized, null, 2)}\n`, 'utf8');
   return sanitized;
 };
 
@@ -101,6 +133,10 @@ const filterProductsForScope = (products = [], scope) => {
 };
 
 const captureScopeBackup = async (scope) => {
+  if (READ_ONLY_BACKUP_SCOPES.has(scope)) {
+    return readBackupFromFile(scope);
+  }
+
   const products = await fetchProducts('active');
   const scopedProducts = filterProductsForScope(products, scope);
 
@@ -873,6 +909,11 @@ app.post(`${basePath}/backups/:scope`, async (req, res) => {
     return;
   }
 
+  if (READ_ONLY_BACKUP_SCOPES.has(scope)) {
+    res.status(403).json({ error: 'Backup scope is read-only.' });
+    return;
+  }
+
   try {
     const backup = await persistBackupToFile(scope, req.body ?? {});
     res.json({ success: true, backup });
@@ -886,6 +927,11 @@ app.post(`${basePath}/backups/:scope/capture`, async (req, res) => {
   const scope = normalizeBackupScope(req.params?.scope);
   if (!isValidBackupScope(scope)) {
     res.status(400).json({ error: 'Unknown backup scope.' });
+    return;
+  }
+
+  if (READ_ONLY_BACKUP_SCOPES.has(scope)) {
+    res.status(403).json({ error: 'Backup scope is read-only.' });
     return;
   }
 
