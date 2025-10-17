@@ -33,7 +33,7 @@ export function BraceletsPage() {
   );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
-  const loadingScopes = usePricingStore((state) => state.loadingScopes);
+  const loadingCounts = usePricingStore((state) => state.loadingCounts);
   const { t } = useTranslation();
   const toast = useToast();
 
@@ -43,7 +43,7 @@ export function BraceletsPage() {
   const [supplementPreview, setSupplementPreview] = useState([]);
   const [isSavingSupplements, setIsSavingSupplements] = useState(false);
 
-  const isBusy = loadingScopes.has('bracelets');
+  const isBusy = Boolean(loadingCounts?.bracelets);
 
   const percentValue = useMemo(() => {
     const parsed = Number.parseFloat(adjustmentPercent);
