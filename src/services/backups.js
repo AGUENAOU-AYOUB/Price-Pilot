@@ -1,4 +1,4 @@
-import { SHOPIFY_PROXY_URL, hasShopifyProxy } from '../config/shopify';
+import { buildShopifyProxyUrl, hasShopifyProxy } from '../config/shopify';
 
 const VALID_BACKUP_SCOPES = new Set([
   'global',
@@ -20,11 +20,11 @@ const buildBackupEndpoint = (scope) => {
     throw new Error(`Unknown backup scope: ${scope}`);
   }
 
-  if (!SHOPIFY_PROXY_URL) {
+  if (!hasShopifyProxy()) {
     throw new Error('Missing Shopify proxy URL for backup synchronization.');
   }
 
-  return `${SHOPIFY_PROXY_URL}/backups/${normalized}`;
+  return buildShopifyProxyUrl(`backups/${normalized}`);
 };
 
 const sanitizeBackupPayload = (payload) => {
