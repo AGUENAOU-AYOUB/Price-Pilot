@@ -549,6 +549,53 @@ const CHAIN_LOOKUP = new Map(
   UNIQUE_CHAIN_NAMES.map((name) => [sanitizeVariantKey(name), name]),
 );
 
+const escapeRegExp = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildChainRemovalPatterns = (lookup) => {
+  const patterns = [];
+  const seen = new Set();
+
+  for (const name of lookup.values()) {
+    if (!name) {
+      continue;
+    }
+
+    const basePattern = escapeRegExp(name);
+    if (!seen.has(basePattern)) {
+      patterns.push(new RegExp(basePattern, 'ig'));
+      seen.add(basePattern);
+    }
+
+    const collapsed = name.replace(/\s+/g, '');
+    if (collapsed && collapsed !== name) {
+      const collapsedPattern = escapeRegExp(collapsed);
+      if (!seen.has(collapsedPattern)) {
+        patterns.push(new RegExp(collapsedPattern, 'ig'));
+        seen.add(collapsedPattern);
+      }
+    }
+  }
+
+  return patterns;
+};
+
+const BRACELET_CHAIN_KEYS = Array.from(CHAIN_LOOKUP.keys());
+const BRACELET_CHAIN_REMOVAL_PATTERNS = buildChainRemovalPatterns(CHAIN_LOOKUP);
+
+const stripBraceletChainFragments = (value) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  let working = String(value);
+  for (const pattern of BRACELET_CHAIN_REMOVAL_PATTERNS) {
+    working = working.replace(pattern, ' ');
+  }
+
+  return working.replace(/[(){}\[\]]/g, ' ').replace(/[\-_/•]+/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
 const RING_BAND_NAMES = Object.keys(ringBandSupplements);
 
 const RING_BAND_LOOKUP = new Map(
@@ -1229,6 +1276,99 @@ const deriveBraceletKey = (variant, contextLabel = 'bracelet chain options') => 
   }
 
   return null;
+};
+
+const normalizeBraceletParentCandidate = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  const cleaned = stripBraceletChainFragments(raw);
+  if (!cleaned) {
+    return null;
+  }
+
+  const lower = cleaned.toLowerCase();
+  if (lower === 'default' || lower === 'default title' || lower === 'defaulttitle') {
+    return null;
+  }
+
+  if (/\b(cm|centim|millim|mm)\b/.test(lower)) {
+    return null;
+  }
+
+  const sanitized = sanitizeVariantKey(cleaned);
+  if (!sanitized) {
+    return null;
+  }
+
+  let remainder = sanitized;
+  for (const chainKey of BRACELET_CHAIN_KEYS) {
+    if (!chainKey) {
+      continue;
+    }
+    remainder = remainder.split(chainKey).join('');
+  }
+
+  if (!remainder) {
+    return null;
+  }
+
+  return { label: cleaned, key: remainder };
+};
+
+const deriveBraceletVariantSignature = (variant, contextLabel = 'bracelet chain options') => {
+  if (!variant || typeof variant !== 'object') {
+    return {
+      key: null,
+      chain: null,
+      chainKey: null,
+      parentKey: null,
+      parentLabel: null,
+      parentValues: [],
+    };
+  }
+
+  let chain = null;
+  const parentValues = [];
+  const parentKeyParts = [];
+
+  for (const part of collectVariantParts(variant)) {
+    const canonical = canonicalChainName(part, contextLabel);
+    if (canonical && !chain) {
+      chain = canonical;
+    }
+
+    const normalizedParent = normalizeBraceletParentCandidate(part);
+    if (!normalizedParent) {
+      continue;
+    }
+
+    if (parentKeyParts.includes(normalizedParent.key)) {
+      continue;
+    }
+
+    parentKeyParts.push(normalizedParent.key);
+    parentValues.push(normalizedParent.label);
+  }
+
+  const chainKey = chain ? sanitizeVariantKey(chain) : null;
+  const parentKey = parentKeyParts.length > 0 ? parentKeyParts.join('::') : null;
+  const key = chainKey ? (parentKey ? `${parentKey}::${chainKey}` : chainKey) : null;
+
+  return {
+    key,
+    chain,
+    chainKey,
+    parentKey,
+    parentLabel: parentValues.length > 0 ? parentValues.join(' • ') : null,
+    parentValues,
+  };
 };
 
 const deriveHandChainKey = (variant) =>
@@ -2379,9 +2519,9 @@ export const usePricingStore = create(
         .map((product) => {
           const lookup = new Map();
           for (const existingVariant of product.variants) {
-            const key = deriveBraceletKey(existingVariant);
-            if (key) {
-              lookup.set(key, existingVariant);
+            const signature = deriveBraceletVariantSignature(existingVariant);
+            if (signature.key) {
+              lookup.set(signature.key, existingVariant);
             }
           }
 
@@ -2390,8 +2530,8 @@ export const usePricingStore = create(
             updatedBasePrice: product.basePrice,
             updatedCompareAtPrice: product.baseCompareAtPrice,
             variants: buildBraceletVariants(product, supplements.bracelets).map((variant) => {
-              const key = deriveBraceletKey(variant);
-              const currentVariant = key ? lookup.get(key) : null;
+              const signature = deriveBraceletVariantSignature(variant);
+              const currentVariant = signature.key ? lookup.get(signature.key) : null;
               const matched = Boolean(currentVariant);
               const targetPrice = toNumberOrNull(variant.price);
               const targetCompare = toNumberOrNull(variant.compareAtPrice);
@@ -2447,9 +2587,9 @@ export const usePricingStore = create(
           const targetByKey = new Map();
 
           for (const target of targetVariants) {
-            const key = deriveBraceletKey(target);
-            if (key) {
-              targetByKey.set(key, target);
+            const signature = deriveBraceletVariantSignature(target);
+            if (signature.key) {
+              targetByKey.set(signature.key, target);
             }
           }
 
@@ -2461,10 +2601,10 @@ export const usePricingStore = create(
               originalVariantLookup.set(String(variant.id), variant);
             }
 
-            const key = deriveBraceletKey(variant);
-            if (key && targetByKey.has(key)) {
-              availableKeys.add(key);
-              variantKeyLookup.set(variant, key);
+            const signature = deriveBraceletVariantSignature(variant);
+            if (signature.key && targetByKey.has(signature.key)) {
+              availableKeys.add(signature.key);
+              variantKeyLookup.set(variant, signature.key);
             }
           }
 
@@ -2506,8 +2646,8 @@ export const usePricingStore = create(
           });
 
           const missingVariants = targetVariants.filter((variant) => {
-            const key = deriveBraceletKey(variant);
-            return key ? !availableKeys.has(key) : true;
+            const signature = deriveBraceletVariantSignature(variant);
+            return signature.key ? !availableKeys.has(signature.key) : true;
           });
 
           if (missingVariants.length > 0) {

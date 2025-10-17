@@ -1,4 +1,5 @@
 import { necklaceSizes, ringBandSupplements, ringSizes } from '../data/supplements.js';
+import { parseChainName } from './variantParsers.js';
 
 export const roundToLuxuryStep = (value) => {
   if (!Number.isFinite(value)) {
@@ -93,14 +94,327 @@ export const applySupplementPercentage = (value, percent, options = {}) => {
   return roundSupplementValue(updated, options);
 };
 
+const DEFAULT_BRACELET_CONTEXT_KEY = 'default';
+
+const sanitizeVariantKey = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+
+  return normalized ? normalized : null;
+};
+
+const buildChainLookup = (supplements) => {
+  const lookup = new Map();
+  for (const name of Object.keys(supplements ?? {})) {
+    const sanitized = sanitizeVariantKey(name);
+    if (sanitized) {
+      lookup.set(sanitized, name);
+    }
+  }
+  return lookup;
+};
+
+const escapeRegExp = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildChainRemovalPatterns = (chainLookup) => {
+  const patterns = [];
+  const seen = new Set();
+
+  for (const name of chainLookup.values()) {
+    if (!name) {
+      continue;
+    }
+
+    const basePattern = escapeRegExp(name);
+    if (!seen.has(basePattern)) {
+      patterns.push(new RegExp(basePattern, 'ig'));
+      seen.add(basePattern);
+    }
+
+    const collapsed = name.replace(/\s+/g, '');
+    if (collapsed && collapsed !== name) {
+      const collapsedPattern = escapeRegExp(collapsed);
+      if (!seen.has(collapsedPattern)) {
+        patterns.push(new RegExp(collapsedPattern, 'ig'));
+        seen.add(collapsedPattern);
+      }
+    }
+  }
+
+  return patterns;
+};
+
+const stripBraceletChainFragments = (value, removalPatterns = []) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  let working = String(value);
+  for (const pattern of removalPatterns) {
+    working = working.replace(pattern, ' ');
+  }
+
+  return working.replace(/[(){}\[\]]/g, ' ').replace(/[\-_/•]+/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
+const canonicalChainNameFromLookup = (value, lookup) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = parseChainName(value);
+  const sanitized = sanitizeVariantKey(parsed);
+  if (!sanitized) {
+    return null;
+  }
+
+  if (lookup.has(sanitized)) {
+    return lookup.get(sanitized);
+  }
+
+  for (const [candidateKey, candidateValue] of lookup.entries()) {
+    if (sanitized.startsWith(candidateKey)) {
+      return candidateValue;
+    }
+  }
+
+  for (const [candidateKey, candidateValue] of lookup.entries()) {
+    if (candidateKey.length >= 3 && sanitized.includes(candidateKey)) {
+      return candidateValue;
+    }
+  }
+
+  return null;
+};
+
+const splitVariantDescriptor = (value) => {
+  if (!value) {
+    return [];
+  }
+
+  return String(value)
+    .split(/[\/•|\-–]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+};
+
+const collectBraceletVariantTokens = (variant) => {
+  const tokens = [];
+
+  if (Array.isArray(variant?.options) && variant.options.length > 0) {
+    tokens.push(...variant.options);
+  }
+
+  if (typeof variant?.title === 'string' && variant.title.trim()) {
+    tokens.push(...splitVariantDescriptor(variant.title));
+  }
+
+  return tokens;
+};
+
+const normalizeParentCandidate = (value, chainKeys = [], removalPatterns = []) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  const cleaned = stripBraceletChainFragments(raw, removalPatterns);
+  if (!cleaned) {
+    return null;
+  }
+
+  const lower = cleaned.toLowerCase();
+  if (lower === 'default' || lower === 'default title' || lower === 'defaulttitle') {
+    return null;
+  }
+
+  if (/\b(cm|centim|millim|mm)\b/.test(lower)) {
+    return null;
+  }
+
+  const sanitized = sanitizeVariantKey(cleaned);
+  if (!sanitized) {
+    return null;
+  }
+
+  let remainder = sanitized;
+  for (const chainKey of chainKeys) {
+    if (!chainKey) {
+      continue;
+    }
+    remainder = remainder.split(chainKey).join('');
+  }
+
+  if (!remainder) {
+    return null;
+  }
+
+  return { label: cleaned, key: remainder };
+};
+
 export const buildBraceletVariants = (product, supplements) => {
-  return Object.entries(supplements).map(([title, supplement]) => ({
-    id: `${product.id}-${title}`,
-    title,
-    chainType: title,
-    price: product.basePrice + supplement,
-    compareAtPrice: product.baseCompareAtPrice + supplement,
-  }));
+  const chainLookup = buildChainLookup(supplements);
+  const chainKeys = Array.from(chainLookup.keys());
+  const removalPatterns = buildChainRemovalPatterns(chainLookup);
+  const contexts = new Map();
+
+  const ensureContext = (parentKey, parentValues = []) => {
+    const key = parentKey ?? DEFAULT_BRACELET_CONTEXT_KEY;
+    if (!contexts.has(key)) {
+      contexts.set(key, {
+        key,
+        parentKey,
+        parentValues: parentValues.length > 0 ? [...parentValues] : [],
+        observed: new Map(),
+        baseVariantChain: null,
+      });
+    }
+
+    const context = contexts.get(key);
+    if (context.parentValues.length === 0 && parentValues.length > 0) {
+      context.parentValues = [...parentValues];
+    }
+
+    return context;
+  };
+
+  for (const variant of Array.isArray(product?.variants) ? product.variants : []) {
+    const tokens = collectBraceletVariantTokens(variant);
+    let chainType = null;
+    const parentValues = [];
+    const parentKeyParts = [];
+
+    for (const token of tokens) {
+      const chain = canonicalChainNameFromLookup(token, chainLookup);
+      if (chain && !chainType) {
+        chainType = chain;
+      }
+
+      const normalizedParent = normalizeParentCandidate(token, chainKeys, removalPatterns);
+      if (!normalizedParent) {
+        continue;
+      }
+
+      if (!parentKeyParts.includes(normalizedParent.key)) {
+        parentKeyParts.push(normalizedParent.key);
+        parentValues.push(normalizedParent.label);
+      }
+    }
+
+    if (!chainType) {
+      continue;
+    }
+
+    const parentKey = parentKeyParts.length > 0 ? parentKeyParts.join('::') : null;
+    const context = ensureContext(parentKey, parentValues);
+    const price = Number(variant?.price);
+    const compareAt = Number.isFinite(Number(variant?.compareAtPrice))
+      ? Number(variant.compareAtPrice)
+      : null;
+
+    context.observed.set(chainType, {
+      price: Number.isFinite(price) ? price : null,
+      compareAt: Number.isFinite(compareAt) ? compareAt : null,
+    });
+
+    if (sanitizeVariantKey(chainType) === sanitizeVariantKey('Forsat S')) {
+      context.baseVariantChain = chainType;
+    }
+  }
+
+  if (contexts.size === 0) {
+    ensureContext(null, []);
+  }
+
+  const supplementEntries = Object.entries(supplements ?? {});
+  const results = [];
+
+  for (const context of contexts.values()) {
+    const observed = context.observed;
+    let basePrice = observed.get('Forsat S')?.price;
+    let baseCompare = observed.get('Forsat S')?.compareAt;
+
+    if (!Number.isFinite(basePrice)) {
+      for (const [chainName, data] of observed.entries()) {
+        const supplement = supplements?.[chainName];
+        if (!Number.isFinite(data?.price) || !Number.isFinite(supplement)) {
+          continue;
+        }
+        const candidate = data.price - supplement;
+        if (Number.isFinite(candidate)) {
+          basePrice = candidate;
+          break;
+        }
+      }
+    }
+
+    if (!Number.isFinite(basePrice)) {
+      basePrice = Number(product?.basePrice ?? 0);
+    }
+
+    if (!Number.isFinite(basePrice)) {
+      basePrice = 0;
+    }
+
+    if (!Number.isFinite(baseCompare)) {
+      for (const [chainName, data] of observed.entries()) {
+        const supplement = supplements?.[chainName];
+        if (!Number.isFinite(data?.compareAt) || !Number.isFinite(supplement)) {
+          continue;
+        }
+        const candidate = data.compareAt - supplement;
+        if (Number.isFinite(candidate)) {
+          baseCompare = candidate;
+          break;
+        }
+      }
+    }
+
+    if (!Number.isFinite(baseCompare)) {
+      baseCompare = Number(product?.baseCompareAtPrice ?? product?.basePrice ?? basePrice ?? 0);
+    }
+
+    if (!Number.isFinite(baseCompare)) {
+      baseCompare = basePrice;
+    }
+
+    const parentId = context.parentKey ?? DEFAULT_BRACELET_CONTEXT_KEY;
+    const parentLabel = context.parentValues.length > 0 ? context.parentValues.join(' • ') : null;
+
+    for (const [chainType, supplement] of supplementEntries) {
+      const numericSupplement = Number(supplement) || 0;
+      const price = basePrice + numericSupplement;
+      const compareAtPrice = baseCompare + numericSupplement;
+      const options = context.parentValues.length > 0
+        ? [...context.parentValues, chainType]
+        : [chainType];
+
+      results.push({
+        id: `${product.id}-${parentId}-${sanitizeVariantKey(chainType) ?? 'chain'}`,
+        title: parentLabel ? `${parentLabel} • ${chainType}` : chainType,
+        chainType,
+        parentKey: context.parentKey,
+        parentLabel,
+        options,
+        price,
+        compareAtPrice,
+      });
+    }
+  }
+
+  return results;
 };
 
 const DEFAULT_NECKLACE_SIZE = necklaceSizes[0] ?? 41;
