@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
+import { PreviewTable } from '../components/PreviewTable';
 import { useToast } from '../components/ToastProvider';
 import { usePricingStore } from '../store/pricingStore';
 import { hasShopifyProxy } from '../config/shopify';
@@ -15,12 +16,14 @@ export function AzorArchivePage() {
   const toast = useToast();
   const restoreScope = usePricingStore((state) => state.restoreScope);
   const refreshBackupsFromProxy = usePricingStore((state) => state.refreshBackupsFromProxy);
+  const previewRestoreScope = usePricingStore((state) => state.previewRestoreScope);
   const archiveBackup = usePricingStore((state) => state.backups?.[AZOR_ARCHIVE_SCOPE]);
   const isScopeLoading = usePricingStore((state) =>
     typeof state.isScopeLoading === 'function' ? state.isScopeLoading(AZOR_ARCHIVE_SCOPE) : false,
   );
   const proxyAvailable = hasShopifyProxy();
   const [activeAction, setActiveAction] = useState(null);
+  const [previews, setPreviews] = useState([]);
 
   const metadata = useMemo(() => {
     const productCount = Array.isArray(archiveBackup?.products)
@@ -81,6 +84,31 @@ export function AzorArchivePage() {
       pendingMessage: t('azorArchive.restoreStarted'),
     });
 
+  const handlePreview = () => {
+    const results = previewRestoreScope(AZOR_ARCHIVE_SCOPE);
+    setPreviews(results);
+
+    if (!Array.isArray(results) || results.length === 0) {
+      toast.error(t('azorArchive.previewUnavailable'));
+      return;
+    }
+
+    const missingCount = results.reduce((count, preview) => {
+      if (!Array.isArray(preview?.variants)) {
+        return count;
+      }
+
+      return count + preview.variants.filter((variant) => variant.status === 'missing').length;
+    }, 0);
+
+    if (missingCount > 0) {
+      toast.error(t('toast.previewMissing', { scope: t('nav.azorArchive'), count: missingCount }));
+      return;
+    }
+
+    toast.success(t('toast.previewReady', { scope: t('nav.azorArchive') }));
+  };
+
   const renderMetadataValue = (value, fallbackKey) =>
     value ?? t(fallbackKey);
 
@@ -91,6 +119,14 @@ export function AzorArchivePage() {
         subtitle={t('azorArchive.subtitle')}
         actions={
           <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handlePreview}
+              disabled={isScopeLoading || activeAction === 'restore'}
+            >
+              {t('action.preview')}
+            </Button>
             <Button
               type="button"
               variant="secondary"
@@ -152,6 +188,9 @@ export function AzorArchivePage() {
           </dl>
         </div>
         <p className="text-sm text-neutral-500">{t('azorArchive.restoreHint')}</p>
+      </Card>
+      <Card title={t('azorArchive.previewTitle')} subtitle={t('azorArchive.previewSubtitle')}>
+        <PreviewTable previews={previews} />
       </Card>
     </div>
   );
