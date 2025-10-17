@@ -18,14 +18,14 @@ export function HandChainsPage() {
   );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
-  const loadingScopes = usePricingStore((state) => state.loadingScopes);
+  const loadingCounts = usePricingStore((state) => state.loadingCounts);
   const { t } = useTranslation();
   const toast = useToast();
 
   const [previews, setPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
 
-  const isBusy = loadingScopes.has('handchains');
+  const isBusy = Boolean(loadingCounts?.handchains);
 
   const handlePreview = () => {
     const results = previewHandChains();
