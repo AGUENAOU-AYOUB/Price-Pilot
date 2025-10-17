@@ -2021,6 +2021,7 @@ export const usePricingStore = create(
     supplementChangesPending: createSupplementChangeFlags(),
     backups: {},
     logs: [],
+    loadingCounts: {},
     loadingScopes: new Set(),
 
     setUsername: (username) =>
@@ -2065,14 +2066,39 @@ export const usePricingStore = create(
 
     toggleLoading: (scope, loading) => {
       set((state) => {
-        const next = new Set(state.loadingScopes);
-        if (loading) {
-          next.add(scope);
-        } else {
-          next.delete(scope);
+        const key = typeof scope === 'string' ? scope.trim() : '';
+        if (!key) {
+          return {};
         }
-        return { loadingScopes: next };
+
+        const currentCounts = state.loadingCounts || {};
+        const nextCounts = { ...currentCounts };
+        const previousValue = Number(nextCounts[key]);
+        const previous = Number.isFinite(previousValue) && previousValue > 0 ? previousValue : 0;
+        const nextValue = loading ? previous + 1 : Math.max(0, previous - 1);
+
+        if (nextValue <= 0) {
+          delete nextCounts[key];
+        } else {
+          nextCounts[key] = nextValue;
+        }
+
+        return {
+          loadingCounts: nextCounts,
+          loadingScopes: new Set(Object.keys(nextCounts)),
+        };
       });
+    },
+
+    isScopeLoading: (scope) => {
+      const key = typeof scope === 'string' ? scope.trim() : '';
+      if (!key) {
+        return false;
+      }
+
+      const counts = get().loadingCounts || {};
+      const currentValue = Number(counts[key]);
+      return Number.isFinite(currentValue) && currentValue > 0;
     },
 
     alignBraceletVariantsFromMetafields: () =>

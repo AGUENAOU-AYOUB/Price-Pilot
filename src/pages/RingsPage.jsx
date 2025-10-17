@@ -19,14 +19,14 @@ export function RingsPage() {
   );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
-  const loadingScopes = usePricingStore((state) => state.loadingScopes);
+  const loadingCounts = usePricingStore((state) => state.loadingCounts);
   const { t } = useTranslation();
   const toast = useToast();
 
   const [previews, setPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
 
-  const isBusy = loadingScopes.has('rings');
+  const isBusy = Boolean(loadingCounts?.rings);
 
   const handlePreview = () => {
     const results = previewRings();
