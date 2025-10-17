@@ -42,9 +42,11 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
    | `SHOPIFY_WEBHOOK_SECRET` | Secret used to verify webhook signatures from Shopify |
    | `SHOPIFY_PROXY_PORT` | Port used by the product proxy server (defaults to `4000`) |
    | `SHOPIFY_PROXY_BASE_PATH` | URL path prefix for proxy routes (defaults to `/api/shopify`) |
+   | `VITE_SHOPIFY_PROXY_BASE_PATH` | Optional override for the proxy path prefix used by the frontend (defaults to `/api/shopify`) |
    | `SHOPIFY_PROXY_ALLOWED_ORIGINS` | Comma-separated list of origins allowed to call the proxy |
+   | `SHOPIFY_PROXY_JSON_LIMIT` | Maximum JSON payload size the proxy accepts (defaults to `50mb`) |
 
-   The frontend only reads `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN` and `import.meta.env.VITE_SHOPIFY_PROXY_URL`. The Admin API token stays server-side as `SHOPIFY_ACCESS_TOKEN`.
+   The frontend reads `import.meta.env.VITE_SHOPIFY_STORE_DOMAIN`, `import.meta.env.VITE_SHOPIFY_PROXY_URL`, and (optionally) `import.meta.env.VITE_SHOPIFY_PROXY_BASE_PATH`. The Admin API token stays server-side as `SHOPIFY_ACCESS_TOKEN`.
 
 3. **Generate a Shopify Admin API token**
 
@@ -68,12 +70,14 @@ A Vite + React cockpit for managing Shopify pricing strategies across bracelets,
    npm run shopify:proxy
    ```
 
-   The server listens on the port configured by `SHOPIFY_PROXY_PORT` (default
-   `4000`) and exposes REST endpoints under
-   `SHOPIFY_PROXY_BASE_PATH` (default `/api/shopify`). Keep this process running
-   so the frontend can load products. Set
-   `SHOPIFY_PROXY_ALLOWED_ORIGINS` to the URLs that should be able to call the
-   proxy (e.g. `http://localhost:5173`).
+  The server listens on the port configured by `SHOPIFY_PROXY_PORT` (default
+  `4000`) and exposes REST endpoints under
+  `SHOPIFY_PROXY_BASE_PATH` (default `/api/shopify`). Keep this process running
+  so the frontend can load products. Set
+  `SHOPIFY_PROXY_ALLOWED_ORIGINS` to the URLs that should be able to call the
+  proxy (e.g. `http://localhost:5173`), and bump
+  `SHOPIFY_PROXY_JSON_LIMIT` if your store snapshots exceed the default
+  `50mb` payload size.
 
 5. **Run the development server**
 
