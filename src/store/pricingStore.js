@@ -13,6 +13,7 @@ import { mockProducts } from '../data/products';
 import { hasShopifyProxy } from '../config/shopify';
 import { fetchActiveProducts, fetchProductsByCollections, pushVariantUpdates } from '../services/shopify';
 import { syncSupplementsFile } from '../services/supplements';
+import { fetchScopeBackup, persistScopeBackup } from '../services/backups';
 import {
   applyPercentage,
   applySupplementPercentage,
@@ -416,6 +417,8 @@ const SCOPE_COLLECTIONS = {
   handchains: ['handchain'],
   sets: ['ensemble'],
 };
+
+const BACKUP_SCOPES = Object.keys(SCOPE_COLLECTIONS);
 
 const cloneVariant = (variant) => ({ ...variant });
 
@@ -2164,6 +2167,33 @@ export const usePricingStore = create(
       }
     },
 
+    refreshBackupsFromProxy: async () => {
+      if (!hasShopifyProxy()) {
+        return;
+      }
+
+      try {
+        const entries = await Promise.all(
+          BACKUP_SCOPES.map(async (scope) => [scope, await fetchScopeBackup(scope)]),
+        );
+
+        set((state) => {
+          const nextBackups = { ...state.backups };
+          for (const [scope, backup] of entries) {
+            if (backup) {
+              nextBackups[scope] = backup;
+            } else {
+              delete nextBackups[scope];
+            }
+          }
+
+          return { backups: nextBackups };
+        });
+      } catch (error) {
+        console.error('Failed to refresh stored Shopify backups', error);
+      }
+    },
+
     backupScope: async (scope) => {
       if (!(scope in SCOPE_COLLECTIONS)) {
         get().log('Unknown backup scope requested.', scope, 'error');
@@ -2196,6 +2226,22 @@ export const usePricingStore = create(
             [scope]: backupPayload,
           },
         }));
+
+        const persisted = await persistScopeBackup(scope, backupPayload);
+        if (persisted) {
+          set((state) => ({
+            backups: {
+              ...state.backups,
+              [scope]: persisted,
+            },
+          }));
+        } else {
+          get().log(
+            'Failed to persist backup to disk. Restore may be unavailable after reload.',
+            scope,
+            'warning',
+          );
+        }
 
         const count = remoteProducts.length;
         const plural = count === 1 ? '' : 's';
