@@ -33,7 +33,7 @@ export function NecklacesPage() {
   );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
-  const loadingScopes = usePricingStore((state) => state.loadingScopes);
+  const loadingCounts = usePricingStore((state) => state.loadingCounts);
   const { t } = useTranslation();
   const toast = useToast();
 
@@ -46,7 +46,7 @@ export function NecklacesPage() {
   const [isMergedPreview, setIsMergedPreview] = useState(false);
   const [isSavingSupplements, setIsSavingSupplements] = useState(false);
 
-  const isBusy = loadingScopes.has('necklaces');
+  const isBusy = Boolean(loadingCounts?.necklaces);
 
   const supplementPercentValue = useMemo(() => {
     const parsed = Number.parseFloat(supplementPercent);
