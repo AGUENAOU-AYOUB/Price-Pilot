@@ -15,7 +15,7 @@ export function SetsPage() {
   );
   const backupScope = usePricingStore((state) => state.backupScope);
   const restoreScope = usePricingStore((state) => state.restoreScope);
-  const loadingScopes = usePricingStore((state) => state.loadingScopes);
+  const loadingCounts = usePricingStore((state) => state.loadingCounts);
   const supplements = usePricingStore((state) => state.supplements);
   const { t } = useTranslation();
   const toast = useToast();
@@ -23,7 +23,7 @@ export function SetsPage() {
   const [previews, setPreviews] = useState([]);
   const [activeAction, setActiveAction] = useState(null);
 
-  const isBusy = loadingScopes.has('sets');
+  const isBusy = Boolean(loadingCounts?.sets);
 
   const handlePreview = () => {
     const results = previewSets();
