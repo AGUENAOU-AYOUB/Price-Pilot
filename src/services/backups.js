@@ -27,6 +27,19 @@ const buildBackupEndpoint = (scope) => {
   return buildShopifyProxyUrl(`backups/${normalized}`);
 };
 
+const buildCaptureEndpoint = (scope) => {
+  const normalized = normalizeScope(scope);
+  if (!normalized) {
+    throw new Error(`Unknown backup scope: ${scope}`);
+  }
+
+  if (!hasShopifyProxy()) {
+    throw new Error('Missing Shopify proxy URL for backup synchronization.');
+  }
+
+  return buildShopifyProxyUrl(`backups/${normalized}/capture`);
+};
+
 const sanitizeBackupPayload = (payload) => {
   if (!payload || typeof payload !== 'object') {
     return {
@@ -118,6 +131,35 @@ export async function fetchScopeBackup(scope) {
     return payload?.backup ?? null;
   } catch (error) {
     console.warn('Failed to load backup from proxy:', error);
+    return null;
+  }
+}
+
+export async function captureScopeBackup(scope) {
+  if (!hasShopifyProxy()) {
+    return null;
+  }
+
+  try {
+    const endpoint = buildCaptureEndpoint(scope);
+    console.log('[Backups] Capturing scope backup via proxy', {
+      scope: normalizeScope(scope),
+      endpoint,
+    });
+
+    const response = await fetch(endpoint, { method: 'POST' });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `Failed to capture backup: ${response.status} ${response.statusText} - ${body}`,
+      );
+    }
+
+    const payload = await response.json().catch(() => null);
+    return payload?.backup ?? null;
+  } catch (error) {
+    console.warn('Failed to capture backup via proxy:', error);
     return null;
   }
 }

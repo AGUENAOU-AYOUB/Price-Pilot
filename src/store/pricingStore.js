@@ -15,6 +15,11 @@ import { fetchActiveProducts, fetchProductsByCollections, pushVariantUpdates } f
 import { syncSupplementsFile } from '../services/supplements';
 import { fetchScopeBackup, persistScopeBackup } from '../services/backups';
 import {
+  captureScopeBackup,
+  fetchScopeBackup,
+  persistScopeBackup,
+} from '../services/backups';
+import {
   applyPercentage,
   applySupplementPercentage,
   buildBraceletVariants,
@@ -2243,18 +2248,40 @@ export const usePricingStore = create(
           scope,
           collections,
         });
-        const remoteProducts = await fetchProductsByCollections(collections);
-        console.log('[PricingStore] Loaded remote products for backup', {
-          scope,
-          productCount: remoteProducts.length,
-        });
+
+        let remoteProducts = [];
+        let persistedBackup = null;
+
+        persistedBackup = await captureScopeBackup(scope);
+        if (persistedBackup) {
+          console.log('[PricingStore] Received persisted backup from proxy', {
+            scope,
+            productCount: persistedBackup.products?.length ?? 0,
+            timestamp: persistedBackup.timestamp,
+          });
+          remoteProducts = cloneProducts(persistedBackup.products ?? []);
+        } else {
+          console.warn('[PricingStore] Proxy capture unavailable, falling back to client fetch', {
+            scope,
+          });
+          remoteProducts = await fetchProductsByCollections(collections);
+          console.log('[PricingStore] Loaded remote products for backup', {
+            scope,
+            productCount: remoteProducts.length,
+          });
+        }
+
         const collectionSet = buildCollectionSet(scope);
         const currentProducts = get().products;
         const mergedProducts = mergeProductsForScope(currentProducts, remoteProducts, collectionSet);
-        const backupPayload = {
-          timestamp: new Date().toISOString(),
-          products: cloneProducts(remoteProducts),
-        };
+
+        let backupPayload = persistedBackup;
+        if (!backupPayload) {
+          backupPayload = {
+            timestamp: new Date().toISOString(),
+            products: cloneProducts(remoteProducts),
+          };
+        }
 
         set((state) => ({
           products: mergedProducts,
@@ -2264,34 +2291,36 @@ export const usePricingStore = create(
           },
         }));
 
-        console.log('[PricingStore] Persisting backup payload', {
-          scope,
-          productCount: backupPayload.products.length,
-          timestamp: backupPayload.timestamp,
-        });
+        if (!persistedBackup) {
+          console.log('[PricingStore] Persisting backup payload via fallback flow', {
+            scope,
+            productCount: backupPayload.products?.length ?? 0,
+            timestamp: backupPayload.timestamp,
+          });
 
-        const persisted = await persistScopeBackup(scope, backupPayload);
-        if (persisted) {
-          console.log('[PricingStore] Backup persisted via proxy', {
-            scope,
-            productCount: persisted.products?.length ?? 0,
-            timestamp: persisted.timestamp,
-          });
-          set((state) => ({
-            backups: {
-              ...state.backups,
-              [scope]: persisted,
-            },
-          }));
-        } else {
-          console.warn('[PricingStore] Proxy persistence failed; using in-memory backup only', {
-            scope,
-          });
-          get().log(
-            'Failed to persist backup to disk. Restore may be unavailable after reload.',
-            scope,
-            'warning',
-          );
+          const persisted = await persistScopeBackup(scope, backupPayload);
+          if (persisted) {
+            console.log('[PricingStore] Backup persisted via proxy', {
+              scope,
+              productCount: persisted.products?.length ?? 0,
+              timestamp: persisted.timestamp,
+            });
+            set((state) => ({
+              backups: {
+                ...state.backups,
+                [scope]: persisted,
+              },
+            }));
+          } else {
+            console.warn('[PricingStore] Proxy persistence failed; using in-memory backup only', {
+              scope,
+            });
+            get().log(
+              'Failed to persist backup to disk. Restore may be unavailable after reload.',
+              scope,
+              'warning',
+            );
+          }
         }
 
         const count = remoteProducts.length;

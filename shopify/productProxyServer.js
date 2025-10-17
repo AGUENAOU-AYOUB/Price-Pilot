@@ -35,6 +35,14 @@ const SHOPIFY_NEAR_LIMIT_COOLDOWN_MS = 1500;
 const SUPPLEMENTS_PATH = path.resolve(process.cwd(), 'src/data/supplements.js');
 const BACKUPS_DIR = path.resolve(process.cwd(), 'shopify/backups');
 const BACKUP_SCOPES = new Set(['global', 'bracelets', 'necklaces', 'rings', 'handchains', 'sets']);
+const BACKUP_COLLECTIONS = {
+  global: [],
+  bracelets: ['bracelet'],
+  necklaces: ['collier'],
+  rings: ['bague'],
+  handchains: ['handchain'],
+  sets: ['ensemble'],
+};
 
 const normalizeBackupScope = (scope) =>
   typeof scope === 'string' ? scope.trim().toLowerCase() : '';
@@ -74,6 +82,32 @@ const persistBackupToFile = async (scope, payload = {}) => {
   const sanitized = sanitizeBackupPayload(payload);
   await fs.writeFile(getBackupFilePath(scope), `${JSON.stringify(sanitized, null, 2)}\n`, 'utf8');
   return sanitized;
+};
+
+const normalizeCollectionKey = (collection) =>
+  typeof collection === 'string' ? collection.trim().toLowerCase() : '';
+
+const filterProductsForScope = (products = [], scope) => {
+  const collections = BACKUP_COLLECTIONS[scope] ?? [];
+  if (!Array.isArray(products) || collections.length === 0) {
+    return Array.isArray(products) ? products : [];
+  }
+
+  const allowed = new Set(collections.map((entry) => entry.toLowerCase()));
+
+  return products.filter((product) =>
+    allowed.has(normalizeCollectionKey(product?.collection)),
+  );
+};
+
+const captureScopeBackup = async (scope) => {
+  const products = await fetchProducts('active');
+  const scopedProducts = filterProductsForScope(products, scope);
+
+  return persistBackupToFile(scope, {
+    timestamp: new Date().toISOString(),
+    products: scopedProducts,
+  });
 };
 
 const readBackupFromFile = async (scope) => {
@@ -849,6 +883,24 @@ app.post(`${basePath}/backups/:scope`, async (req, res) => {
   } catch (error) {
     console.error(`Failed to persist backup for scope ${scope}:`, error);
     res.status(500).json({ error: 'Failed to persist backup.', details: error.message });
+  }
+});
+
+app.post(`${basePath}/backups/:scope/capture`, async (req, res) => {
+  const scope = normalizeBackupScope(req.params?.scope);
+  if (!isValidBackupScope(scope)) {
+    res.status(400).json({ error: 'Unknown backup scope.' });
+    return;
+  }
+
+  try {
+    const backup = await captureScopeBackup(scope);
+    res.json({ success: true, backup });
+  } catch (error) {
+    console.error(`Failed to capture Shopify backup for scope ${scope}:`, error);
+    res
+      .status(502)
+      .json({ error: 'Failed to capture Shopify backup.', details: error.message });
   }
 });
 
