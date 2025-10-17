@@ -2239,7 +2239,15 @@ export const usePricingStore = create(
 
       try {
         const collections = SCOPE_COLLECTIONS[scope] ?? [];
+        console.log('[PricingStore] Starting backup', {
+          scope,
+          collections,
+        });
         const remoteProducts = await fetchProductsByCollections(collections);
+        console.log('[PricingStore] Loaded remote products for backup', {
+          scope,
+          productCount: remoteProducts.length,
+        });
         const collectionSet = buildCollectionSet(scope);
         const currentProducts = get().products;
         const mergedProducts = mergeProductsForScope(currentProducts, remoteProducts, collectionSet);
@@ -2256,8 +2264,19 @@ export const usePricingStore = create(
           },
         }));
 
+        console.log('[PricingStore] Persisting backup payload', {
+          scope,
+          productCount: backupPayload.products.length,
+          timestamp: backupPayload.timestamp,
+        });
+
         const persisted = await persistScopeBackup(scope, backupPayload);
         if (persisted) {
+          console.log('[PricingStore] Backup persisted via proxy', {
+            scope,
+            productCount: persisted.products?.length ?? 0,
+            timestamp: persisted.timestamp,
+          });
           set((state) => ({
             backups: {
               ...state.backups,
@@ -2265,6 +2284,9 @@ export const usePricingStore = create(
             },
           }));
         } else {
+          console.warn('[PricingStore] Proxy persistence failed; using in-memory backup only', {
+            scope,
+          });
           get().log(
             'Failed to persist backup to disk. Restore may be unavailable after reload.',
             scope,
@@ -2295,6 +2317,10 @@ export const usePricingStore = create(
       }
 
       let backupEntry = get().backups[scope];
+      console.log('[PricingStore] Restore requested', {
+        scope,
+        hasLocalBackup: hasBackupProducts(backupEntry),
+      });
       if (!hasBackupProducts(backupEntry)) {
         if (!hasShopifyProxy()) {
           get().log('No backup available to restore.', scope, 'warning');
@@ -2303,6 +2329,10 @@ export const usePricingStore = create(
 
         try {
           const latestBackup = await fetchScopeBackup(scope);
+          console.log('[PricingStore] Loaded backup from proxy for restore', {
+            scope,
+            productCount: latestBackup?.products?.length ?? 0,
+          });
           if (hasBackupProducts(latestBackup)) {
             set((state) => ({
               backups: {
@@ -2320,6 +2350,7 @@ export const usePricingStore = create(
       }
 
       if (!hasBackupProducts(backupEntry)) {
+        console.warn('[PricingStore] Restore aborted; no backup products available', { scope });
         get().log('No backup available to restore.', scope, 'warning');
         return;
       }

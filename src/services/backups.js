@@ -55,12 +55,19 @@ export async function persistScopeBackup(scope, payload) {
 
   try {
     const endpoint = buildBackupEndpoint(scope);
+    const sanitizedPayload = sanitizeBackupPayload(payload);
+    console.log('[Backups] Persisting scope backup', {
+      scope: normalizeScope(scope),
+      endpoint,
+      productCount: sanitizedPayload.products?.length ?? 0,
+      timestamp: sanitizedPayload.timestamp,
+    });
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(sanitizeBackupPayload(payload)),
+      body: JSON.stringify(sanitizedPayload),
     });
 
     if (!response.ok) {
@@ -85,9 +92,14 @@ export async function fetchScopeBackup(scope) {
 
   try {
     const endpoint = buildBackupEndpoint(scope);
+    console.log('[Backups] Fetching stored backup', {
+      scope: normalizeScope(scope),
+      endpoint,
+    });
     const response = await fetch(endpoint);
 
     if (response.status === 404) {
+      console.log('[Backups] No stored backup found', { scope: normalizeScope(scope) });
       return null;
     }
 
@@ -99,6 +111,10 @@ export async function fetchScopeBackup(scope) {
     }
 
     const payload = await response.json().catch(() => null);
+    console.log('[Backups] Loaded stored backup payload', {
+      scope: normalizeScope(scope),
+      productCount: payload?.backup?.products?.length ?? 0,
+    });
     return payload?.backup ?? null;
   } catch (error) {
     console.warn('Failed to load backup from proxy:', error);
