@@ -76,10 +76,70 @@ const findSizeInText = (value) => {
   return null;
 };
 
-const collectVariantFields = (variant) =>
-  [variant.title, variant.option1, variant.option2, variant.option3]
-    .filter(Boolean)
-    .map((v) => normalize(v));
+const splitVariantDescriptor = (value) => {
+  if (!value) return [];
+
+  return String(value)
+    .split(/[\/•|\-–]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+};
+
+const collectVariantFields = (variant) => {
+  const values = [];
+
+  if (variant?.option1) values.push(variant.option1);
+  if (variant?.option2) values.push(variant.option2);
+  if (variant?.option3) values.push(variant.option3);
+
+  if (variant?.title) {
+    values.push(...splitVariantDescriptor(variant.title));
+  }
+
+  return values.map((v) => normalize(v)).filter(Boolean);
+};
+
+const DEFAULT_BRACELET_PARENT_KEY = 'default';
+
+const identifyBraceletParentKey = (variant, chainKeyNormalized) => {
+  const chainKeySanitized = chainKeyNormalized ? sanitizeVariantKey(chainKeyNormalized) : null;
+  const parentParts = [];
+  const seen = new Set();
+
+  const register = (raw) => {
+    if (!raw) return;
+
+    const normalized = normalize(raw);
+    if (!normalized) return;
+    if (chainKeyNormalized && normalized.includes(chainKeyNormalized)) return;
+    if (normalized === 'default' || normalized === 'default title' || normalized === 'defaulttitle') return;
+    if (/\b(cm|centim|millim|mm)\b/.test(normalized)) return;
+
+    const sanitized = sanitizeVariantKey(raw);
+    if (!sanitized) return;
+    if (chainKeySanitized && sanitized.includes(chainKeySanitized)) return;
+    if (seen.has(sanitized)) return;
+
+    seen.add(sanitized);
+    parentParts.push(sanitized);
+  };
+
+  register(variant?.option1);
+  register(variant?.option2);
+  register(variant?.option3);
+
+  if (variant?.title) {
+    for (const fragment of splitVariantDescriptor(variant.title)) {
+      register(fragment);
+    }
+  }
+
+  if (parentParts.length === 0) {
+    return DEFAULT_BRACELET_PARENT_KEY;
+  }
+
+  return parentParts.join('::');
+};
 
 const DEFAULT_BRACELET_PARENT_KEY = 'default';
 
