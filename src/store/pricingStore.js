@@ -102,6 +102,9 @@ const createDefaultSupplements = () => ({
   ),
 });
 
+const hasBackupProducts = (value) =>
+  Array.isArray(value?.products) && value.products.length > 0;
+
 const sanitizeBackupSnapshot = (value) => {
   if (!value || typeof value !== 'object') {
     return null;
@@ -2291,8 +2294,32 @@ export const usePricingStore = create(
         return;
       }
 
-      const backupEntry = get().backups[scope];
-      if (!backupEntry?.products) {
+      let backupEntry = get().backups[scope];
+      if (!hasBackupProducts(backupEntry)) {
+        if (!hasShopifyProxy()) {
+          get().log('No backup available to restore.', scope, 'warning');
+          return;
+        }
+
+        try {
+          const latestBackup = await fetchScopeBackup(scope);
+          if (hasBackupProducts(latestBackup)) {
+            set((state) => ({
+              backups: {
+                ...state.backups,
+                [scope]: latestBackup,
+              },
+            }));
+            backupEntry = latestBackup;
+          }
+        } catch (error) {
+          console.error('Failed to load stored backup before restore', error);
+          get().log('Failed to load stored backup. Verify proxy connection.', scope, 'error');
+          return;
+        }
+      }
+
+      if (!hasBackupProducts(backupEntry)) {
         get().log('No backup available to restore.', scope, 'warning');
         return;
       }
