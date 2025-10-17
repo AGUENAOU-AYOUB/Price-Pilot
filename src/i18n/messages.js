@@ -187,6 +187,10 @@ export const messages = {
     'azorArchive.restoreHint':
       'Restoring overwrites all matching products and variants in Shopify with the archived prices.',
     'azorArchive.restoreStarted': 'Archive restore started. Monitor the activity log for updates.',
+    'azorArchive.previewTitle': 'Preview restore impact',
+    'azorArchive.previewSubtitle':
+      'Inspect archived prices next to live Shopify data before restoring.',
+    'azorArchive.previewUnavailable': 'Load the archive backup before generating a restore preview.',
     'azorArchive.refresh': 'Reload backup',
     'azorArchive.refreshing': 'Reloading…',
     'azorArchive.refreshSuccess': 'Archive backup reloaded.',
@@ -383,6 +387,11 @@ export const messages = {
     'azorArchive.restoreHint':
       'La restauration remplace tous les produits et variantes correspondants dans Shopify par les prix archivés.',
     'azorArchive.restoreStarted': 'Restauration de l’archive lancée. Surveillez le journal d’activité.',
+    'azorArchive.previewTitle': 'Prévisualiser la restauration',
+    'azorArchive.previewSubtitle':
+      'Comparez les prix archivés aux données Shopify avant de lancer la restauration.',
+    'azorArchive.previewUnavailable':
+      'Chargez la sauvegarde d’archive avant de générer un aperçu de restauration.',
     'azorArchive.refresh': 'Recharger la sauvegarde',
     'azorArchive.refreshing': 'Rechargement…',
     'azorArchive.refreshSuccess': 'Sauvegarde archive rechargée.',
