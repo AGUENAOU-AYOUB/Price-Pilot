@@ -1,6 +1,4 @@
-import { SHOPIFY_PROXY_URL } from '../config/shopify';
-
-const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
+import { buildShopifyProxyUrl, hasShopifyProxy } from '../config/shopify';
 
 const parseNumber = (value, fallback = 0) => {
   const parsed = Number.parseFloat(value);
@@ -80,16 +78,10 @@ const normalizeProduct = (product) => {
   };
 };
 
-const buildProxyEndpoint = () => {
-  if (!SHOPIFY_PROXY_URL) {
+const fetchProducts = async ({ status = 'active' } = {}) => {
+  if (!hasShopifyProxy()) {
     throw new Error('Missing Shopify proxy URL');
   }
-
-  return trimTrailingSlash(SHOPIFY_PROXY_URL);
-};
-
-const fetchProducts = async ({ status = 'active' } = {}) => {
-  const baseEndpoint = buildProxyEndpoint();
   const searchParams = new URLSearchParams();
   if (status) {
     searchParams.set('status', status);
@@ -97,7 +89,9 @@ const fetchProducts = async ({ status = 'active' } = {}) => {
 
   const query = searchParams.toString();
   const response = await fetch(
-    query ? `${baseEndpoint}/products?${query}` : `${baseEndpoint}/products`,
+    query
+      ? buildShopifyProxyUrl(`products?${query}`)
+      : buildShopifyProxyUrl('products'),
   );
 
   if (!response.ok) {
@@ -143,8 +137,11 @@ export async function pushVariantUpdates(updates) {
     return { updatedCount: 0, failedCount: 0, failures: [] };
   }
 
-  const baseEndpoint = buildProxyEndpoint();
-  const response = await fetch(`${baseEndpoint}/variants/bulk-update`, {
+  if (!hasShopifyProxy()) {
+    throw new Error('Missing Shopify proxy URL');
+  }
+
+  const response = await fetch(buildShopifyProxyUrl('variants/bulk-update'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

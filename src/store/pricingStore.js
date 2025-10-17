@@ -14,6 +14,11 @@ import { hasShopifyProxy } from '../config/shopify';
 import { fetchActiveProducts, fetchProductsByCollections, pushVariantUpdates } from '../services/shopify';
 import { syncSupplementsFile } from '../services/supplements';
 import {
+  captureScopeBackup,
+  fetchScopeBackup,
+  persistScopeBackup,
+} from '../services/backups';
+import {
   applyPercentage,
   applySupplementPercentage,
   buildBraceletVariants,
@@ -32,6 +37,24 @@ import {
 import { toast } from '../utils/toast';
 
 const USERNAME_STORAGE_KEY = 'price-pilot.username';
+
+const dispatchToastNotification = (level, message) => {
+  switch (level) {
+    case 'success':
+      toast.success(message);
+      break;
+    case 'error':
+      toast.error(message);
+      break;
+    case 'warning':
+      toast.warning(message);
+      break;
+    case 'info':
+    default:
+      toast.info(message);
+      break;
+  }
+};
 
 const loadStoredUsername = () => {
   if (typeof window === 'undefined') {
@@ -100,6 +123,9 @@ const createDefaultSupplements = () => ({
     ]),
   ),
 });
+
+const hasBackupProducts = (value) =>
+  Array.isArray(value?.products) && value.products.length > 0;
 
 const sanitizeBackupSnapshot = (value) => {
   if (!value || typeof value !== 'object') {
@@ -416,6 +442,8 @@ const SCOPE_COLLECTIONS = {
   handchains: ['handchain'],
   sets: ['ensemble'],
 };
+
+const BACKUP_SCOPES = Object.keys(SCOPE_COLLECTIONS);
 
 const cloneVariant = (variant) => ({ ...variant });
 
@@ -2018,7 +2046,9 @@ export const usePricingStore = create(
     supplementChangesPending: createSupplementChangeFlags(),
     backups: {},
     logs: [],
+    loadingCounts: {},
     loadingScopes: new Set(),
+    pendingToasts: {},
 
     setUsername: (username) =>
       set(() => {
@@ -2043,33 +2073,90 @@ export const usePricingStore = create(
         return;
       }
 
-      switch (level) {
-        case 'success':
-          toast.success(message);
-          break;
-        case 'error':
-          toast.error(message);
-          break;
-        case 'warning':
-          toast.warning(message);
-          break;
-        case 'info':
-        default:
-          toast.info(message);
-          break;
+      const key = typeof scope === 'string' ? scope.trim() : '';
+      const counts = get().loadingCounts || {};
+      const currentValue = key ? Number(counts[key]) : NaN;
+      const scopeBusy = key ? Number.isFinite(currentValue) && currentValue > 0 : false;
+
+      if (scopeBusy && level === 'success') {
+        set((state) => {
+          const pendingToasts = { ...(state.pendingToasts ?? {}) };
+          const existing = Array.isArray(pendingToasts[key]) ? pendingToasts[key] : [];
+          pendingToasts[key] = [...existing, { level, message }];
+          return { pendingToasts };
+        });
+        return;
       }
+
+      dispatchToastNotification(level, message);
     },
 
     toggleLoading: (scope, loading) => {
+      const flushEntries = [];
+
       set((state) => {
-        const next = new Set(state.loadingScopes);
-        if (loading) {
-          next.add(scope);
-        } else {
-          next.delete(scope);
+        const key = typeof scope === 'string' ? scope.trim() : '';
+        if (!key) {
+          return {};
         }
-        return { loadingScopes: next };
+
+        const currentCounts = state.loadingCounts || {};
+        const nextCounts = { ...currentCounts };
+        const previousValue = Number(nextCounts[key]);
+        const previous = Number.isFinite(previousValue) && previousValue > 0 ? previousValue : 0;
+        const nextValue = loading ? previous + 1 : Math.max(0, previous - 1);
+
+        let nextPendingToasts = state.pendingToasts;
+
+        if (nextValue <= 0) {
+          delete nextCounts[key];
+
+          if (!loading) {
+            const pendingForScope = Array.isArray(state.pendingToasts?.[key])
+              ? state.pendingToasts[key]
+              : [];
+
+            if (pendingForScope.length > 0) {
+              flushEntries.push(...pendingForScope);
+              const pendingClone = { ...(state.pendingToasts ?? {}) };
+              delete pendingClone[key];
+              nextPendingToasts = pendingClone;
+            }
+          }
+        } else {
+          nextCounts[key] = nextValue;
+        }
+
+        const update = {
+          loadingCounts: nextCounts,
+          loadingScopes: new Set(Object.keys(nextCounts)),
+        };
+
+        if (nextPendingToasts !== state.pendingToasts) {
+          update.pendingToasts = nextPendingToasts;
+        }
+
+        return update;
       });
+
+      if (flushEntries.length > 0) {
+        for (const entry of flushEntries) {
+          if (entry?.level && entry?.message) {
+            dispatchToastNotification(entry.level, entry.message);
+          }
+        }
+      }
+    },
+
+    isScopeLoading: (scope) => {
+      const key = typeof scope === 'string' ? scope.trim() : '';
+      if (!key) {
+        return false;
+      }
+
+      const counts = get().loadingCounts || {};
+      const currentValue = Number(counts[key]);
+      return Number.isFinite(currentValue) && currentValue > 0;
     },
 
     alignBraceletVariantsFromMetafields: () =>
@@ -2164,6 +2251,33 @@ export const usePricingStore = create(
       }
     },
 
+    refreshBackupsFromProxy: async () => {
+      if (!hasShopifyProxy()) {
+        return;
+      }
+
+      try {
+        const entries = await Promise.all(
+          BACKUP_SCOPES.map(async (scope) => [scope, await fetchScopeBackup(scope)]),
+        );
+
+        set((state) => {
+          const nextBackups = { ...state.backups };
+          for (const [scope, backup] of entries) {
+            if (backup) {
+              nextBackups[scope] = backup;
+            } else {
+              delete nextBackups[scope];
+            }
+          }
+
+          return { backups: nextBackups };
+        });
+      } catch (error) {
+        console.error('Failed to refresh stored Shopify backups', error);
+      }
+    },
+
     backupScope: async (scope) => {
       if (!(scope in SCOPE_COLLECTIONS)) {
         get().log('Unknown backup scope requested.', scope, 'error');
@@ -2180,14 +2294,44 @@ export const usePricingStore = create(
 
       try {
         const collections = SCOPE_COLLECTIONS[scope] ?? [];
-        const remoteProducts = await fetchProductsByCollections(collections);
+        console.log('[PricingStore] Starting backup', {
+          scope,
+          collections,
+        });
+
+        let remoteProducts = [];
+        let persistedBackup = null;
+
+        persistedBackup = await captureScopeBackup(scope);
+        if (persistedBackup) {
+          console.log('[PricingStore] Received persisted backup from proxy', {
+            scope,
+            productCount: persistedBackup.products?.length ?? 0,
+            timestamp: persistedBackup.timestamp,
+          });
+          remoteProducts = cloneProducts(persistedBackup.products ?? []);
+        } else {
+          console.warn('[PricingStore] Proxy capture unavailable, falling back to client fetch', {
+            scope,
+          });
+          remoteProducts = await fetchProductsByCollections(collections);
+          console.log('[PricingStore] Loaded remote products for backup', {
+            scope,
+            productCount: remoteProducts.length,
+          });
+        }
+
         const collectionSet = buildCollectionSet(scope);
         const currentProducts = get().products;
         const mergedProducts = mergeProductsForScope(currentProducts, remoteProducts, collectionSet);
-        const backupPayload = {
-          timestamp: new Date().toISOString(),
-          products: cloneProducts(remoteProducts),
-        };
+
+        let backupPayload = persistedBackup;
+        if (!backupPayload) {
+          backupPayload = {
+            timestamp: new Date().toISOString(),
+            products: cloneProducts(remoteProducts),
+          };
+        }
 
         set((state) => ({
           products: mergedProducts,
@@ -2196,6 +2340,38 @@ export const usePricingStore = create(
             [scope]: backupPayload,
           },
         }));
+
+        if (!persistedBackup) {
+          console.log('[PricingStore] Persisting backup payload via fallback flow', {
+            scope,
+            productCount: backupPayload.products?.length ?? 0,
+            timestamp: backupPayload.timestamp,
+          });
+
+          const persisted = await persistScopeBackup(scope, backupPayload);
+          if (persisted) {
+            console.log('[PricingStore] Backup persisted via proxy', {
+              scope,
+              productCount: persisted.products?.length ?? 0,
+              timestamp: persisted.timestamp,
+            });
+            set((state) => ({
+              backups: {
+                ...state.backups,
+                [scope]: persisted,
+              },
+            }));
+          } else {
+            console.warn('[PricingStore] Proxy persistence failed; using in-memory backup only', {
+              scope,
+            });
+            get().log(
+              'Failed to persist backup to disk. Restore may be unavailable after reload.',
+              scope,
+              'warning',
+            );
+          }
+        }
 
         const count = remoteProducts.length;
         const plural = count === 1 ? '' : 's';
@@ -2208,8 +2384,8 @@ export const usePricingStore = create(
         console.error('Failed to capture Shopify backup', error);
         get().log('Failed to capture Shopify backup. Verify proxy connection.', scope, 'error');
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading(scope, false);
+        toast.dismiss(loadingToastId);
       }
     },
 
@@ -2219,8 +2395,41 @@ export const usePricingStore = create(
         return;
       }
 
-      const backupEntry = get().backups[scope];
-      if (!backupEntry?.products) {
+      let backupEntry = get().backups[scope];
+      console.log('[PricingStore] Restore requested', {
+        scope,
+        hasLocalBackup: hasBackupProducts(backupEntry),
+      });
+      if (!hasBackupProducts(backupEntry)) {
+        if (!hasShopifyProxy()) {
+          get().log('No backup available to restore.', scope, 'warning');
+          return;
+        }
+
+        try {
+          const latestBackup = await fetchScopeBackup(scope);
+          console.log('[PricingStore] Loaded backup from proxy for restore', {
+            scope,
+            productCount: latestBackup?.products?.length ?? 0,
+          });
+          if (hasBackupProducts(latestBackup)) {
+            set((state) => ({
+              backups: {
+                ...state.backups,
+                [scope]: latestBackup,
+              },
+            }));
+            backupEntry = latestBackup;
+          }
+        } catch (error) {
+          console.error('Failed to load stored backup before restore', error);
+          get().log('Failed to load stored backup. Verify proxy connection.', scope, 'error');
+          return;
+        }
+      }
+
+      if (!hasBackupProducts(backupEntry)) {
+        console.warn('[PricingStore] Restore aborted; no backup products available', { scope });
         get().log('No backup available to restore.', scope, 'warning');
         return;
       }
@@ -2372,8 +2581,8 @@ export const usePricingStore = create(
           );
         }
       } finally {
-        toast.dismiss(restoreToastId);
         get().toggleLoading(scope, false);
+        toast.dismiss(restoreToastId);
       }
     },
 
@@ -2508,8 +2717,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('global', false);
+        toast.dismiss(loadingToastId);
       }
     },
     previewBracelets: () => {
@@ -2685,8 +2894,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('bracelets', false);
+        toast.dismiss(loadingToastId);
       }
     },
 
@@ -2873,8 +3082,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('necklaces', false);
+        toast.dismiss(loadingToastId);
       }
     },
 
@@ -3054,8 +3263,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('rings', false);
+        toast.dismiss(loadingToastId);
       }
 
     },
@@ -3233,8 +3442,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('handchains', false);
+        toast.dismiss(loadingToastId);
       }
 
     },
@@ -3419,8 +3628,8 @@ export const usePricingStore = create(
           get,
         });
       } finally {
-        toast.dismiss(loadingToastId);
         get().toggleLoading('sets', false);
+        toast.dismiss(loadingToastId);
       }
 
     },
