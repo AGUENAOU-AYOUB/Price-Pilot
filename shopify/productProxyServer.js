@@ -440,42 +440,40 @@ const parseTags = (tags = '') =>
     .map((tag) => tag.trim())
     .filter(Boolean);
 
+const normalizeProductType = (product) => {
+  if (!product || typeof product.product_type !== 'string') {
+    return '';
+  }
+
+  return product.product_type.trim().toLowerCase();
+};
+
+const HAND_CHAIN_TAG = 'hchn';
+
 const determineCollection = (product) => {
   const normalizedTags = parseTags(product.tags)
     .map((tag) => tag.toLowerCase())
     .reduce((acc, tag) => acc.add(tag), new Set());
-  const normalizedType = (product.product_type ?? '').trim().toLowerCase();
+  const productType = normalizeProductType(product);
 
-  if (normalizedTags.has('brac') || normalizedType.includes('bracelet')) {
+  if (normalizedTags.has('brac')) {
     return 'bracelet';
   }
   if (
-    normalizedTags.has('nckl') ||
-    normalizedType.includes('necklace') ||
-    normalizedType.includes('collier')
+    normalizedTags.has('nckl')
   ) {
     return 'collier';
   }
   if (
-    normalizedTags.has('rng') ||
-    normalizedType.includes('ring') ||
-    normalizedType.includes('bague')
+    normalizedTags.has('rng')
   ) {
     return 'bague';
   }
-  if (
-    normalizedTags.has('hand') ||
-    normalizedTags.has('handchain') ||
-    normalizedType.includes('hand chain') ||
-    normalizedType.includes('handchain')
-  ) {
+  if (normalizedTags.has(HAND_CHAIN_TAG) || productType === 'hand chains' || productType === 'hand chain') {
     return 'handchain';
   }
   if (
-    normalizedTags.has('set') ||
-    normalizedTags.has('ensemble') ||
-    normalizedType.includes('set') ||
-    normalizedType.includes('ensemble')
+    normalizedTags.has('set')
   ) {
     return 'ensemble';
   }
@@ -616,7 +614,6 @@ const buildVariantPayload = (variant) => {
 
 const updateVariantPrice = async (variant) => {
   const payload = buildVariantPayload(variant);
-
   if (!payload) {
     throw new Error('Invalid variant payload provided for update.');
   }

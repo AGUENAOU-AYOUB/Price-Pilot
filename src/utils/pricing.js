@@ -483,14 +483,29 @@ export const buildRingVariants = (product, ringSupplements = ringBandSupplements
   return variants;
 };
 
-export const buildHandChainVariants = (product, chainTypeSupplements) => {
-  return Object.entries(chainTypeSupplements).map(([chainType, supplement]) => ({
-    id: `${product.id}-${chainType}`,
-    title: chainType,
-    chainType,
-    price: product.basePrice + supplement,
-    compareAtPrice: product.baseCompareAtPrice + supplement,
-  }));
+export const buildHandChainVariants = (
+  product,
+  chainTypeSupplements,
+  allowedChainKeys = null,
+) => {
+  const allowed =
+    allowedChainKeys instanceof Set
+      ? allowedChainKeys
+      : Array.isArray(allowedChainKeys)
+        ? new Set(allowedChainKeys)
+        : null;
+
+  const filterSet = allowed && allowed.size > 0 ? allowed : null;
+
+  return Object.entries(chainTypeSupplements)
+    .filter(([chainType]) => !filterSet || filterSet.has(chainType))
+    .map(([chainType, supplement]) => ({
+      id: `${product.id}-${chainType}`,
+      title: chainType,
+      chainType,
+      price: product.basePrice + supplement,
+      compareAtPrice: product.baseCompareAtPrice + supplement,
+    }));
 };
 
 export const buildSetVariants = (product, braceletSupplements, necklaceSupplements) => {
