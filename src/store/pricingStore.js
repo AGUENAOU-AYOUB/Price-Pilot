@@ -13,6 +13,17 @@ import { mockProducts } from '../data/products';
 import { hasShopifyProxy } from '../config/shopify';
 import { fetchActiveProducts, fetchProductsByCollections, pushVariantUpdates } from '../services/shopify';
 import { syncSupplementsFile } from '../services/supplements';
+import { fetchScopeBackup, persistScopeBackup } from '../services/backups';
+import {
+  captureScopeBackup,
+  fetchScopeBackup,
+  persistScopeBackup,
+} from '../services/backups';
+import {
+  captureScopeBackup,
+  fetchScopeBackup,
+  persistScopeBackup,
+} from '../services/backups';
 import {
   captureScopeBackup,
   fetchScopeBackup,
