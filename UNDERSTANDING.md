@@ -22,8 +22,13 @@
 - Recompute and display compare-at prices alongside every price calculation to keep them synchronized.
 
 #### Bracelets
-- Supplements (MAD): Forsat S +0 (default/base price), Forsat M +150, Forsat L +290, Gourmette S +290, Chopard S +390, Gourmette M +550, Chopard M +750.
-- Workflow: for each product tagged `brac` in collection "bracelet", set each variant price to `base_price (Forsat S) + supplement`.
+- Chain variants: Forsat S (default), Forsat M, Forsat L, Gourmette S, Chopard S, Gourmette M, Chopard M.
+- Supplements (MAD): Forsat S +0, Forsat M +150, Forsat L +290, Gourmette S +290, Chopard S +390, Gourmette M +550, Chopard M +750.
+- Pricing workflow:
+  - If the product exposes only the `Chain Variants` option, Forsat S keeps the product price and every other chain type adds its supplement.
+  - If the product has `Chain Variants` plus another option (excluding `Taille de chaine`) with a single value, that value’s Forsat S price becomes the base for all chain variants on the product.
+  - If the product has `Chain Variants` plus another option with multiple values, each value maintains its own Forsat S base price; other chain variants under the same value add their supplements to that base.
+  - Compare-at prices follow the same base + supplement logic.
 
 #### Necklaces
 - Collection "colliers", tag `nckl`.
