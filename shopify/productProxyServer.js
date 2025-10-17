@@ -11,6 +11,7 @@ const {
   SHOPIFY_PROXY_PORT = 4000,
   SHOPIFY_PROXY_BASE_PATH = '/api/shopify',
   SHOPIFY_PROXY_ALLOWED_ORIGINS = '',
+  SHOPIFY_PROXY_JSON_LIMIT = '50mb',
 } = process.env;
 
 if (!VITE_SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN) {
@@ -473,9 +474,25 @@ const app = express();
 app.use(
   express.json({
     // Backups can include hundreds of products, so allow a larger payload.
-    limit: '10mb',
+    limit: SHOPIFY_PROXY_JSON_LIMIT,
   }),
 );
+
+app.use((error, req, res, next) => {
+  if (error?.type === 'entity.too.large') {
+    console.warn(
+      `Received payload exceeding limit (${SHOPIFY_PROXY_JSON_LIMIT}). ` +
+        'Increase SHOPIFY_PROXY_JSON_LIMIT if your store snapshot is larger.',
+    );
+    res.status(413).json({
+      error: 'Payload too large.',
+      details: `Increase SHOPIFY_PROXY_JSON_LIMIT (currently ${SHOPIFY_PROXY_JSON_LIMIT}).`,
+    });
+    return;
+  }
+
+  next(error);
+});
 
 app.use((req, res, next) => {
   const origin = req.get('Origin');
