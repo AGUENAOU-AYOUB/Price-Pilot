@@ -8,6 +8,35 @@ import { useToast } from '../components/ToastProvider';
 import { usePricingStore } from '../store/pricingStore';
 import { useTranslation } from '../i18n/useTranslation';
 
+const DEFAULT_ROUNDING = 'luxury';
+
+const SECTION_DEFINITIONS = [
+  {
+    key: 'global-bracelets',
+    labelKey: 'global.section.bracelets.title',
+    subtitleKey: 'global.section.bracelets.subtitle',
+    collections: ['bracelet'],
+  },
+  {
+    key: 'global-necklaces',
+    labelKey: 'global.section.necklaces.title',
+    subtitleKey: 'global.section.necklaces.subtitle',
+    collections: ['collier'],
+  },
+  {
+    key: 'global-rings',
+    labelKey: 'global.section.rings.title',
+    subtitleKey: 'global.section.rings.subtitle',
+    collections: ['bague'],
+  },
+  {
+    key: 'global-earrings',
+    labelKey: 'global.section.earrings.title',
+    subtitleKey: 'global.section.earrings.subtitle',
+    collections: ['earring'],
+  },
+];
+
 export function GlobalPricingPage() {
   const DEFAULT_ROUNDING = 'luxury';
   const SECTION_DEFINITIONS = useMemo(
