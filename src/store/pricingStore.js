@@ -88,6 +88,7 @@ const persistUsername = (username) => {
 
 const SUPPLEMENT_BACKUP_STORAGE_KEY = 'price-pilot.supplement-backups';
 const SUPPLEMENTS_STORAGE_KEY = 'price-pilot.supplements';
+const SCOPE_BACKUP_STORAGE_KEY = 'price-pilot.scope-pricing-backups';
 const DEFAULT_NECKLACE_SIZE = necklaceSizes[0] ?? 41;
 
 const createEmptySupplementBackups = () => ({
@@ -442,10 +443,166 @@ const SCOPE_COLLECTIONS = {
   rings: ['bague'],
   handchains: ['handchain'],
   sets: ['ensemble'],
+  earrings: ['earring'],
   'azor-archive': [],
 };
 
 const BACKUP_SCOPES = Object.keys(SCOPE_COLLECTIONS);
+
+const DEFAULT_SCOPE_COPY = {
+  updateLabel: 'pricing update',
+  loadingMessage: 'Applying pricing update...',
+  successLogMessage: 'Pricing update completed.',
+  failureLogMessage: 'Failed to apply pricing update to Shopify.',
+};
+
+const SCOPE_COPY = {
+  global: {
+    updateLabel: 'global pricing',
+    loadingMessage: 'Applying global pricing...',
+    successLogMessage: 'Global pricing update completed.',
+    failureLogMessage: 'Failed to apply global pricing update to Shopify.',
+  },
+  bracelets: {
+    updateLabel: 'bracelet pricing',
+    loadingMessage: 'Applying bracelet pricing...',
+    successLogMessage: 'Bracelet pricing update completed.',
+    failureLogMessage: 'Failed to apply bracelet pricing update to Shopify.',
+  },
+  necklaces: {
+    updateLabel: 'necklace pricing',
+    loadingMessage: 'Applying necklace pricing...',
+    successLogMessage: 'Necklace pricing update completed.',
+    failureLogMessage: 'Failed to apply necklace pricing update to Shopify.',
+  },
+  rings: {
+    updateLabel: 'ring pricing',
+    loadingMessage: 'Applying ring pricing...',
+    successLogMessage: 'Ring pricing update completed.',
+    failureLogMessage: 'Failed to apply ring pricing update to Shopify.',
+  },
+  handchains: {
+    updateLabel: 'hand chain pricing',
+    loadingMessage: 'Applying hand chain pricing...',
+    successLogMessage: 'Hand chain pricing update completed.',
+    failureLogMessage: 'Failed to apply hand chain pricing update to Shopify.',
+  },
+  sets: {
+    updateLabel: 'set pricing',
+    loadingMessage: 'Applying set pricing...',
+    successLogMessage: 'Set pricing update completed.',
+    failureLogMessage: 'Failed to apply set pricing update to Shopify.',
+  },
+  earrings: {
+    updateLabel: 'earring pricing',
+    loadingMessage: 'Applying earring pricing...',
+    successLogMessage: 'Earring pricing update completed.',
+    failureLogMessage: 'Failed to apply earring pricing update to Shopify.',
+  },
+};
+
+const getScopeCopy = (scope) => ({
+  ...DEFAULT_SCOPE_COPY,
+  ...(SCOPE_COPY[scope] ?? {}),
+});
+
+const normalizeScopeKey = (scope) =>
+  typeof scope === 'string' ? scope.trim().toLowerCase() : '';
+
+const createEmptyScopeBackups = () =>
+  BACKUP_SCOPES.reduce((accumulator, scope) => {
+    accumulator[scope] = null;
+    return accumulator;
+  }, {});
+
+const sanitizeScopeBackups = (value) => {
+  if (!value || typeof value !== 'object') {
+    return createEmptyScopeBackups();
+  }
+
+  const normalized = createEmptyScopeBackups();
+
+  for (const scope of BACKUP_SCOPES) {
+    if (value[scope]) {
+      const sanitized = sanitizeBackupSnapshot(value[scope]);
+      if (sanitized) {
+        normalized[scope] = sanitized;
+      }
+    }
+  }
+
+  return normalized;
+};
+
+const loadStoredScopeBackups = () => {
+  if (typeof window === 'undefined') {
+    return createEmptyScopeBackups();
+  }
+
+  try {
+    const stored = window.localStorage.getItem(SCOPE_BACKUP_STORAGE_KEY);
+    if (!stored) {
+      return createEmptyScopeBackups();
+    }
+
+    const parsed = JSON.parse(stored);
+    return sanitizeScopeBackups(parsed);
+  } catch (error) {
+    console.warn('Failed to load scope pricing backups from localStorage:', error);
+    return createEmptyScopeBackups();
+  }
+};
+
+const persistLocalScopeBackups = (backups) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (!backups) {
+      window.localStorage.removeItem(SCOPE_BACKUP_STORAGE_KEY);
+      return;
+    }
+
+    const sanitized = sanitizeScopeBackups(backups);
+    window.localStorage.setItem(SCOPE_BACKUP_STORAGE_KEY, JSON.stringify(sanitized));
+  } catch (error) {
+    console.warn('Failed to persist scope pricing backups to localStorage:', error);
+  }
+};
+
+const buildProductPricingPreview = (product, adjustment) => {
+  const basePrice = Number(product.basePrice ?? 0);
+  const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
+  const updatedBasePrice = applyPercentage(basePrice, adjustment);
+  const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment);
+
+  const variants = (Array.isArray(product.variants) ? product.variants : []).map((variant) => {
+    const currentPrice = Number(variant?.price ?? basePrice);
+    const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
+    const nextPrice = applyPercentage(currentPrice, adjustment);
+    const nextCompare = applyPercentage(currentCompare, adjustment);
+    const changed = currentPrice !== nextPrice || currentCompare !== nextCompare;
+
+    return {
+      ...variant,
+      id: variant?.id ? String(variant.id) : `${product.id}-${variant?.title ?? 'variant'}`,
+      title: variant?.title ?? 'Variant',
+      price: nextPrice,
+      compareAtPrice: nextCompare,
+      previousPrice: currentPrice,
+      previousCompareAtPrice: currentCompare,
+      status: changed ? 'changed' : 'unchanged',
+    };
+  });
+
+  return {
+    product,
+    updatedBasePrice,
+    updatedCompareAtPrice,
+    variants,
+  };
+};
 
 const cloneVariant = (variant) => ({ ...variant });
 
@@ -2046,6 +2203,7 @@ export const usePricingStore = create(
     supplements: loadStoredSupplements(),
     supplementBackups: loadStoredSupplementBackups(),
     supplementChangesPending: createSupplementChangeFlags(),
+    localScopeBackups: loadStoredScopeBackups(),
     backups: {},
     logs: [],
     loadingCounts: {},
@@ -2278,6 +2436,112 @@ export const usePricingStore = create(
       } catch (error) {
         console.error('Failed to refresh stored Shopify backups', error);
       }
+    },
+
+    captureLocalScopeBackup: (scope, options = {}) => {
+      const normalizedScope = normalizeScopeKey(scope);
+      if (!(normalizedScope in SCOPE_COLLECTIONS)) {
+        return { success: false, reason: 'unknown-scope' };
+      }
+
+      const { silent = false } = options;
+      const collectionSet = buildCollectionSet(normalizedScope);
+      const includeAllCollections = collectionSet.size === 0;
+
+      const scopeProducts = get()
+        .products.filter((product) => {
+          const productCollection = normalizeScopeKey(product.collection);
+          return includeAllCollections || collectionSet.has(productCollection);
+        })
+        .map((product) => cloneProduct(product));
+
+      if (scopeProducts.length === 0) {
+        if (!silent) {
+          get().log('No products available for local backup.', normalizedScope, 'warning');
+        }
+        return { success: false, reason: 'empty' };
+      }
+
+      const snapshot = {
+        timestamp: new Date().toISOString(),
+        products: scopeProducts,
+      };
+
+      set((state) => {
+        const currentBackups = sanitizeScopeBackups(state.localScopeBackups);
+        const nextBackups = {
+          ...currentBackups,
+          [normalizedScope]: snapshot,
+        };
+        persistLocalScopeBackups(nextBackups);
+        return { localScopeBackups: nextBackups };
+      });
+
+      if (!silent) {
+        const count = scopeProducts.length;
+        const plural = count === 1 ? '' : 's';
+        get().log(
+          `Saved local backup with ${count} product${plural}.`,
+          normalizedScope,
+          'success',
+        );
+      }
+
+      return { success: true, count: scopeProducts.length, backup: snapshot };
+    },
+
+    restoreLocalScopeBackup: (scope) => {
+      const normalizedScope = normalizeScopeKey(scope);
+      if (!(normalizedScope in SCOPE_COLLECTIONS)) {
+        return { success: false, reason: 'unknown-scope' };
+      }
+
+      const backupEntry = sanitizeBackupSnapshot(get().localScopeBackups?.[normalizedScope]);
+      if (!hasBackupProducts(backupEntry)) {
+        get().log('No local backup available to restore.', normalizedScope, 'warning');
+        return { success: false, reason: 'missing-backup' };
+      }
+
+      const collectionSet = buildCollectionSet(normalizedScope);
+      const includeAllCollections = collectionSet.size === 0;
+      const backupProducts = cloneProducts(backupEntry.products);
+      const backupById = new Map(backupProducts.map((product) => [product.id, product]));
+      const restoredIds = new Set();
+
+      set((state) => {
+        const nextProducts = state.products.map((product) => {
+          const productCollection = normalizeScopeKey(product.collection);
+          const matchesScope = includeAllCollections || collectionSet.has(productCollection);
+          if (!matchesScope) {
+            return product;
+          }
+
+          const backupProduct = backupById.get(product.id);
+          if (!backupProduct) {
+            return product;
+          }
+
+          restoredIds.add(product.id);
+          return cloneProduct(backupProduct);
+        });
+
+        for (const [productId, backupProduct] of backupById.entries()) {
+          if (restoredIds.has(productId)) {
+            continue;
+          }
+
+          const productCollection = normalizeScopeKey(backupProduct.collection);
+          if (includeAllCollections || collectionSet.has(productCollection)) {
+            nextProducts.push(cloneProduct(backupProduct));
+            restoredIds.add(productId);
+          }
+        }
+
+        return { products: nextProducts };
+      });
+
+      get().log('Local backup restored successfully.', normalizedScope, 'success');
+      return { success: true, restoredCount: restoredIds.size };
     },
 
     backupScope: async (scope) => {
@@ -2712,67 +2976,76 @@ export const usePricingStore = create(
       return previews;
     },
 
-    previewGlobalChange: (percent = 0) => {
+    previewGlobalChange: (percent = 0) => get().previewScopeChange('global', percent),
+
+    previewScopeChange: (scope, percent = 0) => {
+      const normalizedScope = normalizeScopeKey(scope);
+      if (!(normalizedScope in SCOPE_COLLECTIONS)) {
+        return [];
+      }
+
       const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+      const collectionSet = buildCollectionSet(normalizedScope);
+      const includeAllCollections = collectionSet.size === 0;
       const { products } = get();
 
       return products
-        .filter((product) => product.status === 'active')
-        .map((product) => {
-          const basePrice = Number(product.basePrice ?? 0);
-          const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
-          const updatedBasePrice = applyPercentage(basePrice, adjustment);
-          const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment);
+        .filter((product) => {
+          if (product.status !== 'active') {
+            return false;
+          }
 
-          const variants = (Array.isArray(product.variants) ? product.variants : []).map(
-            (variant) => {
-              const currentPrice = Number(variant?.price ?? basePrice);
-              const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
-              const nextPrice = applyPercentage(currentPrice, adjustment);
-              const nextCompare = applyPercentage(currentCompare, adjustment);
-              const changed = currentPrice !== nextPrice || currentCompare !== nextCompare;
-
-              return {
-                ...variant,
-                id: variant?.id ? String(variant.id) : `${product.id}-${variant?.title ?? 'variant'}`,
-                title: variant?.title ?? 'Variant',
-                price: nextPrice,
-                compareAtPrice: nextCompare,
-                previousPrice: currentPrice,
-                previousCompareAtPrice: currentCompare,
-                status: changed ? 'changed' : 'unchanged',
-              };
-            },
-          );
-
-          return {
-            product,
-            updatedBasePrice,
-            updatedCompareAtPrice,
-            variants,
-          };
-        });
+          const productCollection = normalizeScopeKey(product.collection);
+          return includeAllCollections || collectionSet.has(productCollection);
+        })
+        .map((product) => buildProductPricingPreview(product, adjustment));
     },
 
-    applyGlobalChange: async (percent = 0) => {
-      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+    applyGlobalChange: (percent = 0, options = {}) =>
+      get().applyScopedChange('global', percent, options),
 
-      get().toggleLoading('global', true);
-      const loadingToastId = toast.loading('Applying global pricing...');
+    applyScopedChange: async (scope, percent = 0, options = {}) => {
+      const normalizedScope = normalizeScopeKey(scope);
+      if (!(normalizedScope in SCOPE_COLLECTIONS)) {
+        get().log('Unknown pricing scope requested.', normalizedScope || scope, 'error');
+        return { success: false, reason: 'unknown-scope' };
+      }
+
+      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+      const { skipLocalBackup = false } = options;
+
+      if (!skipLocalBackup) {
+        get().captureLocalScopeBackup(normalizedScope, { silent: true });
+      }
+
+      const { loadingMessage, updateLabel, successLogMessage, failureLogMessage } =
+        getScopeCopy(normalizedScope);
+
+      get().toggleLoading(normalizedScope, true);
+      const loadingToastId = toast.loading(loadingMessage);
 
       try {
         if (!hasShopifyProxy()) {
-          get().log('Shopify proxy missing; unable to push global pricing updates.', 'global', 'error');
+          get().log(
+            'Shopify proxy missing; unable to push pricing updates.',
+            normalizedScope,
+            'error',
+          );
           return { success: false, reason: 'missing-proxy' };
         }
 
         const products = get().products;
+        const collectionSet = buildCollectionSet(normalizedScope);
+        const includeAllCollections = collectionSet.size === 0;
         const updatedProducts = [];
         const updatesByProduct = new Map();
         const originalVariantLookup = new Map();
 
         for (const product of products) {
-          if (product.status !== 'active') {
+          const productCollection = normalizeScopeKey(product.collection);
+          const matchesScope = includeAllCollections || collectionSet.has(productCollection);
+
+          if (!matchesScope || product.status !== 'active') {
             updatedProducts.push(product);
             continue;
           }
@@ -2829,21 +3102,21 @@ export const usePricingStore = create(
         }
 
         return await commitShopifyVariantUpdates({
-          scope: 'global',
-          collection: [],
+          scope: normalizedScope,
+          collection: SCOPE_COLLECTIONS[normalizedScope],
           updatedProducts,
           updatesByProduct,
           originalVariantLookup,
           noChangesMessage:
             'No Shopify changes required; all variant prices already reflect this adjustment.',
-          successLogMessage: 'Global pricing update completed.',
-          updateLabel: 'global pricing',
-          failureLogMessage: 'Failed to apply global pricing update to Shopify.',
+          successLogMessage,
+          updateLabel,
+          failureLogMessage,
           set,
           get,
         });
       } finally {
-        get().toggleLoading('global', false);
+        get().toggleLoading(normalizedScope, false);
         toast.dismiss(loadingToastId);
       }
     },
