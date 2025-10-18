@@ -88,6 +88,7 @@ const persistUsername = (username) => {
 
 const SUPPLEMENT_BACKUP_STORAGE_KEY = 'price-pilot.supplement-backups';
 const SUPPLEMENTS_STORAGE_KEY = 'price-pilot.supplements';
+const SECTION_BACKUP_STORAGE_KEY = 'price-pilot.section-backups';
 const DEFAULT_NECKLACE_SIZE = necklaceSizes[0] ?? 41;
 
 const createEmptySupplementBackups = () => ({
@@ -196,6 +197,61 @@ const ensureBaseSizeOverride = (sizes, fallbackSupplement = 0) => {
   }
 
   return normalized;
+};
+
+const loadStoredSectionBackups = () => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const stored = window.localStorage.getItem(SECTION_BACKUP_STORAGE_KEY);
+    if (!stored) {
+      return {};
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object') {
+      return {};
+    }
+
+    const normalized = {};
+    for (const [scope, entry] of Object.entries(parsed)) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+
+      const snapshot = {
+        timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : null,
+        collections: Array.isArray(entry.collections)
+          ? entry.collections.map((value) => String(value)).filter(Boolean)
+          : [],
+        products: Array.isArray(entry.products) ? entry.products : [],
+        percent: Number.isFinite(Number(entry.percent)) ? Number(entry.percent) : null,
+        rounding: typeof entry.rounding === 'string' ? entry.rounding : null,
+      };
+
+      normalized[scope] = snapshot;
+    }
+
+    return normalized;
+  } catch (error) {
+    console.warn('Failed to load section backups from localStorage:', error);
+    return {};
+  }
+};
+
+const persistSectionBackups = (backups) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    const payload = JSON.stringify(backups ?? {});
+    window.localStorage.setItem(SECTION_BACKUP_STORAGE_KEY, payload);
+  } catch (error) {
+    console.warn('Failed to persist section backups to localStorage:', error);
+  }
 };
 
 const mergeNecklaceSizeOverrides = (baseSizes, overrideSizes, fallbackSupplement = 0) => {
@@ -610,6 +666,65 @@ const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) =
   for (const [productId, remote] of remoteById.entries()) {
     if (!synchronizedIds.has(productId)) {
       merged.push(remote);
+    }
+  }
+
+  return merged;
+};
+
+const normalizeCollectionList = (collections) => {
+  if (!collections) {
+    return [];
+  }
+
+  const array = Array.isArray(collections) ? collections : [collections];
+  return array
+    .map((entry) => (entry === null || entry === undefined ? '' : String(entry).trim().toLowerCase()))
+    .filter(Boolean);
+};
+
+const productMatchesCollections = (product, collectionSet) => {
+  if (!(collectionSet instanceof Set) || collectionSet.size === 0) {
+    return true;
+  }
+
+  const key = typeof product?.collection === 'string' ? product.collection.toLowerCase() : '';
+  return collectionSet.has(key);
+};
+
+const captureProductsForCollections = (products, collections) => {
+  const normalized = normalizeCollectionList(collections);
+  if (normalized.length === 0) {
+    return cloneProducts(products);
+  }
+
+  const collectionSet = new Set(normalized);
+  return cloneProducts(
+    products.filter((product) => productMatchesCollections(product, collectionSet)),
+  );
+};
+
+const mergeProductsFromBackup = (currentProducts = [], snapshotProducts = []) => {
+  const snapshotById = new Map(
+    snapshotProducts.map((product) => [product?.id ? String(product.id) : null, cloneProduct(product)]),
+  );
+  snapshotById.delete(null);
+
+  const restoredIds = new Set();
+
+  const merged = currentProducts.map((product) => {
+    const productId = product?.id ? String(product.id) : null;
+    if (!productId || !snapshotById.has(productId)) {
+      return product;
+    }
+
+    restoredIds.add(productId);
+    return cloneProduct(snapshotById.get(productId));
+  });
+
+  for (const [productId, product] of snapshotById.entries()) {
+    if (!restoredIds.has(productId)) {
+      merged.push(cloneProduct(product));
     }
   }
 
