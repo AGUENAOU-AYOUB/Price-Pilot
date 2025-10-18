@@ -3205,44 +3205,60 @@ export const usePricingStore = create(
             : () => {};
         const collectionSet = buildCollectionSet(normalizedScope);
         const matchesScope = createScopeMatcher(normalizedScope, collectionSet);
-        const totalMatching = Array.isArray(products)
+        const { totalMatching, totalVariants } = Array.isArray(products)
           ? products.reduce(
-              (count, product) => (matchesScope(product) ? count + 1 : count),
-              0,
-            )
-          : 0;
+              (accumulator, product) => {
+                if (!matchesScope(product)) {
+                  return accumulator;
+                }
 
-        if (totalMatching > 0) {
-          setScopeProgress(normalizedScope, 5);
+                const variantCount = Array.isArray(product?.variants)
+                  ? product.variants.length
+                  : 0;
+
+                return {
+                  totalMatching: accumulator.totalMatching + 1,
+                  totalVariants: accumulator.totalVariants + variantCount,
+                };
+              },
+              { totalMatching: 0, totalVariants: 0 },
+            )
+          : { totalMatching: 0, totalVariants: 0 };
+
+        const totalPreparationUnits = totalMatching + totalVariants;
+        let completedPreparationUnits = 0;
+        let currentProgress = null;
+
+        const commitProgressUpdate = (value) => {
+          currentProgress = clampProgressValue(value);
+          setScopeProgress(normalizedScope, currentProgress);
+        };
+
+        const updatePreparationProgress = () => {
+          if (totalPreparationUnits <= 0) {
+            return;
+          }
+
+          const ratio = Math.min(1, completedPreparationUnits / totalPreparationUnits);
+          commitProgressUpdate(ratio * 90);
+        };
+
+        if (totalPreparationUnits > 0) {
+          commitProgressUpdate(0);
         } else {
-          setScopeProgress(normalizedScope, 100);
+          commitProgressUpdate(100);
         }
 
         const updatedProducts = [];
         const updatesByProduct = new Map();
         const originalVariantLookup = new Map();
         const touchedCollections = new Set();
-        let processedCount = 0;
-
-        const updateProgress = () => {
-          if (totalMatching === 0) {
-            setScopeProgress(normalizedScope, 100);
-            return;
-          }
-
-          const ratio = processedCount / totalMatching;
-          const progress = clampProgressValue(5 + ratio * 70);
-          setScopeProgress(normalizedScope, progress);
-        };
 
         for (const product of products) {
           if (!matchesScope(product)) {
             updatedProducts.push(product);
             continue;
           }
-
-          processedCount += 1;
-          updateProgress();
 
           const productCollection = normalizeScopeKey(product.collection);
           if (productCollection) {
@@ -3298,11 +3314,26 @@ export const usePricingStore = create(
             baseCompareAtPrice: updatedCompareAtPrice,
             variants: nextVariants,
           });
+
+          completedPreparationUnits += 1 + currentVariants.length;
+          updatePreparationProgress();
         }
 
-        if (totalMatching > 0) {
-          const completionProgress = clampProgressValue(80);
-          setScopeProgress(normalizedScope, completionProgress);
+        if (totalPreparationUnits > 0) {
+          completedPreparationUnits = totalPreparationUnits;
+          updatePreparationProgress();
+        }
+
+        const totalVariantUpdates = Array.from(updatesByProduct.values()).reduce(
+          (sum, entry) =>
+            sum + (Array.isArray(entry?.variants) ? entry.variants.length : 0),
+          0,
+        );
+
+        if (totalVariantUpdates === 0) {
+          commitProgressUpdate(100);
+        } else {
+          commitProgressUpdate(Math.max(currentProgress ?? 0, 90));
         }
 
         const commitCollections =
@@ -3325,7 +3356,23 @@ export const usePricingStore = create(
           get,
         });
 
-        setScopeProgress(normalizedScope, 100);
+        if (totalVariantUpdates > 0) {
+          const updatedCount = Number.isFinite(result?.updatedCount)
+            ? result.updatedCount
+            : 0;
+          const failedCount = Number.isFinite(result?.failedCount)
+            ? result.failedCount
+            : 0;
+          const attempted = Math.max(
+            Math.min(totalVariantUpdates, updatedCount + failedCount),
+            result?.success === false ? totalVariantUpdates : 0,
+          );
+          const ratio = totalVariantUpdates > 0 ? attempted / totalVariantUpdates : 1;
+          commitProgressUpdate(90 + ratio * 10);
+        } else {
+          commitProgressUpdate(100);
+        }
+
         return result;
       } finally {
         get().toggleLoading(normalizedScope, false);
