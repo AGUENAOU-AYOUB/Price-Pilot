@@ -56,6 +56,58 @@ const sanitizeVariantKey = (value = '') => {
   return normalized || null;
 };
 
+const buildChainMatchers = (name, aliases = []) => {
+  const normalizedSet = new Set();
+  const sanitizedSet = new Set();
+
+  const register = (raw) => {
+    if (!raw && raw !== 0) return;
+
+    const normalized = normalize(raw);
+    if (normalized && normalized.length >= 2) {
+      normalizedSet.add(normalized);
+    }
+
+    const sanitized = sanitizeVariantKey(raw);
+    if (sanitized && sanitized.length >= 3) {
+      sanitizedSet.add(sanitized);
+    }
+  };
+
+  register(name);
+
+  const normalizedName = normalize(name);
+  if (normalizedName) {
+    const collapsed = normalizedName.replace(/\s+/g, '');
+    if (collapsed && collapsed !== normalizedName) {
+      register(collapsed);
+    }
+
+    const tokens = normalizedName.split(/\s+/).filter(Boolean);
+    if (tokens.length > 1) {
+      register(tokens.join(' '));
+      register(tokens.join(''));
+    }
+
+    for (const token of tokens) {
+      if (token && token.length >= 3) {
+        register(token);
+      }
+    }
+  }
+
+  if (Array.isArray(aliases)) {
+    for (const alias of aliases) {
+      register(alias);
+    }
+  }
+
+  const normalizedMatchers = Array.from(normalizedSet).sort((a, b) => b.length - a.length);
+  const sanitizedMatchers = Array.from(sanitizedSet).sort((a, b) => b.length - a.length);
+
+  return { normalizedMatchers, sanitizedMatchers };
+};
+
 const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const buildChainRemovalPatterns = (names = []) => {
@@ -124,7 +176,29 @@ const collectVariantFields = (variant) => {
     values.push(...splitVariantDescriptor(variant.title));
   }
 
-  return values.map((v) => normalize(v)).filter(Boolean);
+  const seen = new Set();
+  const results = [];
+
+  for (const raw of values) {
+    if (raw === null || raw === undefined) {
+      continue;
+    }
+
+    const normalized = normalize(raw);
+    if (!normalized) {
+      continue;
+    }
+
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+
+    const sanitized = sanitizeVariantKey(raw);
+    results.push({ raw, normalized, sanitized });
+  }
+
+  return results;
 };
 
 const DEFAULT_BRACELET_PARENT_KEY = 'default';
@@ -243,20 +317,34 @@ const refreshDerivedSupplements = (module) => {
   supplementsState.necklaceSizes = Array.isArray(module?.necklaceSizes) ? [...module.necklaceSizes] : [];
 
   for (const [name, supplement] of Object.entries(supplementsState.braceletBase)) {
-    supplementsState.bracelet.set(normalize(name), { name, supplement: Number(supplement) || 0 });
+    const key = normalize(name);
+    const matchers = buildChainMatchers(name);
+    supplementsState.bracelet.set(key, {
+      name,
+      supplement: Number(supplement) || 0,
+      matchers,
+    });
   }
   for (const [name, config] of Object.entries(supplementsState.necklaceBase)) {
     const key = normalize(name);
     const sizes = sanitizeNecklaceSizeMap(config?.sizes, supplementsState.necklaceSizes);
+    const matchers = buildChainMatchers(name, config?.aliases);
     supplementsState.necklace.set(key, {
       name,
       supplement: Number(config?.supplement) || 0,
       perCm: Number(config?.perCm) || 0,
       sizes,
+      matchers,
     });
   }
 
-  braceletChainSanitizedKeys = Array.from(supplementsState.bracelet.keys());
+  braceletChainSanitizedKeys = Array.from(
+    new Set(
+      Array.from(supplementsState.bracelet.values())
+        .map((entry) => sanitizeVariantKey(entry?.name))
+        .filter(Boolean),
+    ),
+  );
   const braceletNames = Array.from(supplementsState.bracelet.values())
     .map((entry) => entry?.name)
     .filter(Boolean);
@@ -389,16 +477,56 @@ const resolveProductKind = async (product, reqId) => {
 
 const identifyChainType = (variant, productKind) => {
   const fields = collectVariantFields(variant);
+  if (fields.length === 0) {
+    return null;
+  }
+
   const source = productKind === 'necklace' ? supplementsState.necklace : supplementsState.bracelet;
 
+  let bestMatch = null;
+  let bestScore = -Infinity;
+
   for (const field of fields) {
+    const normalizedField = field.normalized;
+    const sanitizedField = field.sanitized;
+
     for (const [normalizedName, config] of source) {
-      if (field.includes(normalizedName)) {
-        return { key: normalizedName, config };
+      const matchers = config?.matchers;
+      const normalizedMatchers = Array.isArray(matchers?.normalizedMatchers)
+        ? matchers.normalizedMatchers
+        : [normalizedName];
+      for (const candidate of normalizedMatchers) {
+        if (!candidate) continue;
+        if (normalizedField.includes(candidate)) {
+          const score = candidate.length * 2;
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = { key: normalizedName, config };
+          }
+        }
+      }
+
+      if (!sanitizedField) {
+        continue;
+      }
+
+      const sanitizedMatchers = Array.isArray(matchers?.sanitizedMatchers)
+        ? matchers.sanitizedMatchers
+        : [];
+      for (const candidate of sanitizedMatchers) {
+        if (!candidate) continue;
+        if (sanitizedField.includes(candidate)) {
+          const score = candidate.length * 2 - 1; // prefer normalized matches when equal length
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = { key: normalizedName, config };
+          }
+        }
       }
     }
   }
-  return null;
+
+  return bestMatch;
 };
 
 const extractVariantSize = (variant) => {
@@ -423,7 +551,9 @@ const pickForsatBaseVariant = (variants, productKind, reqId) => {
 
   if (candidates.length === 0) {
     // fallback by title text if mapping ever misses
-    const byTitle = variants.find((v) => collectVariantFields(v).some((f) => f.includes(FORSAT_S_KEY)));
+    const byTitle = variants.find((v) =>
+      collectVariantFields(v).some((f) => f.normalized.includes(FORSAT_S_KEY)),
+    );
     if (byTitle) {
       log.warn(`[${reqId}] base via title fallback: ${byTitle.id} "${byTitle.title}"`);
       return byTitle;
