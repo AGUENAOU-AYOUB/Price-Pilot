@@ -34,10 +34,10 @@ const PRICING_SCOPES = [
     subtitleKey: 'global.sections.rings.subtitle',
   },
   {
-    scope: 'earrings',
-    navKey: 'nav.earrings',
-    titleKey: 'global.sections.earrings.title',
-    subtitleKey: 'global.sections.earrings.subtitle',
+    scope: 'others',
+    navKey: 'nav.others',
+    titleKey: 'global.sections.others.title',
+    subtitleKey: 'global.sections.others.subtitle',
   },
 ];
 
@@ -53,6 +53,7 @@ export function GlobalPricingPage() {
   const captureLocalScopeBackup = usePricingStore((state) => state.captureLocalScopeBackup);
   const restoreLocalScopeBackup = usePricingStore((state) => state.restoreLocalScopeBackup);
   const loadingCounts = usePricingStore((state) => state.loadingCounts);
+  const scopeProgress = usePricingStore((state) => state.scopeProgress);
   const { t } = useTranslation();
   const toast = useToast();
 
@@ -217,6 +218,15 @@ export function GlobalPricingPage() {
         const percentValue = Number(percentages[scope]) || 0;
         const scopePreviews = previews[scope] ?? [];
         const scopeBusy = isScopeBusy(scope);
+        const rawProgress = Number(scopeProgress?.[scope]);
+        const hasProgress = Number.isFinite(rawProgress);
+        const clampedProgress = hasProgress
+          ? Math.max(0, Math.min(100, Math.round(rawProgress)))
+          : null;
+        const applyLoadingText =
+          clampedProgress !== null
+            ? t('action.applyingWithProgress', { percent: clampedProgress })
+            : t('action.applying');
 
         return (
           <Card
@@ -254,7 +264,7 @@ export function GlobalPricingPage() {
                 <Button
                   type="button"
                   isLoading={isActionLoading(scope, 'apply')}
-                  loadingText={t('action.applying')}
+                  loadingText={applyLoadingText}
                   onClick={() => handleApply(config)}
                 >
                   {t('action.apply')}
@@ -280,6 +290,21 @@ export function GlobalPricingPage() {
                   {t('action.restoreBackup')}
                 </Button>
               </div>
+              {isActionLoading(scope, 'apply') && clampedProgress !== null && (
+                <div className="w-full">
+                  <div className="mt-3 flex items-center gap-3 text-sm text-neutral-600">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200">
+                      <div
+                        className="h-full rounded-full bg-primary-500 transition-all"
+                        style={{ width: `${clampedProgress}%` }}
+                      />
+                    </div>
+                    <span className="w-12 text-right font-semibold tabular-nums">
+                      {clampedProgress}%
+                    </span>
+                  </div>
+                </div>
+              )}
             </form>
 
             <div className="mt-8">

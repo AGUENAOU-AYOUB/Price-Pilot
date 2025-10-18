@@ -443,9 +443,11 @@ const SCOPE_COLLECTIONS = {
   rings: ['bague'],
   handchains: ['handchain'],
   sets: ['ensemble'],
-  earrings: ['earring'],
+  others: ['earring', 'handchain', 'ensemble'],
   'azor-archive': [],
 };
+
+const PRIMARY_SCOPE_COLLECTIONS = new Set(['bracelet', 'collier', 'bague']);
 
 const BACKUP_SCOPES = Object.keys(SCOPE_COLLECTIONS);
 
@@ -493,11 +495,11 @@ const SCOPE_COPY = {
     successLogMessage: 'Set pricing update completed.',
     failureLogMessage: 'Failed to apply set pricing update to Shopify.',
   },
-  earrings: {
-    updateLabel: 'earring pricing',
-    loadingMessage: 'Applying earring pricing...',
-    successLogMessage: 'Earring pricing update completed.',
-    failureLogMessage: 'Failed to apply earring pricing update to Shopify.',
+  others: {
+    updateLabel: 'specialty pricing',
+    loadingMessage: 'Applying specialty pricing...',
+    successLogMessage: 'Specialty pricing update completed.',
+    failureLogMessage: 'Failed to apply specialty pricing update to Shopify.',
   },
 };
 
@@ -508,6 +510,52 @@ const getScopeCopy = (scope) => ({
 
 const normalizeScopeKey = (scope) =>
   typeof scope === 'string' ? scope.trim().toLowerCase() : '';
+
+const clampProgressValue = (value) => Math.min(100, Math.max(0, Math.round(value)));
+
+const normalizeProgressValue = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? clampProgressValue(numeric) : null;
+};
+
+const createScopeMatcher = (scope, collectionSet, options = {}) => {
+  const normalizedScope = normalizeScopeKey(scope);
+  const includeInactive = options.includeInactive ?? false;
+  const treatAsGlobal =
+    normalizedScope !== 'others' &&
+    collectionSet instanceof Set &&
+    collectionSet.size === 0;
+
+  return (product) => {
+    if (!product || typeof product !== 'object') {
+      return false;
+    }
+
+    if (!includeInactive && product.status !== 'active') {
+      return false;
+    }
+
+    const productCollection = normalizeScopeKey(product.collection);
+
+    if (normalizedScope === 'others') {
+      return !PRIMARY_SCOPE_COLLECTIONS.has(productCollection);
+    }
+
+    if (!(collectionSet instanceof Set)) {
+      return true;
+    }
+
+    if (treatAsGlobal) {
+      return true;
+    }
+
+    return collectionSet.has(productCollection);
+  };
+};
 
 const createEmptyScopeBackups = () =>
   BACKUP_SCOPES.reduce((accumulator, scope) => {
@@ -2209,6 +2257,7 @@ export const usePricingStore = create(
     loadingCounts: {},
     loadingScopes: [],
     pendingToasts: {},
+    scopeProgress: {},
 
     setUsername: (username) =>
       set(() => {
@@ -2216,6 +2265,35 @@ export const usePricingStore = create(
         return { username };
       }),
     setLanguage: (language) => set({ language }),
+
+    setScopeProgress: (scope, value) => {
+      const key = normalizeScopeKey(scope);
+      if (!key) {
+        return;
+      }
+
+      set((state) => {
+        const current = state.scopeProgress ?? {};
+        const next = { ...current };
+        const normalized = normalizeProgressValue(value);
+
+        if (normalized === null) {
+          if (!(key in next)) {
+            return {};
+          }
+
+          delete next[key];
+          return { scopeProgress: next };
+        }
+
+        if (next[key] === normalized) {
+          return {};
+        }
+
+        next[key] = normalized;
+        return { scopeProgress: next };
+      });
+    },
 
     log: (message, scope, level = 'info') => {
       const entry = {
@@ -2446,13 +2524,12 @@ export const usePricingStore = create(
 
       const { silent = false } = options;
       const collectionSet = buildCollectionSet(normalizedScope);
-      const includeAllCollections = collectionSet.size === 0;
+      const matchesScope = createScopeMatcher(normalizedScope, collectionSet, {
+        includeInactive: true,
+      });
 
       const scopeProducts = get()
-        .products.filter((product) => {
-          const productCollection = normalizeScopeKey(product.collection);
-          return includeAllCollections || collectionSet.has(productCollection);
-        })
+        .products.filter((product) => matchesScope(product))
         .map((product) => cloneProduct(product));
 
       if (scopeProducts.length === 0) {
@@ -2503,16 +2580,16 @@ export const usePricingStore = create(
       }
 
       const collectionSet = buildCollectionSet(normalizedScope);
-      const includeAllCollections = collectionSet.size === 0;
+      const matchesScope = createScopeMatcher(normalizedScope, collectionSet, {
+        includeInactive: true,
+      });
       const backupProducts = cloneProducts(backupEntry.products);
       const backupById = new Map(backupProducts.map((product) => [product.id, product]));
       const restoredIds = new Set();
 
       set((state) => {
         const nextProducts = state.products.map((product) => {
-          const productCollection = normalizeScopeKey(product.collection);
-          const matchesScope = includeAllCollections || collectionSet.has(productCollection);
-          if (!matchesScope) {
+          if (!matchesScope(product)) {
             return product;
           }
 
@@ -2530,8 +2607,7 @@ export const usePricingStore = create(
             continue;
           }
 
-          const productCollection = normalizeScopeKey(backupProduct.collection);
-          if (includeAllCollections || collectionSet.has(productCollection)) {
+          if (matchesScope(backupProduct)) {
             nextProducts.push(cloneProduct(backupProduct));
             restoredIds.add(productId);
           }
@@ -2709,20 +2785,24 @@ export const usePricingStore = create(
       const backupProducts = cloneProducts(backupEntry.products);
       const backupById = new Map(backupProducts.map((product) => [product.id, product]));
       const collectionSet = buildCollectionSet(scope);
-      const includeAllCollections = collectionSet.size === 0;
+      const matchesScope = createScopeMatcher(scope, collectionSet, {
+        includeInactive: true,
+      });
       const currentProducts = get().products;
       const updatesByProduct = new Map();
       const originalVariantLookup = new Map();
       const updatedProducts = [];
+      const touchedCollections = new Set();
 
       for (const product of currentProducts) {
-        const productCollection =
-          typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
-        const collectionMatches = includeAllCollections || collectionSet.has(productCollection);
-
-        if (!collectionMatches) {
+        if (!matchesScope(product)) {
           updatedProducts.push(product);
           continue;
+        }
+
+        const collectionKey = normalizeScopeKey(product.collection);
+        if (collectionKey) {
+          touchedCollections.add(collectionKey);
         }
 
         const backupProduct = backupById.get(product.id);
@@ -2777,11 +2857,25 @@ export const usePricingStore = create(
 
         updatedProducts.push(clonedBackup);
         backupById.delete(product.id);
+
+        const backupCollection = normalizeScopeKey(clonedBackup.collection);
+        if (backupCollection) {
+          touchedCollections.add(backupCollection);
+        }
       }
 
       for (const backupProduct of backupById.values()) {
+        if (!matchesScope(backupProduct)) {
+          continue;
+        }
+
         const clonedBackup = cloneProduct(backupProduct);
         updatedProducts.push(clonedBackup);
+
+        const backupCollection = normalizeScopeKey(clonedBackup.collection);
+        if (backupCollection) {
+          touchedCollections.add(backupCollection);
+        }
 
         if (!updatesByProduct.has(clonedBackup.id)) {
           updatesByProduct.set(clonedBackup.id, {
@@ -2823,9 +2917,14 @@ export const usePricingStore = create(
       get().toggleLoading(scope, true);
 
       try {
+        const restoreCollections =
+          scope === 'others'
+            ? Array.from(touchedCollections).filter(Boolean)
+            : SCOPE_COLLECTIONS[scope];
+
         const result = await commitShopifyVariantUpdates({
           scope,
-          collection: SCOPE_COLLECTIONS[scope],
+          collection: restoreCollections,
           updatedProducts,
           updatesByProduct,
           originalVariantLookup,
@@ -2865,16 +2964,14 @@ export const usePricingStore = create(
       const backupProducts = cloneProducts(backupEntry.products);
       const backupById = new Map(backupProducts.map((product) => [product.id, product]));
       const collectionSet = buildCollectionSet(scope);
-      const includeAllCollections = collectionSet.size === 0;
+      const matchesScope = createScopeMatcher(scope, collectionSet, {
+        includeInactive: true,
+      });
       const currentProducts = get().products;
       const previews = [];
 
       for (const product of currentProducts) {
-        const productCollection =
-          typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
-        const collectionMatches = includeAllCollections || collectionSet.has(productCollection);
-
-        if (!collectionMatches) {
+        if (!matchesScope(product)) {
           continue;
         }
 
@@ -2986,18 +3083,11 @@ export const usePricingStore = create(
 
       const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
       const collectionSet = buildCollectionSet(normalizedScope);
-      const includeAllCollections = collectionSet.size === 0;
+      const matchesScope = createScopeMatcher(normalizedScope, collectionSet);
       const { products } = get();
 
       return products
-        .filter((product) => {
-          if (product.status !== 'active') {
-            return false;
-          }
-
-          const productCollection = normalizeScopeKey(product.collection);
-          return includeAllCollections || collectionSet.has(productCollection);
-        })
+        .filter((product) => matchesScope(product))
         .map((product) => buildProductPricingPreview(product, adjustment));
     },
 
@@ -3034,20 +3124,56 @@ export const usePricingStore = create(
           return { success: false, reason: 'missing-proxy' };
         }
 
-        const products = get().products;
+        const storeState = get();
+        const products = storeState.products;
+        const setScopeProgress =
+          typeof storeState.setScopeProgress === 'function'
+            ? storeState.setScopeProgress
+            : () => {};
         const collectionSet = buildCollectionSet(normalizedScope);
-        const includeAllCollections = collectionSet.size === 0;
+        const matchesScope = createScopeMatcher(normalizedScope, collectionSet);
+        const totalMatching = Array.isArray(products)
+          ? products.reduce(
+              (count, product) => (matchesScope(product) ? count + 1 : count),
+              0,
+            )
+          : 0;
+
+        if (totalMatching > 0) {
+          setScopeProgress(normalizedScope, 5);
+        } else {
+          setScopeProgress(normalizedScope, 100);
+        }
+
         const updatedProducts = [];
         const updatesByProduct = new Map();
         const originalVariantLookup = new Map();
+        const touchedCollections = new Set();
+        let processedCount = 0;
+
+        const updateProgress = () => {
+          if (totalMatching === 0) {
+            setScopeProgress(normalizedScope, 100);
+            return;
+          }
+
+          const ratio = processedCount / totalMatching;
+          const progress = clampProgressValue(5 + ratio * 70);
+          setScopeProgress(normalizedScope, progress);
+        };
 
         for (const product of products) {
-          const productCollection = normalizeScopeKey(product.collection);
-          const matchesScope = includeAllCollections || collectionSet.has(productCollection);
-
-          if (!matchesScope || product.status !== 'active') {
+          if (!matchesScope(product)) {
             updatedProducts.push(product);
             continue;
+          }
+
+          processedCount += 1;
+          updateProgress();
+
+          const productCollection = normalizeScopeKey(product.collection);
+          if (productCollection) {
+            touchedCollections.add(productCollection);
           }
 
           const basePrice = Number(product.basePrice ?? 0);
@@ -3101,9 +3227,19 @@ export const usePricingStore = create(
           });
         }
 
-        return await commitShopifyVariantUpdates({
+        if (totalMatching > 0) {
+          const completionProgress = clampProgressValue(80);
+          setScopeProgress(normalizedScope, completionProgress);
+        }
+
+        const commitCollections =
+          normalizedScope === 'others'
+            ? Array.from(touchedCollections).filter(Boolean)
+            : SCOPE_COLLECTIONS[normalizedScope];
+
+        const result = await commitShopifyVariantUpdates({
           scope: normalizedScope,
-          collection: SCOPE_COLLECTIONS[normalizedScope],
+          collection: commitCollections,
           updatedProducts,
           updatesByProduct,
           originalVariantLookup,
@@ -3115,9 +3251,15 @@ export const usePricingStore = create(
           set,
           get,
         });
+
+        setScopeProgress(normalizedScope, 100);
+        return result;
       } finally {
         get().toggleLoading(normalizedScope, false);
         toast.dismiss(loadingToastId);
+        setTimeout(() => {
+          setScopeProgress(normalizedScope, null);
+        }, 400);
       }
     },
     previewBracelets: () => {
