@@ -435,6 +435,8 @@ const loadStoredSupplements = () => {
   return supplements;
 };
 
+const SECTION_BACKUP_STORAGE_KEY = 'price-pilot.section-backups';
+
 const SCOPE_COLLECTIONS = {
   global: [],
   bracelets: ['bracelet'],
@@ -465,6 +467,117 @@ const cloneProducts = (products = []) => products.map((product) => cloneProduct(
 const buildCollectionSet = (scope) => {
   const collections = SCOPE_COLLECTIONS[scope] ?? [];
   return new Set(collections.map((collection) => collection.toLowerCase()));
+};
+
+const loadStoredSectionBackups = () => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const stored = window.localStorage.getItem(SECTION_BACKUP_STORAGE_KEY);
+    if (!stored) {
+      return {};
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object') {
+      return {};
+    }
+
+    const normalized = {};
+    for (const [scope, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== 'object') {
+        continue;
+      }
+
+      normalized[scope] = {
+        timestamp: typeof value.timestamp === 'string' ? value.timestamp : null,
+        collections: Array.isArray(value.collections)
+          ? value.collections.map((entry) => String(entry)).filter(Boolean)
+          : [],
+        percent: Number.isFinite(Number(value.percent)) ? Number(value.percent) : null,
+        rounding: typeof value.rounding === 'string' ? value.rounding : null,
+        products: Array.isArray(value.products) ? value.products : [],
+      };
+    }
+
+    return normalized;
+  } catch (error) {
+    console.warn('Failed to load section backups from localStorage:', error);
+    return {};
+  }
+};
+
+const persistSectionBackups = (backups) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(SECTION_BACKUP_STORAGE_KEY, JSON.stringify(backups ?? {}));
+  } catch (error) {
+    console.warn('Failed to persist section backups to localStorage:', error);
+  }
+};
+
+const normalizeCollectionList = (collections) => {
+  if (!collections) {
+    return [];
+  }
+
+  const array = Array.isArray(collections) ? collections : [collections];
+  return array
+    .map((entry) => (entry === null || entry === undefined ? '' : String(entry).trim().toLowerCase()))
+    .filter(Boolean);
+};
+
+const productMatchesCollections = (product, collectionSet) => {
+  if (!(collectionSet instanceof Set) || collectionSet.size === 0) {
+    return true;
+  }
+
+  const key = typeof product?.collection === 'string' ? product.collection.toLowerCase() : '';
+  return collectionSet.has(key);
+};
+
+const captureProductsForCollections = (products, collections) => {
+  const normalized = normalizeCollectionList(collections);
+  if (normalized.length === 0) {
+    return cloneProducts(products);
+  }
+
+  const collectionSet = new Set(normalized);
+  return cloneProducts(
+    products.filter((product) => productMatchesCollections(product, collectionSet)),
+  );
+};
+
+const mergeProductsFromBackup = (currentProducts = [], snapshotProducts = []) => {
+  const snapshotById = new Map(
+    snapshotProducts.map((product) => [product?.id ? String(product.id) : null, cloneProduct(product)]),
+  );
+  snapshotById.delete(null);
+
+  const restoredIds = new Set();
+
+  const merged = currentProducts.map((product) => {
+    const productId = product?.id ? String(product.id) : null;
+    if (!productId || !snapshotById.has(productId)) {
+      return product;
+    }
+
+    restoredIds.add(productId);
+    return cloneProduct(snapshotById.get(productId));
+  });
+
+  for (const [productId, product] of snapshotById.entries()) {
+    if (!restoredIds.has(productId)) {
+      merged.push(cloneProduct(product));
+    }
+  }
+
+  return merged;
 };
 
 const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) => {
@@ -2046,6 +2159,7 @@ export const usePricingStore = create(
     supplements: loadStoredSupplements(),
     supplementBackups: loadStoredSupplementBackups(),
     supplementChangesPending: createSupplementChangeFlags(),
+    sectionBackups: loadStoredSectionBackups(),
     backups: {},
     logs: [],
     loadingCounts: {},
@@ -2159,6 +2273,234 @@ export const usePricingStore = create(
       const counts = get().loadingCounts || {};
       const currentValue = Number(counts[key]);
       return Number.isFinite(currentValue) && currentValue > 0;
+    },
+
+    backupCollectionLocally: (
+      scope,
+      collections = [],
+      { label, percent, rounding, silent = false } = {},
+    ) => {
+      const normalizedCollections = normalizeCollectionList(collections);
+      const snapshotProducts = captureProductsForCollections(get().products ?? [], normalizedCollections);
+      const payload = {
+        timestamp: new Date().toISOString(),
+        collections: normalizedCollections,
+        products: snapshotProducts,
+        percent: Number.isFinite(Number(percent)) ? Number(percent) : null,
+        rounding: typeof rounding === 'string' ? rounding : null,
+      };
+
+      set((state) => {
+        const nextBackups = { ...(state.sectionBackups ?? {}) };
+        nextBackups[scope] = payload;
+        persistSectionBackups(nextBackups);
+        return { sectionBackups: nextBackups };
+      });
+
+      const friendly = label ?? scope;
+      get().log(`Saved local backup for ${friendly}.`, scope, silent ? 'silent' : 'success');
+
+      return payload;
+    },
+
+    restoreCollectionLocally: (scope, { label, silent = false } = {}) => {
+      const backup = get().sectionBackups?.[scope];
+      const friendly = label ?? scope;
+
+      if (!backup) {
+        get().log(`No local backup available for ${friendly}.`, scope, silent ? 'silent' : 'error');
+        return { success: false, reason: 'missing-backup' };
+      }
+
+      const restoredProducts = cloneProducts(Array.isArray(backup.products) ? backup.products : []);
+
+      set((state) => ({
+        products: mergeProductsFromBackup(state.products ?? [], restoredProducts),
+      }));
+
+      get().log(`Restored local backup for ${friendly}.`, scope, silent ? 'silent' : 'success');
+
+      return {
+        success: true,
+        restoredCount: restoredProducts.length,
+        timestamp: backup.timestamp ?? null,
+      };
+    },
+
+    previewCollectionChange: (scope, collections = [], percent = 0, options = {}) => {
+      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+      const rounding = typeof options.rounding === 'string' ? options.rounding : 'luxury';
+      const normalizedCollections = normalizeCollectionList(collections);
+      const collectionSet =
+        normalizedCollections.length > 0 ? new Set(normalizedCollections) : null;
+      const { products } = get();
+
+      return products
+        .filter((product) => product.status === 'active')
+        .filter((product) => productMatchesCollections(product, collectionSet))
+        .map((product) => {
+          const basePrice = Number(product.basePrice ?? 0);
+          const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
+          const updatedBasePrice = applyPercentage(basePrice, adjustment, { rounding });
+          const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment, { rounding });
+
+          const variants = (Array.isArray(product.variants) ? product.variants : []).map(
+            (variant) => {
+              const currentPrice = Number(variant?.price ?? basePrice);
+              const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
+              const nextPrice = applyPercentage(currentPrice, adjustment, { rounding });
+              const nextCompare = applyPercentage(currentCompare, adjustment, { rounding });
+              const changed = currentPrice !== nextPrice || currentCompare !== nextCompare;
+
+              return {
+                ...variant,
+                id: variant?.id
+                  ? String(variant.id)
+                  : `${product.id}-${variant?.title ?? 'variant'}`,
+                title: variant?.title ?? 'Variant',
+                price: nextPrice,
+                compareAtPrice: nextCompare,
+                previousPrice: currentPrice,
+                previousCompareAtPrice: currentCompare,
+                status: changed ? 'changed' : 'unchanged',
+              };
+            },
+          );
+
+          return {
+            product,
+            updatedBasePrice,
+            updatedCompareAtPrice,
+            variants,
+          };
+        });
+    },
+
+    applyCollectionChange: async (scope, collections = [], percent = 0, options = {}) => {
+      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+      const rounding = typeof options.rounding === 'string' ? options.rounding : 'luxury';
+      const normalizedCollections = normalizeCollectionList(collections);
+      const collectionSet =
+        normalizedCollections.length > 0 ? new Set(normalizedCollections) : null;
+      const label = options.label ?? scope;
+      const autoBackup = options.autoBackup !== false;
+      const loadingMessage =
+        options.loadingMessage ?? `Applying ${label} pricing updates…`;
+
+      if (autoBackup) {
+        await Promise.resolve(
+          get().backupCollectionLocally(scope, normalizedCollections, {
+            label,
+            percent: adjustment,
+            rounding,
+            silent: true,
+          }),
+        );
+      }
+
+      get().toggleLoading(scope, true);
+      const loadingToastId = toast.loading(loadingMessage);
+
+      try {
+        if (!hasShopifyProxy()) {
+          get().log(
+            `Shopify proxy missing; unable to push ${label} pricing updates. Start the proxy server and try again.`,
+            scope,
+            'error',
+          );
+          return { success: false, reason: 'missing-proxy' };
+        }
+
+        const products = get().products;
+        const updatedProducts = [];
+        const updatesByProduct = new Map();
+        const originalVariantLookup = new Map();
+
+        for (const product of products) {
+          const inScope = productMatchesCollections(product, collectionSet);
+
+          if (!inScope || product.status !== 'active') {
+            updatedProducts.push(product);
+            continue;
+          }
+
+          const basePrice = Number(product.basePrice ?? 0);
+          const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
+          const updatedBasePrice = applyPercentage(basePrice, adjustment, { rounding });
+          const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment, { rounding });
+
+          const currentVariants = Array.isArray(product.variants) ? product.variants : [];
+          const nextVariants = currentVariants.map((variant) => {
+            const variantId = variant?.id ? String(variant.id) : null;
+            if (variantId) {
+              originalVariantLookup.set(variantId, variant);
+            }
+
+            const currentPrice = Number(variant?.price ?? basePrice);
+            const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
+            const updatedPrice = applyPercentage(currentPrice, adjustment, { rounding });
+            const updatedCompare = applyPercentage(currentCompare, adjustment, { rounding });
+
+            if (
+              variantId &&
+              (updatedPrice !== currentPrice || updatedCompare !== currentCompare)
+            ) {
+              if (!updatesByProduct.has(product.id)) {
+                updatesByProduct.set(product.id, {
+                  productId: product.id,
+                  productTitle: product.title,
+                  variants: [],
+                });
+              }
+
+              updatesByProduct.get(product.id).variants.push({
+                id: variantId,
+                price: updatedPrice,
+                compareAtPrice: updatedCompare,
+              });
+            }
+
+            return {
+              ...variant,
+              price: updatedPrice,
+              compareAtPrice: updatedCompare,
+            };
+          });
+
+          updatedProducts.push({
+            ...product,
+            basePrice: updatedBasePrice,
+            baseCompareAtPrice: updatedCompareAtPrice,
+            variants: nextVariants,
+          });
+        }
+
+        const noChangesMessage =
+          options.noChangeMessage ??
+          `No Shopify changes required; ${label} prices already reflect this adjustment.`;
+        const successLogMessage =
+          options.successLogMessage ?? `${label} pricing update completed.`;
+        const failureLogMessage =
+          options.failureLogMessage ?? `Failed to apply ${label} pricing update to Shopify.`;
+        const updateLabel = options.updateLabel ?? `${label} pricing`;
+
+        return await commitShopifyVariantUpdates({
+          scope,
+          collection: normalizedCollections,
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage,
+          successLogMessage,
+          updateLabel,
+          failureLogMessage,
+          set,
+          get,
+        });
+      } finally {
+        get().toggleLoading(scope, false);
+        toast.dismiss(loadingToastId);
+      }
     },
 
     alignBraceletVariantsFromMetafields: () =>
@@ -2712,141 +3054,17 @@ export const usePricingStore = create(
       return previews;
     },
 
-    previewGlobalChange: (percent = 0) => {
-      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
-      const { products } = get();
+    previewGlobalChange: (percent = 0, options = {}) =>
+      get().previewCollectionChange('global', [], percent, options),
 
-      return products
-        .filter((product) => product.status === 'active')
-        .map((product) => {
-          const basePrice = Number(product.basePrice ?? 0);
-          const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
-          const updatedBasePrice = applyPercentage(basePrice, adjustment);
-          const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment);
+    applyGlobalChange: async (percent = 0, options = {}) =>
+      get().applyCollectionChange('global', [], percent, {
+        label: options?.label ?? 'global',
+        loadingMessage: options?.loadingMessage ?? 'Applying global pricing updates…',
+        updateLabel: options?.updateLabel ?? 'global pricing',
+        ...options,
+      }),
 
-          const variants = (Array.isArray(product.variants) ? product.variants : []).map(
-            (variant) => {
-              const currentPrice = Number(variant?.price ?? basePrice);
-              const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
-              const nextPrice = applyPercentage(currentPrice, adjustment);
-              const nextCompare = applyPercentage(currentCompare, adjustment);
-              const changed = currentPrice !== nextPrice || currentCompare !== nextCompare;
-
-              return {
-                ...variant,
-                id: variant?.id ? String(variant.id) : `${product.id}-${variant?.title ?? 'variant'}`,
-                title: variant?.title ?? 'Variant',
-                price: nextPrice,
-                compareAtPrice: nextCompare,
-                previousPrice: currentPrice,
-                previousCompareAtPrice: currentCompare,
-                status: changed ? 'changed' : 'unchanged',
-              };
-            },
-          );
-
-          return {
-            product,
-            updatedBasePrice,
-            updatedCompareAtPrice,
-            variants,
-          };
-        });
-    },
-
-    applyGlobalChange: async (percent = 0) => {
-      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
-
-      get().toggleLoading('global', true);
-      const loadingToastId = toast.loading('Applying global pricing...');
-
-      try {
-        if (!hasShopifyProxy()) {
-          get().log('Shopify proxy missing; unable to push global pricing updates.', 'global', 'error');
-          return { success: false, reason: 'missing-proxy' };
-        }
-
-        const products = get().products;
-        const updatedProducts = [];
-        const updatesByProduct = new Map();
-        const originalVariantLookup = new Map();
-
-        for (const product of products) {
-          if (product.status !== 'active') {
-            updatedProducts.push(product);
-            continue;
-          }
-
-          const basePrice = Number(product.basePrice ?? 0);
-          const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
-          const updatedBasePrice = applyPercentage(basePrice, adjustment);
-          const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment);
-
-          const currentVariants = Array.isArray(product.variants) ? product.variants : [];
-          const nextVariants = currentVariants.map((variant) => {
-            const variantId = variant?.id ? String(variant.id) : null;
-            if (variantId) {
-              originalVariantLookup.set(variantId, variant);
-            }
-
-            const currentPrice = Number(variant?.price ?? basePrice);
-            const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
-            const updatedPrice = applyPercentage(currentPrice, adjustment);
-            const updatedCompare = applyPercentage(currentCompare, adjustment);
-
-            if (
-              variantId &&
-              (updatedPrice !== currentPrice || updatedCompare !== currentCompare)
-            ) {
-              if (!updatesByProduct.has(product.id)) {
-                updatesByProduct.set(product.id, {
-                  productId: product.id,
-                  productTitle: product.title,
-                  variants: [],
-                });
-              }
-
-              updatesByProduct.get(product.id).variants.push({
-                id: variantId,
-                price: updatedPrice,
-                compareAtPrice: updatedCompare,
-              });
-            }
-
-            return {
-              ...variant,
-              price: updatedPrice,
-              compareAtPrice: updatedCompare,
-            };
-          });
-
-          updatedProducts.push({
-            ...product,
-            basePrice: updatedBasePrice,
-            baseCompareAtPrice: updatedCompareAtPrice,
-            variants: nextVariants,
-          });
-        }
-
-        return await commitShopifyVariantUpdates({
-          scope: 'global',
-          collection: [],
-          updatedProducts,
-          updatesByProduct,
-          originalVariantLookup,
-          noChangesMessage:
-            'No Shopify changes required; all variant prices already reflect this adjustment.',
-          successLogMessage: 'Global pricing update completed.',
-          updateLabel: 'global pricing',
-          failureLogMessage: 'Failed to apply global pricing update to Shopify.',
-          set,
-          get,
-        });
-      } finally {
-        get().toggleLoading('global', false);
-        toast.dismiss(loadingToastId);
-      }
-    },
     previewBracelets: () => {
       const { products, supplements } = get();
       return products
