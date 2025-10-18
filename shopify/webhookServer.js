@@ -823,7 +823,9 @@ app.post('/webhooks/product-update', async (req, res) => {
         }
 
         if (!Number.isFinite(context.baseCompareAt)) {
-          context.baseCompareAt = null;
+          context.baseCompareAt = Number.isFinite(context.basePrice)
+            ? context.basePrice
+            : null;
         }
 
         log.debug(`[${reqId}] context base`, {
@@ -1011,7 +1013,14 @@ app.post('/webhooks/product-update', async (req, res) => {
               break;
             }
           }
-          context.baseCompareAt = Number.isFinite(derivedCompare) ? derivedCompare : null;
+
+          if (Number.isFinite(derivedCompare)) {
+            context.baseCompareAt = derivedCompare;
+          } else if (Number.isFinite(context.basePrice)) {
+            context.baseCompareAt = context.basePrice;
+          } else {
+            context.baseCompareAt = null;
+          }
         }
 
         log.debug(`[${reqId}] necklace context`, {
