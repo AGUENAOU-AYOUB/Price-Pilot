@@ -25,9 +25,43 @@ export const roundToLuxuryStep = (value) => {
   return Math.max(winner, 0);
 };
 
-export const applyPercentage = (price, percent) => {
+const ROUNDING_STRATEGIES = {
+  luxury: (value) => roundToLuxuryStep(value),
+  'nearest-ten': (value) => {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return Math.round(value / 10) * 10;
+  },
+  'ceil-ten': (value) => {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return Math.ceil(value / 10) * 10;
+  },
+  'floor-ten': (value) => {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return Math.floor(value / 10) * 10;
+  },
+  none: (value) => {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return value;
+  },
+};
+
+const roundPrice = (value, strategy = 'luxury') => {
+  const rounding = ROUNDING_STRATEGIES[strategy] ?? ROUNDING_STRATEGIES.luxury;
+  const rounded = rounding(value);
+  return Number.isFinite(rounded) ? Math.max(rounded, 0) : 0;
+};
+
+export const applyPercentage = (price, percent, { rounding = 'luxury' } = {}) => {
   const updated = price * (1 + percent / 100);
-  return roundToLuxuryStep(updated);
+  return roundPrice(updated, rounding);
 };
 
 export const roundSupplementValue = (
