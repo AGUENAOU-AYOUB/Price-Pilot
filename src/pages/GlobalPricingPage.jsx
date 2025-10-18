@@ -189,12 +189,15 @@ export function GlobalPricingPage() {
       scope,
       'restore',
       async () => {
-        const result = restoreLocalScopeBackup(scope);
+        const result = await restoreLocalScopeBackup(scope);
         if (!result?.success) {
           const failureKey =
             result?.reason === 'missing-backup'
               ? 'toast.localBackupMissing'
+              : result?.reason === 'missing-proxy'
+              ? 'toast.localBackupProxyMissing'
               : 'toast.localBackupFailed';
+        
           toast.error(t(failureKey, { scope: scopeLabel }));
           return result;
         }

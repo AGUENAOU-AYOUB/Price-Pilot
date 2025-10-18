@@ -174,6 +174,7 @@ export const messages = {
     'toast.localBackupFailed': 'Could not create a local backup for {scope}.',
     'toast.localBackupRestored': '{scope} prices restored from local backup.',
     'toast.localBackupMissing': 'No local backup available for {scope}.',
+    'toast.localBackupProxyMissing': 'Start the Shopify proxy to restore the {scope} backup.',
     'dashboard.heroTitle': 'Welcome back to Price Pilot',
     'dashboard.heroSubtitle': 'Your centralized cockpit for Azor Jewelry pricing.',
     'dashboard.heroBody':
@@ -403,6 +404,8 @@ export const messages = {
     'toast.localBackupFailed': 'Impossible de créer une sauvegarde locale pour {scope}.',
     'toast.localBackupRestored': 'Tarifs {scope} restaurés depuis la sauvegarde locale.',
     'toast.localBackupMissing': 'Aucune sauvegarde locale disponible pour {scope}.',
+    'toast.localBackupProxyMissing':
+      'Démarrez le proxy Shopify pour restaurer la sauvegarde {scope}.',
     'dashboard.heroTitle': 'Bienvenue sur Price Pilot',
     'dashboard.heroSubtitle': 'Votre cockpit centralisé pour la tarification Azor Jewelry.',
     'dashboard.heroBody':
