@@ -88,6 +88,7 @@ const persistUsername = (username) => {
 
 const SUPPLEMENT_BACKUP_STORAGE_KEY = 'price-pilot.supplement-backups';
 const SUPPLEMENTS_STORAGE_KEY = 'price-pilot.supplements';
+const SCOPE_BACKUP_STORAGE_KEY = 'price-pilot.scope-pricing-backups';
 const DEFAULT_NECKLACE_SIZE = necklaceSizes[0] ?? 41;
 
 const createEmptySupplementBackups = () => ({
@@ -435,17 +436,443 @@ const loadStoredSupplements = () => {
   return supplements;
 };
 
+const normalizeScopeValue = (value) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+const buildNormalizedSet = (values = []) => {
+  const normalized = new Set();
+  for (const entry of values) {
+    const scoped = normalizeScopeValue(entry);
+    if (scoped) {
+      normalized.add(scoped);
+    }
+  }
+  return normalized;
+};
+
 const SCOPE_COLLECTIONS = {
   global: [],
-  bracelets: ['bracelet'],
-  necklaces: ['collier'],
-  rings: ['bague'],
-  handchains: ['handchain'],
-  sets: ['ensemble'],
+  bracelets: ['bracelet', 'bracelets'],
+  necklaces: ['collier', 'colliers', 'necklace', 'necklaces'],
+  rings: ['bague', 'bagues', 'ring', 'rings'],
+  handchains: ['handchain', 'handchains', 'hand chain', 'hand-chain'],
+  sets: ['ensemble', 'ensembles', 'set', 'sets'],
+  others: [],
   'azor-archive': [],
 };
 
+const SCOPE_TAGS = {
+  global: [],
+  bracelets: ['bracelet', 'bracelets', 'brac'],
+  necklaces: ['necklace', 'necklaces', 'collier', 'colliers', 'nckl'],
+  rings: ['ring', 'rings', 'bague', 'bagues', 'rng'],
+  handchains: ['handchain', 'handchains', 'hand chain', 'hand-chain'],
+  sets: ['ensemble', 'ensembles', 'set', 'sets'],
+  others: [],
+  'azor-archive': [],
+};
+
+const SCOPE_COLLECTION_SETS = Object.fromEntries(
+  Object.entries(SCOPE_COLLECTIONS).map(([scope, values]) => [scope, buildNormalizedSet(values)]),
+);
+
+const SCOPE_TAG_SETS = Object.fromEntries(
+  Object.entries(SCOPE_TAGS).map(([scope, values]) => [scope, buildNormalizedSet(values)]),
+);
+
+const PRIMARY_SCOPE_COLLECTIONS = new Set([
+  ...SCOPE_COLLECTION_SETS.bracelets,
+  ...SCOPE_COLLECTION_SETS.necklaces,
+  ...SCOPE_COLLECTION_SETS.rings,
+]);
+
+const PRIMARY_SCOPE_TAGS = new Set([
+  ...SCOPE_TAG_SETS.bracelets,
+  ...SCOPE_TAG_SETS.necklaces,
+  ...SCOPE_TAG_SETS.rings,
+]);
+
 const BACKUP_SCOPES = Object.keys(SCOPE_COLLECTIONS);
+
+const DEFAULT_SCOPE_COPY = {
+  updateLabel: 'pricing update',
+  loadingMessage: 'Applying pricing update...',
+  successLogMessage: 'Pricing update completed.',
+  failureLogMessage: 'Failed to apply pricing update to Shopify.',
+};
+
+const SCOPE_COPY = {
+  global: {
+    updateLabel: 'global pricing',
+    loadingMessage: 'Applying global pricing...',
+    successLogMessage: 'Global pricing update completed.',
+    failureLogMessage: 'Failed to apply global pricing update to Shopify.',
+  },
+  bracelets: {
+    updateLabel: 'bracelet pricing',
+    loadingMessage: 'Applying bracelet pricing...',
+    successLogMessage: 'Bracelet pricing update completed.',
+    failureLogMessage: 'Failed to apply bracelet pricing update to Shopify.',
+  },
+  necklaces: {
+    updateLabel: 'necklace pricing',
+    loadingMessage: 'Applying necklace pricing...',
+    successLogMessage: 'Necklace pricing update completed.',
+    failureLogMessage: 'Failed to apply necklace pricing update to Shopify.',
+  },
+  rings: {
+    updateLabel: 'ring pricing',
+    loadingMessage: 'Applying ring pricing...',
+    successLogMessage: 'Ring pricing update completed.',
+    failureLogMessage: 'Failed to apply ring pricing update to Shopify.',
+  },
+  handchains: {
+    updateLabel: 'hand chain pricing',
+    loadingMessage: 'Applying hand chain pricing...',
+    successLogMessage: 'Hand chain pricing update completed.',
+    failureLogMessage: 'Failed to apply hand chain pricing update to Shopify.',
+  },
+  sets: {
+    updateLabel: 'set pricing',
+    loadingMessage: 'Applying set pricing...',
+    successLogMessage: 'Set pricing update completed.',
+    failureLogMessage: 'Failed to apply set pricing update to Shopify.',
+  },
+  others: {
+    updateLabel: 'specialty pricing',
+    loadingMessage: 'Applying specialty pricing...',
+    successLogMessage: 'Specialty pricing update completed.',
+    failureLogMessage: 'Failed to apply specialty pricing update to Shopify.',
+  },
+};
+
+const getScopeCopy = (scope) => ({
+  ...DEFAULT_SCOPE_COPY,
+  ...(SCOPE_COPY[scope] ?? {}),
+});
+
+const normalizeScopeKey = (scope) => normalizeScopeValue(scope);
+
+const clampProgressValue = (value) => Math.min(100, Math.max(0, Math.round(value)));
+
+const normalizeProgressValue = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? clampProgressValue(numeric) : null;
+};
+
+const matchesTagSet = (tagSet, tags) => {
+  if (!(tagSet instanceof Set) || tagSet.size === 0) {
+    return false;
+  }
+
+  if (!Array.isArray(tags)) {
+    return false;
+  }
+
+  for (const tag of tags) {
+    const normalizedTag = normalizeScopeValue(tag);
+    if (normalizedTag && tagSet.has(normalizedTag)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const isPrimaryScopeProduct = (collectionKey, tags) => {
+  if (PRIMARY_SCOPE_COLLECTIONS.has(collectionKey)) {
+    return true;
+  }
+
+  return matchesTagSet(PRIMARY_SCOPE_TAGS, tags);
+};
+
+const createScopeMatcher = (scope, collectionSet, options = {}) => {
+  const normalizedScope = normalizeScopeKey(scope);
+  const includeInactive = options.includeInactive ?? false;
+  const treatAsGlobal =
+    normalizedScope === 'global' ||
+    (normalizedScope !== 'others' && collectionSet instanceof Set && collectionSet.size === 0);
+  const tagSet = SCOPE_TAG_SETS[normalizedScope];
+
+  return (product) => {
+    if (!product || typeof product !== 'object') {
+      return false;
+    }
+
+    if (!includeInactive && product.status !== 'active') {
+      return false;
+    }
+
+    const productCollection = normalizeScopeKey(product.collection);
+
+    if (normalizedScope === 'others') {
+      return !isPrimaryScopeProduct(productCollection, product.tags);
+    }
+
+    if (collectionSet instanceof Set && collectionSet.size > 0) {
+      if (collectionSet.has(productCollection)) {
+        return true;
+      }
+    } else if (treatAsGlobal) {
+      return true;
+    }
+
+    if (matchesTagSet(tagSet, product.tags)) {
+      return true;
+    }
+
+    return collectionSet instanceof Set && collectionSet.size === 0 ? treatAsGlobal : false;
+  };
+};
+
+const buildScopeRestorePlan = ({ scope, backupProducts, currentProducts }) => {
+  const normalizedScope = normalizeScopeKey(scope);
+  const collectionSet = buildCollectionSet(normalizedScope);
+  const matchesScope = createScopeMatcher(normalizedScope, collectionSet, {
+    includeInactive: true,
+  });
+
+  const backupById = new Map(backupProducts.map((product) => [product.id, product]));
+  const updatesByProduct = new Map();
+  const originalVariantLookup = new Map();
+  const updatedProducts = [];
+  const touchedCollections = new Set();
+  const restoredIds = new Set();
+
+  for (const product of currentProducts) {
+    if (!matchesScope(product)) {
+      updatedProducts.push(cloneProduct(product));
+      continue;
+    }
+
+    const collectionKey = normalizeScopeKey(product.collection);
+    if (collectionKey) {
+      touchedCollections.add(collectionKey);
+    }
+
+    const backupProduct = backupById.get(product.id);
+    if (!backupProduct) {
+      updatedProducts.push(cloneProduct(product));
+      continue;
+    }
+
+    const clonedBackup = cloneProduct(backupProduct);
+    restoredIds.add(clonedBackup.id);
+
+    const currentVariants = Array.isArray(product.variants) ? product.variants : [];
+    for (const variant of currentVariants) {
+      if (variant?.id) {
+        originalVariantLookup.set(String(variant.id), { ...variant });
+      }
+    }
+
+    const currentVariantLookup = new Map(
+      currentVariants.map((variant) => [String(variant?.id ?? ''), variant]),
+    );
+
+    const backupVariants = Array.isArray(clonedBackup.variants) ? clonedBackup.variants : [];
+
+    for (const variant of backupVariants) {
+      const variantId = String(variant?.id ?? '');
+      if (!variantId) {
+        continue;
+      }
+
+      const currentVariant = currentVariantLookup.get(variantId);
+      if (
+        !currentVariant ||
+        currentVariant.price !== variant.price ||
+        currentVariant.compareAtPrice !== variant.compareAtPrice
+      ) {
+        if (!updatesByProduct.has(clonedBackup.id)) {
+          updatesByProduct.set(clonedBackup.id, {
+            productId: clonedBackup.id,
+            productTitle: clonedBackup.title,
+            variants: [],
+          });
+        }
+
+        updatesByProduct.get(clonedBackup.id).variants.push({
+          id: variantId,
+          price: variant.price,
+          compareAtPrice: variant.compareAtPrice,
+        });
+      }
+    }
+
+    const backupCollection = normalizeScopeKey(clonedBackup.collection);
+    if (backupCollection) {
+      touchedCollections.add(backupCollection);
+    }
+
+    updatedProducts.push(clonedBackup);
+    backupById.delete(product.id);
+  }
+
+  for (const backupProduct of backupById.values()) {
+    if (!matchesScope(backupProduct)) {
+      continue;
+    }
+
+    const clonedBackup = cloneProduct(backupProduct);
+    restoredIds.add(clonedBackup.id);
+
+    const backupCollection = normalizeScopeKey(clonedBackup.collection);
+    if (backupCollection) {
+      touchedCollections.add(backupCollection);
+    }
+
+    if (!updatesByProduct.has(clonedBackup.id)) {
+      updatesByProduct.set(clonedBackup.id, {
+        productId: clonedBackup.id,
+        productTitle: clonedBackup.title,
+        variants: [],
+      });
+    }
+
+    const entry = updatesByProduct.get(clonedBackup.id);
+    const backupVariants = Array.isArray(clonedBackup.variants)
+      ? clonedBackup.variants
+      : [];
+
+    for (const variant of backupVariants) {
+      const variantId = String(variant?.id ?? '');
+      if (!variantId) {
+        continue;
+      }
+
+      entry.variants.push({
+        id: variantId,
+        price: variant.price,
+        compareAtPrice: variant.compareAtPrice,
+      });
+    }
+
+    updatedProducts.push(clonedBackup);
+  }
+
+  for (const [productId, entry] of updatesByProduct.entries()) {
+    entry.variants = entry.variants
+      .map((variant) => ({
+        id: variant?.id ? String(variant.id) : '',
+        price: variant?.price,
+        compareAtPrice: variant?.compareAtPrice,
+      }))
+      .filter((variant) => variant.id);
+
+    if (entry.variants.length === 0) {
+      updatesByProduct.delete(productId);
+    }
+  }
+
+  return {
+    updatedProducts,
+    updatesByProduct,
+    originalVariantLookup,
+    touchedCollections,
+    restoredIds,
+  };
+};
+
+const createEmptyScopeBackups = () =>
+  BACKUP_SCOPES.reduce((accumulator, scope) => {
+    accumulator[scope] = null;
+    return accumulator;
+  }, {});
+
+const sanitizeScopeBackups = (value) => {
+  if (!value || typeof value !== 'object') {
+    return createEmptyScopeBackups();
+  }
+
+  const normalized = createEmptyScopeBackups();
+
+  for (const scope of BACKUP_SCOPES) {
+    if (value[scope]) {
+      const sanitized = sanitizeBackupSnapshot(value[scope]);
+      if (sanitized) {
+        normalized[scope] = sanitized;
+      }
+    }
+  }
+
+  return normalized;
+};
+
+const loadStoredScopeBackups = () => {
+  if (typeof window === 'undefined') {
+    return createEmptyScopeBackups();
+  }
+
+  try {
+    const stored = window.localStorage.getItem(SCOPE_BACKUP_STORAGE_KEY);
+    if (!stored) {
+      return createEmptyScopeBackups();
+    }
+
+    const parsed = JSON.parse(stored);
+    return sanitizeScopeBackups(parsed);
+  } catch (error) {
+    console.warn('Failed to load scope pricing backups from localStorage:', error);
+    return createEmptyScopeBackups();
+  }
+};
+
+const persistLocalScopeBackups = (backups) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (!backups) {
+      window.localStorage.removeItem(SCOPE_BACKUP_STORAGE_KEY);
+      return;
+    }
+
+    const sanitized = sanitizeScopeBackups(backups);
+    window.localStorage.setItem(SCOPE_BACKUP_STORAGE_KEY, JSON.stringify(sanitized));
+  } catch (error) {
+    console.warn('Failed to persist scope pricing backups to localStorage:', error);
+  }
+};
+
+const buildProductPricingPreview = (product, adjustment) => {
+  const basePrice = Number(product.basePrice ?? 0);
+  const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
+  const updatedBasePrice = applyPercentage(basePrice, adjustment);
+  const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment);
+
+  const variants = (Array.isArray(product.variants) ? product.variants : []).map((variant) => {
+    const currentPrice = Number(variant?.price ?? basePrice);
+    const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
+    const nextPrice = applyPercentage(currentPrice, adjustment);
+    const nextCompare = applyPercentage(currentCompare, adjustment);
+    const changed = currentPrice !== nextPrice || currentCompare !== nextCompare;
+
+    return {
+      ...variant,
+      id: variant?.id ? String(variant.id) : `${product.id}-${variant?.title ?? 'variant'}`,
+      title: variant?.title ?? 'Variant',
+      price: nextPrice,
+      compareAtPrice: nextCompare,
+      previousPrice: currentPrice,
+      previousCompareAtPrice: currentCompare,
+      status: changed ? 'changed' : 'unchanged',
+    };
+  });
+
+  return {
+    product,
+    updatedBasePrice,
+    updatedCompareAtPrice,
+    variants,
+  };
+};
 
 const cloneVariant = (variant) => ({ ...variant });
 
@@ -463,8 +890,8 @@ const cloneProduct = (product) => ({
 const cloneProducts = (products = []) => products.map((product) => cloneProduct(product));
 
 const buildCollectionSet = (scope) => {
-  const collections = SCOPE_COLLECTIONS[scope] ?? [];
-  return new Set(collections.map((collection) => collection.toLowerCase()));
+  const sourceSet = SCOPE_COLLECTION_SETS[scope];
+  return sourceSet ? new Set(sourceSet) : new Set();
 };
 
 const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) => {
@@ -2046,11 +2473,13 @@ export const usePricingStore = create(
     supplements: loadStoredSupplements(),
     supplementBackups: loadStoredSupplementBackups(),
     supplementChangesPending: createSupplementChangeFlags(),
+    localScopeBackups: loadStoredScopeBackups(),
     backups: {},
     logs: [],
     loadingCounts: {},
     loadingScopes: [],
     pendingToasts: {},
+    scopeProgress: {},
 
     setUsername: (username) =>
       set(() => {
@@ -2058,6 +2487,35 @@ export const usePricingStore = create(
         return { username };
       }),
     setLanguage: (language) => set({ language }),
+
+    setScopeProgress: (scope, value) => {
+      const key = normalizeScopeKey(scope);
+      if (!key) {
+        return;
+      }
+
+      set((state) => {
+        const current = state.scopeProgress ?? {};
+        const next = { ...current };
+        const normalized = normalizeProgressValue(value);
+
+        if (normalized === null) {
+          if (!(key in next)) {
+            return {};
+          }
+
+          delete next[key];
+          return { scopeProgress: next };
+        }
+
+        if (next[key] === normalized) {
+          return {};
+        }
+
+        next[key] = normalized;
+        return { scopeProgress: next };
+      });
+    },
 
     log: (message, scope, level = 'info') => {
       const entry = {
@@ -2280,6 +2738,140 @@ export const usePricingStore = create(
       }
     },
 
+    captureLocalScopeBackup: (scope, options = {}) => {
+      const normalizedScope = normalizeScopeKey(scope);
+      if (!(normalizedScope in SCOPE_COLLECTIONS)) {
+        return { success: false, reason: 'unknown-scope' };
+      }
+
+      const { silent = false } = options;
+      const collectionSet = buildCollectionSet(normalizedScope);
+      const matchesScope = createScopeMatcher(normalizedScope, collectionSet, {
+        includeInactive: true,
+      });
+
+      const scopeProducts = get()
+        .products.filter((product) => matchesScope(product))
+        .map((product) => cloneProduct(product));
+
+      if (scopeProducts.length === 0) {
+        if (!silent) {
+          get().log('No products available for local backup.', normalizedScope, 'warning');
+        }
+        return { success: false, reason: 'empty' };
+      }
+
+      const snapshot = {
+        timestamp: new Date().toISOString(),
+        products: scopeProducts,
+      };
+
+      set((state) => {
+        const currentBackups = sanitizeScopeBackups(state.localScopeBackups);
+        const nextBackups = {
+          ...currentBackups,
+          [normalizedScope]: snapshot,
+        };
+        persistLocalScopeBackups(nextBackups);
+        return { localScopeBackups: nextBackups };
+      });
+
+      if (!silent) {
+        const count = scopeProducts.length;
+        const plural = count === 1 ? '' : 's';
+        get().log(
+          `Saved local backup with ${count} product${plural}.`,
+          normalizedScope,
+          'success',
+        );
+      }
+
+      return { success: true, count: scopeProducts.length, backup: snapshot };
+    },
+
+    restoreLocalScopeBackup: async (scope, options = {}) => {
+      const normalizedScope = normalizeScopeKey(scope);
+      if (!(normalizedScope in SCOPE_COLLECTIONS)) {
+        return { success: false, reason: 'unknown-scope' };
+      }
+
+      const backupEntry = sanitizeBackupSnapshot(get().localScopeBackups?.[normalizedScope]);
+      if (!hasBackupProducts(backupEntry)) {
+        get().log('No local backup available to restore.', normalizedScope, 'warning');
+        return { success: false, reason: 'missing-backup' };
+      }
+
+      const syncToShopify = options?.syncToShopify ?? true;
+      if (syncToShopify && !hasShopifyProxy()) {
+        get().log(
+          'Shopify proxy missing; unable to restore local backup to Shopify.',
+          normalizedScope,
+          'error',
+        );
+        return { success: false, reason: 'missing-proxy' };
+      }
+
+      const backupProducts = cloneProducts(backupEntry.products);
+      const currentProducts = get().products;
+      const {
+        updatedProducts,
+        updatesByProduct,
+        originalVariantLookup,
+        touchedCollections,
+        restoredIds,
+      } = buildScopeRestorePlan({
+        scope: normalizedScope,
+        backupProducts,
+        currentProducts,
+      });
+
+      if (!syncToShopify) {
+        set({ products: updatedProducts });
+        get().log('Local backup restored successfully.', normalizedScope, 'success');
+        return { success: true, restoredCount: restoredIds.size, updatedCount: 0 };
+      }
+
+      const restoreCollections =
+        normalizedScope === 'others'
+          ? Array.from(touchedCollections).filter(Boolean)
+          : SCOPE_COLLECTIONS[normalizedScope];
+
+      get().toggleLoading(normalizedScope, true);
+
+      try {
+        const result = await commitShopifyVariantUpdates({
+          scope: normalizedScope,
+          collection: restoreCollections,
+          updatedProducts,
+          updatesByProduct,
+          originalVariantLookup,
+          noChangesMessage: 'Shopify already matches the local backup.',
+          successLogMessage: 'Shopify variants aligned with local backup values.',
+          updateLabel: 'product',
+          failureLogMessage: 'Failed to push local backup restore to Shopify.',
+          set,
+          get,
+        });
+
+        if (result.success) {
+          get().log('Local backup restored successfully.', normalizedScope, 'success');
+        } else if (result.failedCount > 0) {
+          get().log(
+            'Local backup restore completed with Shopify errors. Review logs for details.',
+            normalizedScope,
+            'warning',
+          );
+        }
+
+        return {
+          ...result,
+          restoredCount: restoredIds.size,
+        };
+      } finally {
+        get().toggleLoading(normalizedScope, false);
+      }
+    },
+
     backupScope: async (scope) => {
       if (!(scope in SCOPE_COLLECTIONS)) {
         get().log('Unknown backup scope requested.', scope, 'error');
@@ -2443,125 +3035,29 @@ export const usePricingStore = create(
 
       const restoreToastId = toast.loading('Restoring backup...');
       const backupProducts = cloneProducts(backupEntry.products);
-      const backupById = new Map(backupProducts.map((product) => [product.id, product]));
-      const collectionSet = buildCollectionSet(scope);
-      const includeAllCollections = collectionSet.size === 0;
       const currentProducts = get().products;
-      const updatesByProduct = new Map();
-      const originalVariantLookup = new Map();
-      const updatedProducts = [];
-
-      for (const product of currentProducts) {
-        const productCollection =
-          typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
-        const collectionMatches = includeAllCollections || collectionSet.has(productCollection);
-
-        if (!collectionMatches) {
-          updatedProducts.push(product);
-          continue;
-        }
-
-        const backupProduct = backupById.get(product.id);
-        if (!backupProduct) {
-          updatedProducts.push(product);
-          continue;
-        }
-
-        const clonedBackup = cloneProduct(backupProduct);
-        const currentVariants = Array.isArray(product.variants) ? product.variants : [];
-
-        for (const variant of currentVariants) {
-          if (variant?.id) {
-            originalVariantLookup.set(String(variant.id), { ...variant });
-          }
-        }
-
-        const currentVariantLookup = new Map(
-          currentVariants.map((variant) => [String(variant?.id ?? ''), variant]),
-        );
-
-        for (const variant of clonedBackup.variants) {
-          const variantId = String(variant?.id ?? '');
-          if (!variantId) {
-            continue;
-          }
-
-          const currentVariant = currentVariantLookup.get(variantId);
-          if (!currentVariant) {
-            continue;
-          }
-
-          if (
-            currentVariant.price !== variant.price ||
-            currentVariant.compareAtPrice !== variant.compareAtPrice
-          ) {
-            if (!updatesByProduct.has(clonedBackup.id)) {
-              updatesByProduct.set(clonedBackup.id, {
-                productId: clonedBackup.id,
-                productTitle: clonedBackup.title,
-                variants: [],
-              });
-            }
-
-            updatesByProduct.get(clonedBackup.id).variants.push({
-              id: variantId,
-              price: variant.price,
-              compareAtPrice: variant.compareAtPrice,
-            });
-          }
-        }
-
-        updatedProducts.push(clonedBackup);
-        backupById.delete(product.id);
-      }
-
-      for (const backupProduct of backupById.values()) {
-        const clonedBackup = cloneProduct(backupProduct);
-        updatedProducts.push(clonedBackup);
-
-        if (!updatesByProduct.has(clonedBackup.id)) {
-          updatesByProduct.set(clonedBackup.id, {
-            productId: clonedBackup.id,
-            productTitle: clonedBackup.title,
-            variants: [],
-          });
-        }
-
-        const entry = updatesByProduct.get(clonedBackup.id);
-        for (const variant of clonedBackup.variants) {
-          const variantId = String(variant?.id ?? '');
-          if (!variantId) {
-            continue;
-          }
-
-          entry.variants.push({
-            id: variantId,
-            price: variant.price,
-            compareAtPrice: variant.compareAtPrice,
-          });
-        }
-      }
-
-      for (const [productId, entry] of updatesByProduct.entries()) {
-        entry.variants = entry.variants
-          .map((variant) => ({
-            id: variant?.id ? String(variant.id) : '',
-            price: variant?.price,
-            compareAtPrice: variant?.compareAtPrice,
-          }))
-          .filter((variant) => variant.id);
-
-        if (entry.variants.length === 0) {
-          updatesByProduct.delete(productId);
-        }
-      }
+      const {
+        updatedProducts,
+        updatesByProduct,
+        originalVariantLookup,
+        touchedCollections,
+      } = buildScopeRestorePlan({
+        scope,
+        backupProducts,
+        currentProducts,
+      });
 
       get().toggleLoading(scope, true);
 
       try {
+        const restoreCollections =
+          scope === 'others'
+            ? Array.from(touchedCollections).filter(Boolean)
+            : SCOPE_COLLECTIONS[scope];
+
         const result = await commitShopifyVariantUpdates({
           scope,
-          collection: SCOPE_COLLECTIONS[scope],
+          collection: restoreCollections,
           updatedProducts,
           updatesByProduct,
           originalVariantLookup,
@@ -2601,16 +3097,14 @@ export const usePricingStore = create(
       const backupProducts = cloneProducts(backupEntry.products);
       const backupById = new Map(backupProducts.map((product) => [product.id, product]));
       const collectionSet = buildCollectionSet(scope);
-      const includeAllCollections = collectionSet.size === 0;
+      const matchesScope = createScopeMatcher(scope, collectionSet, {
+        includeInactive: true,
+      });
       const currentProducts = get().products;
       const previews = [];
 
       for (const product of currentProducts) {
-        const productCollection =
-          typeof product.collection === 'string' ? product.collection.toLowerCase() : '';
-        const collectionMatches = includeAllCollections || collectionSet.has(productCollection);
-
-        if (!collectionMatches) {
+        if (!matchesScope(product)) {
           continue;
         }
 
@@ -2712,69 +3206,123 @@ export const usePricingStore = create(
       return previews;
     },
 
-    previewGlobalChange: (percent = 0) => {
+    previewGlobalChange: (percent = 0) => get().previewScopeChange('global', percent),
+
+    previewScopeChange: (scope, percent = 0) => {
+      const normalizedScope = normalizeScopeKey(scope);
+      if (!(normalizedScope in SCOPE_COLLECTIONS)) {
+        return [];
+      }
+
       const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+      const collectionSet = buildCollectionSet(normalizedScope);
+      const matchesScope = createScopeMatcher(normalizedScope, collectionSet);
       const { products } = get();
 
       return products
-        .filter((product) => product.status === 'active')
-        .map((product) => {
-          const basePrice = Number(product.basePrice ?? 0);
-          const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
-          const updatedBasePrice = applyPercentage(basePrice, adjustment);
-          const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment);
-
-          const variants = (Array.isArray(product.variants) ? product.variants : []).map(
-            (variant) => {
-              const currentPrice = Number(variant?.price ?? basePrice);
-              const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
-              const nextPrice = applyPercentage(currentPrice, adjustment);
-              const nextCompare = applyPercentage(currentCompare, adjustment);
-              const changed = currentPrice !== nextPrice || currentCompare !== nextCompare;
-
-              return {
-                ...variant,
-                id: variant?.id ? String(variant.id) : `${product.id}-${variant?.title ?? 'variant'}`,
-                title: variant?.title ?? 'Variant',
-                price: nextPrice,
-                compareAtPrice: nextCompare,
-                previousPrice: currentPrice,
-                previousCompareAtPrice: currentCompare,
-                status: changed ? 'changed' : 'unchanged',
-              };
-            },
-          );
-
-          return {
-            product,
-            updatedBasePrice,
-            updatedCompareAtPrice,
-            variants,
-          };
-        });
+        .filter((product) => matchesScope(product))
+        .map((product) => buildProductPricingPreview(product, adjustment));
     },
 
-    applyGlobalChange: async (percent = 0) => {
-      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+    applyGlobalChange: (percent = 0, options = {}) =>
+      get().applyScopedChange('global', percent, options),
 
-      get().toggleLoading('global', true);
-      const loadingToastId = toast.loading('Applying global pricing...');
+    applyScopedChange: async (scope, percent = 0, options = {}) => {
+      const normalizedScope = normalizeScopeKey(scope);
+      if (!(normalizedScope in SCOPE_COLLECTIONS)) {
+        get().log('Unknown pricing scope requested.', normalizedScope || scope, 'error');
+        return { success: false, reason: 'unknown-scope' };
+      }
+
+      const adjustment = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+      const { skipLocalBackup = false } = options;
+
+      if (!skipLocalBackup) {
+        get().captureLocalScopeBackup(normalizedScope, { silent: true });
+      }
+
+      const { loadingMessage, updateLabel, successLogMessage, failureLogMessage } =
+        getScopeCopy(normalizedScope);
+
+      get().toggleLoading(normalizedScope, true);
+      const loadingToastId = toast.loading(loadingMessage);
 
       try {
         if (!hasShopifyProxy()) {
-          get().log('Shopify proxy missing; unable to push global pricing updates.', 'global', 'error');
+          get().log(
+            'Shopify proxy missing; unable to push pricing updates.',
+            normalizedScope,
+            'error',
+          );
           return { success: false, reason: 'missing-proxy' };
         }
 
-        const products = get().products;
+        const storeState = get();
+        const products = storeState.products;
+        const setScopeProgress =
+          typeof storeState.setScopeProgress === 'function'
+            ? storeState.setScopeProgress
+            : () => {};
+        const collectionSet = buildCollectionSet(normalizedScope);
+        const matchesScope = createScopeMatcher(normalizedScope, collectionSet);
+        const { totalMatching, totalVariants } = Array.isArray(products)
+          ? products.reduce(
+              (accumulator, product) => {
+                if (!matchesScope(product)) {
+                  return accumulator;
+                }
+
+                const variantCount = Array.isArray(product?.variants)
+                  ? product.variants.length
+                  : 0;
+
+                return {
+                  totalMatching: accumulator.totalMatching + 1,
+                  totalVariants: accumulator.totalVariants + variantCount,
+                };
+              },
+              { totalMatching: 0, totalVariants: 0 },
+            )
+          : { totalMatching: 0, totalVariants: 0 };
+
+        const totalPreparationUnits = totalMatching + totalVariants;
+        let completedPreparationUnits = 0;
+        let currentProgress = null;
+
+        const commitProgressUpdate = (value) => {
+          currentProgress = clampProgressValue(value);
+          setScopeProgress(normalizedScope, currentProgress);
+        };
+
+        const updatePreparationProgress = () => {
+          if (totalPreparationUnits <= 0) {
+            return;
+          }
+
+          const ratio = Math.min(1, completedPreparationUnits / totalPreparationUnits);
+          commitProgressUpdate(ratio * 90);
+        };
+
+        if (totalPreparationUnits > 0) {
+          commitProgressUpdate(0);
+        } else {
+          commitProgressUpdate(100);
+        }
+
         const updatedProducts = [];
         const updatesByProduct = new Map();
         const originalVariantLookup = new Map();
+        const touchedCollections = new Set();
 
         for (const product of products) {
-          if (product.status !== 'active') {
+          if (!matchesScope(product)) {
             updatedProducts.push(product);
             continue;
+          }
+
+          const productCollection = normalizeScopeKey(product.collection);
+          if (productCollection) {
+            touchedCollections.add(productCollection);
           }
 
           const basePrice = Number(product.basePrice ?? 0);
@@ -2826,25 +3374,72 @@ export const usePricingStore = create(
             baseCompareAtPrice: updatedCompareAtPrice,
             variants: nextVariants,
           });
+
+          completedPreparationUnits += 1 + currentVariants.length;
+          updatePreparationProgress();
         }
 
-        return await commitShopifyVariantUpdates({
-          scope: 'global',
-          collection: [],
+        if (totalPreparationUnits > 0) {
+          completedPreparationUnits = totalPreparationUnits;
+          updatePreparationProgress();
+        }
+
+        const totalVariantUpdates = Array.from(updatesByProduct.values()).reduce(
+          (sum, entry) =>
+            sum + (Array.isArray(entry?.variants) ? entry.variants.length : 0),
+          0,
+        );
+
+        if (totalVariantUpdates === 0) {
+          commitProgressUpdate(100);
+        } else {
+          commitProgressUpdate(Math.max(currentProgress ?? 0, 90));
+        }
+
+        const commitCollections =
+          normalizedScope === 'others'
+            ? Array.from(touchedCollections).filter(Boolean)
+            : SCOPE_COLLECTIONS[normalizedScope];
+
+        const result = await commitShopifyVariantUpdates({
+          scope: normalizedScope,
+          collection: commitCollections,
           updatedProducts,
           updatesByProduct,
           originalVariantLookup,
           noChangesMessage:
             'No Shopify changes required; all variant prices already reflect this adjustment.',
-          successLogMessage: 'Global pricing update completed.',
-          updateLabel: 'global pricing',
-          failureLogMessage: 'Failed to apply global pricing update to Shopify.',
+          successLogMessage,
+          updateLabel,
+          failureLogMessage,
           set,
           get,
         });
+
+        if (totalVariantUpdates > 0) {
+          const updatedCount = Number.isFinite(result?.updatedCount)
+            ? result.updatedCount
+            : 0;
+          const failedCount = Number.isFinite(result?.failedCount)
+            ? result.failedCount
+            : 0;
+          const attempted = Math.max(
+            Math.min(totalVariantUpdates, updatedCount + failedCount),
+            result?.success === false ? totalVariantUpdates : 0,
+          );
+          const ratio = totalVariantUpdates > 0 ? attempted / totalVariantUpdates : 1;
+          commitProgressUpdate(90 + ratio * 10);
+        } else {
+          commitProgressUpdate(100);
+        }
+
+        return result;
       } finally {
-        get().toggleLoading('global', false);
+        get().toggleLoading(normalizedScope, false);
         toast.dismiss(loadingToastId);
+        setTimeout(() => {
+          setScopeProgress(normalizedScope, null);
+        }, 400);
       }
     },
     previewBracelets: () => {
