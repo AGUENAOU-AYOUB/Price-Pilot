@@ -56,6 +56,58 @@ const sanitizeVariantKey = (value = '') => {
   return normalized || null;
 };
 
+const buildChainMatchers = (name, aliases = []) => {
+  const normalizedSet = new Set();
+  const sanitizedSet = new Set();
+
+  const register = (raw) => {
+    if (!raw && raw !== 0) return;
+
+    const normalized = normalize(raw);
+    if (normalized && normalized.length >= 2) {
+      normalizedSet.add(normalized);
+    }
+
+    const sanitized = sanitizeVariantKey(raw);
+    if (sanitized && sanitized.length >= 3) {
+      sanitizedSet.add(sanitized);
+    }
+  };
+
+  register(name);
+
+  const normalizedName = normalize(name);
+  if (normalizedName) {
+    const collapsed = normalizedName.replace(/\s+/g, '');
+    if (collapsed && collapsed !== normalizedName) {
+      register(collapsed);
+    }
+
+    const tokens = normalizedName.split(/\s+/).filter(Boolean);
+    if (tokens.length > 1) {
+      register(tokens.join(' '));
+      register(tokens.join(''));
+    }
+
+    for (const token of tokens) {
+      if (token && token.length >= 3) {
+        register(token);
+      }
+    }
+  }
+
+  if (Array.isArray(aliases)) {
+    for (const alias of aliases) {
+      register(alias);
+    }
+  }
+
+  const normalizedMatchers = Array.from(normalizedSet).sort((a, b) => b.length - a.length);
+  const sanitizedMatchers = Array.from(sanitizedSet).sort((a, b) => b.length - a.length);
+
+  return { normalizedMatchers, sanitizedMatchers };
+};
+
 const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const buildChainRemovalPatterns = (names = []) => {
@@ -124,7 +176,29 @@ const collectVariantFields = (variant) => {
     values.push(...splitVariantDescriptor(variant.title));
   }
 
-  return values.map((v) => normalize(v)).filter(Boolean);
+  const seen = new Set();
+  const results = [];
+
+  for (const raw of values) {
+    if (raw === null || raw === undefined) {
+      continue;
+    }
+
+    const normalized = normalize(raw);
+    if (!normalized) {
+      continue;
+    }
+
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+
+    const sanitized = sanitizeVariantKey(raw);
+    results.push({ raw, normalized, sanitized });
+  }
+
+  return results;
 };
 
 const DEFAULT_BRACELET_PARENT_KEY = 'default';
@@ -243,20 +317,34 @@ const refreshDerivedSupplements = (module) => {
   supplementsState.necklaceSizes = Array.isArray(module?.necklaceSizes) ? [...module.necklaceSizes] : [];
 
   for (const [name, supplement] of Object.entries(supplementsState.braceletBase)) {
-    supplementsState.bracelet.set(normalize(name), { name, supplement: Number(supplement) || 0 });
+    const key = normalize(name);
+    const matchers = buildChainMatchers(name);
+    supplementsState.bracelet.set(key, {
+      name,
+      supplement: Number(supplement) || 0,
+      matchers,
+    });
   }
   for (const [name, config] of Object.entries(supplementsState.necklaceBase)) {
     const key = normalize(name);
     const sizes = sanitizeNecklaceSizeMap(config?.sizes, supplementsState.necklaceSizes);
+    const matchers = buildChainMatchers(name, config?.aliases);
     supplementsState.necklace.set(key, {
       name,
       supplement: Number(config?.supplement) || 0,
       perCm: Number(config?.perCm) || 0,
       sizes,
+      matchers,
     });
   }
 
-  braceletChainSanitizedKeys = Array.from(supplementsState.bracelet.keys());
+  braceletChainSanitizedKeys = Array.from(
+    new Set(
+      Array.from(supplementsState.bracelet.values())
+        .map((entry) => sanitizeVariantKey(entry?.name))
+        .filter(Boolean),
+    ),
+  );
   const braceletNames = Array.from(supplementsState.bracelet.values())
     .map((entry) => entry?.name)
     .filter(Boolean);
@@ -389,16 +477,56 @@ const resolveProductKind = async (product, reqId) => {
 
 const identifyChainType = (variant, productKind) => {
   const fields = collectVariantFields(variant);
+  if (fields.length === 0) {
+    return null;
+  }
+
   const source = productKind === 'necklace' ? supplementsState.necklace : supplementsState.bracelet;
 
+  let bestMatch = null;
+  let bestScore = -Infinity;
+
   for (const field of fields) {
+    const normalizedField = field.normalized;
+    const sanitizedField = field.sanitized;
+
     for (const [normalizedName, config] of source) {
-      if (field.includes(normalizedName)) {
-        return { key: normalizedName, config };
+      const matchers = config?.matchers;
+      const normalizedMatchers = Array.isArray(matchers?.normalizedMatchers)
+        ? matchers.normalizedMatchers
+        : [normalizedName];
+      for (const candidate of normalizedMatchers) {
+        if (!candidate) continue;
+        if (normalizedField.includes(candidate)) {
+          const score = candidate.length * 2;
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = { key: normalizedName, config };
+          }
+        }
+      }
+
+      if (!sanitizedField) {
+        continue;
+      }
+
+      const sanitizedMatchers = Array.isArray(matchers?.sanitizedMatchers)
+        ? matchers.sanitizedMatchers
+        : [];
+      for (const candidate of sanitizedMatchers) {
+        if (!candidate) continue;
+        if (sanitizedField.includes(candidate)) {
+          const score = candidate.length * 2 - 1; // prefer normalized matches when equal length
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = { key: normalizedName, config };
+          }
+        }
       }
     }
   }
-  return null;
+
+  return bestMatch;
 };
 
 const extractVariantSize = (variant) => {
@@ -423,7 +551,9 @@ const pickForsatBaseVariant = (variants, productKind, reqId) => {
 
   if (candidates.length === 0) {
     // fallback by title text if mapping ever misses
-    const byTitle = variants.find((v) => collectVariantFields(v).some((f) => f.includes(FORSAT_S_KEY)));
+    const byTitle = variants.find((v) =>
+      collectVariantFields(v).some((f) => f.normalized.includes(FORSAT_S_KEY)),
+    );
     if (byTitle) {
       log.warn(`[${reqId}] base via title fallback: ${byTitle.id} "${byTitle.title}"`);
       return byTitle;
@@ -453,21 +583,73 @@ const pickForsatBaseVariant = (variants, productKind, reqId) => {
   return best.variant;
 };
 
-// ---------- pricing ----------
-const calculateNecklacePrice = (basePrice, chainConfig = {}, size) => {
-  const normalizedSize = Number.isFinite(size) ? size : DEFAULT_NECKLACE_SIZE;
-  const override =
-    chainConfig?.sizes instanceof Map ? chainConfig.sizes.get(normalizedSize) : undefined;
-  if (Number.isFinite(override)) {
-    return basePrice + override;
+const pickNecklaceBaseEntry = (candidates = []) => {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return null;
   }
 
-  const baseSupplement = Number(chainConfig?.supplement) || 0;
-  const perCm = Number(chainConfig?.perCm) || 0;
-  const delta = normalizedSize - DEFAULT_NECKLACE_SIZE;
-  const incremental = delta > 0 ? delta * perCm : 0;
+  let best = null;
+  let bestScore = null;
 
-  return basePrice + baseSupplement + incremental;
+  for (const entry of candidates) {
+    const sizeKnown = Number.isFinite(entry.size);
+    const diff = sizeKnown ? Math.abs(entry.size - DEFAULT_NECKLACE_SIZE) : Number.POSITIVE_INFINITY;
+    const missingPrice = entry.hasPrice ? 0 : 1;
+    const score = { diff, missingPrice };
+
+    if (
+      !best ||
+      score.diff < bestScore.diff ||
+      (score.diff === bestScore.diff && score.missingPrice < bestScore.missingPrice)
+    ) {
+      best = entry;
+      bestScore = score;
+    }
+  }
+
+  return best;
+};
+
+// ---------- pricing ----------
+const normalizeNecklaceSize = (size) =>
+  Number.isFinite(size) ? size : DEFAULT_NECKLACE_SIZE;
+
+const resolveNecklaceSizeOverride = (chainConfig = {}, size) => {
+  if (chainConfig?.sizes instanceof Map) {
+    const override = chainConfig.sizes.get(size);
+    if (Number.isFinite(override)) {
+      return override;
+    }
+  }
+  return null;
+};
+
+const computeNecklaceIncrement = (chainConfig = {}, size) => {
+  const override = resolveNecklaceSizeOverride(chainConfig, size);
+  if (override !== null) {
+    return override;
+  }
+
+  const baseSupplementRaw = Number(chainConfig?.supplement);
+  const perCmRaw = Number(chainConfig?.perCm);
+  const baseSupplement = Number.isFinite(baseSupplementRaw) ? baseSupplementRaw : 0;
+  const perCm = Number.isFinite(perCmRaw) ? perCmRaw : 0;
+
+  return baseSupplement + (size - DEFAULT_NECKLACE_SIZE) * perCm;
+};
+
+const calculateNecklacePrice = (basePrice, chainConfig = {}, size) => {
+  const normalizedSize = normalizeNecklaceSize(size);
+  return basePrice + computeNecklaceIncrement(chainConfig, normalizedSize);
+};
+
+const deriveNecklaceBaseFromPrice = (price, chainConfig = {}, size) => {
+  if (!Number.isFinite(price)) {
+    return null;
+  }
+
+  const normalizedSize = normalizeNecklaceSize(size);
+  return price - computeNecklaceIncrement(chainConfig, normalizedSize);
 };
 
 const pricesEqual = (current, target) =>
@@ -685,58 +867,198 @@ app.post('/webhooks/product-update', async (req, res) => {
         }
       }
     } else {
-      const baseVariant = pickForsatBaseVariant(product.variants, productKind, reqId);
-      if (!baseVariant) {
-        log.warn(`[${reqId}] Forsat S base variant missing, skipping`);
-        return res.status(200).json({ skipped: true, reason: 'Forsat S base variant missing' });
-      }
-
-      const basePrice = moneyToNumber(baseVariant.price);
-      const baseCompareAt =
-        baseVariant.compare_at_price != null ? moneyToNumber(baseVariant.compare_at_price) : null;
-      log.debug(`[${reqId}] base variant`, {
-        id: baseVariant.id,
-        title: baseVariant.title,
-        price: basePrice,
-        compareAt: baseCompareAt,
-      });
-
-      for (const variant of product.variants) {
-        if (variant.id === baseVariant.id) {
-          log.debug(`[${reqId}] skip base ${variant.id}`);
-          continue;
+      const productOptions = Array.isArray(product.options) ? product.options : [];
+      const extraOptionIndexSet = new Set();
+      productOptions.forEach((option, idx) => {
+        const normalizedName = normalize(option?.name);
+        if (!normalizedName) {
+          return;
         }
 
+        if (normalizedName === 'chain variants' || normalizedName === 'taille de chaine') {
+          return;
+        }
+
+        const position = Number(option?.position);
+        const index = Number.isFinite(position) ? position : idx + 1;
+        if (index >= 1) {
+          extraOptionIndexSet.add(index);
+        }
+      });
+      const extraOptionIndices = Array.from(extraOptionIndexSet).sort((a, b) => a - b);
+
+      const DEFAULT_CONTEXT_KEY = '__default__';
+      const buildContextKey = (variant) => {
+        if (extraOptionIndices.length === 0) {
+          return { key: DEFAULT_CONTEXT_KEY, labelParts: [] };
+        }
+
+        const labelParts = [];
+        const keyParts = [];
+        for (const optionIndex of extraOptionIndices) {
+          const raw = variant?.[`option${optionIndex}`];
+          labelParts.push(raw ?? '');
+          const normalizedValue = normalize(raw);
+          keyParts.push(normalizedValue || `__empty${optionIndex}`);
+        }
+
+        const key = keyParts.join('::') || DEFAULT_CONTEXT_KEY;
+        return { key, labelParts };
+      };
+
+      const contexts = new Map();
+
+      for (const variant of product.variants) {
         const chainType = identifyChainType(variant, productKind);
         if (!chainType) {
           log.debug(`[${reqId}] skip ${variant.id}: no chainType match for "${variant.title}"`);
           continue;
         }
 
+        const { key, labelParts } = buildContextKey(variant);
+        if (!contexts.has(key)) {
+          const label = labelParts.filter(Boolean).join(' / ') || 'default';
+          contexts.set(key, {
+            key,
+            label,
+            variants: [],
+            baseCandidates: [],
+            baseVariantId: null,
+            basePrice: null,
+            baseCompareAt: null,
+          });
+        }
+
+        const context = contexts.get(key);
+        const hasPrice = variant.price !== null && variant.price !== undefined && variant.price !== '';
+        const hasCompare =
+          variant.compare_at_price !== null &&
+          variant.compare_at_price !== undefined &&
+          variant.compare_at_price !== '';
+        const price = hasPrice ? moneyToNumber(variant.price) : null;
+        const compareAt = hasCompare ? moneyToNumber(variant.compare_at_price) : null;
         const size = extractVariantSize(variant);
-        const targetPrice = calculateNecklacePrice(basePrice, chainType.config, size);
-        const targetCompareAt = baseCompareAt !== null ? baseCompareAt + (targetPrice - basePrice) : null;
 
-        const needsPrice = !pricesEqual(variant.price, targetPrice);
-        const needsCompareAt = !compareAtEqual(variant.compare_at_price, targetCompareAt);
-
-        log.debug(`[${reqId}] variant ${variant.id}`, {
-          title: variant.title,
-          chainKey: chainType.key,
+        const entry = {
+          variant,
+          chainType,
           size,
-          currentPrice: variant.price,
-          targetPrice,
-          currentCompareAt: variant.compare_at_price,
-          targetCompareAt,
-          needsPrice,
-          needsCompareAt,
-        });
+          price,
+          compareAt,
+          hasPrice,
+          hasCompare,
+        };
+        context.variants.push(entry);
+        if (chainType.key === FORSAT_S_KEY) {
+          context.baseCandidates.push(entry);
+        }
+      }
 
-        if (!needsPrice && !needsCompareAt) {
+      if (contexts.size === 0) {
+        log.warn(`[${reqId}] no necklace chain matches, skipping`);
+        return res.status(200).json({ skipped: true, reason: 'No necklace chain matches' });
+      }
+
+      for (const context of contexts.values()) {
+        const baseEntry = pickNecklaceBaseEntry(context.baseCandidates);
+        if (baseEntry) {
+          context.baseVariantId = baseEntry.variant.id;
+          if (baseEntry.hasPrice && Number.isFinite(baseEntry.price)) {
+            context.basePrice = baseEntry.price;
+          }
+          if (baseEntry.hasCompare && Number.isFinite(baseEntry.compareAt)) {
+            context.baseCompareAt = baseEntry.compareAt;
+          }
+        }
+
+        if (!Number.isFinite(context.basePrice)) {
+          for (const entry of context.variants) {
+            if (!entry.hasPrice) {
+              continue;
+            }
+
+            const candidate = deriveNecklaceBaseFromPrice(
+              entry.price,
+              entry.chainType.config,
+              entry.size,
+            );
+            if (Number.isFinite(candidate)) {
+              context.basePrice = candidate;
+              break;
+            }
+          }
+        }
+
+        if (!Number.isFinite(context.basePrice)) {
+          log.warn(`[${reqId}] context=${context.label} missing base price, skipping`);
           continue;
         }
 
-        updates.push({ variant, targetPrice, targetCompareAt });
+        if (!Number.isFinite(context.baseCompareAt)) {
+          let derivedCompare = null;
+          for (const entry of context.variants) {
+            if (!entry.hasCompare) {
+              continue;
+            }
+
+            const candidate = deriveNecklaceBaseFromPrice(
+              entry.compareAt,
+              entry.chainType.config,
+              entry.size,
+            );
+            if (Number.isFinite(candidate)) {
+              derivedCompare = candidate;
+              break;
+            }
+          }
+          context.baseCompareAt = Number.isFinite(derivedCompare) ? derivedCompare : null;
+        }
+
+        log.debug(`[${reqId}] necklace context`, {
+          context: context.label,
+          baseVariantId: context.baseVariantId,
+          basePrice: context.basePrice,
+          baseCompareAt: context.baseCompareAt,
+        });
+
+        for (const entry of context.variants) {
+          if (context.baseVariantId && entry.variant.id === context.baseVariantId) {
+            log.debug(`[${reqId}] skip base ${entry.variant.id} (context=${context.label})`);
+            continue;
+          }
+
+          const targetPrice = calculateNecklacePrice(
+            context.basePrice,
+            entry.chainType.config,
+            entry.size,
+          );
+          const targetCompareAt =
+            context.baseCompareAt !== null
+              ? context.baseCompareAt + (targetPrice - context.basePrice)
+              : null;
+
+          const needsPrice = !pricesEqual(entry.variant.price, targetPrice);
+          const needsCompareAt = !compareAtEqual(entry.variant.compare_at_price, targetCompareAt);
+
+          log.debug(`[${reqId}] variant ${entry.variant.id}`, {
+            title: entry.variant.title,
+            context: context.label,
+            chainKey: entry.chainType.key,
+            size: entry.size,
+            currentPrice: entry.variant.price,
+            targetPrice,
+            currentCompareAt: entry.variant.compare_at_price,
+            targetCompareAt,
+            needsPrice,
+            needsCompareAt,
+          });
+
+          if (!needsPrice && !needsCompareAt) {
+            continue;
+          }
+
+          updates.push({ variant: entry.variant, targetPrice, targetCompareAt });
+        }
       }
     }
 

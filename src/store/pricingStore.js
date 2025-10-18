@@ -212,21 +212,22 @@ const resolveStoredNecklaceSupplement = (entry, size) => {
     return 0;
   }
 
+  const normalizedSize = Number.isFinite(size) ? size : DEFAULT_NECKLACE_SIZE;
   const sizes = entry.sizes;
   if (sizes && typeof sizes === 'object') {
-    const direct = sizes[size] ?? sizes[String(size)];
+    const direct = sizes[normalizedSize] ?? sizes[String(normalizedSize)];
     const numeric = Number(direct);
     if (Number.isFinite(numeric)) {
       return numeric;
     }
   }
 
-  const baseSupplement = Number(entry?.supplement) || 0;
-  const perCm = Number(entry?.perCm) || 0;
-  const delta = size - DEFAULT_NECKLACE_SIZE;
-  const incremental = delta > 0 ? delta * perCm : 0;
+  const baseSupplementRaw = Number(entry?.supplement);
+  const perCmRaw = Number(entry?.perCm);
+  const baseSupplement = Number.isFinite(baseSupplementRaw) ? baseSupplementRaw : 0;
+  const perCm = Number.isFinite(perCmRaw) ? perCmRaw : 0;
 
-  return baseSupplement + incremental;
+  return baseSupplement + (normalizedSize - DEFAULT_NECKLACE_SIZE) * perCm;
 };
 
 const sanitizeNecklaceSupplementMap = (value) => {
