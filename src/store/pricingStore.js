@@ -89,6 +89,36 @@ const persistUsername = (username) => {
 const SUPPLEMENT_BACKUP_STORAGE_KEY = 'price-pilot.supplement-backups';
 const SUPPLEMENTS_STORAGE_KEY = 'price-pilot.supplements';
 const DEFAULT_NECKLACE_SIZE = necklaceSizes[0] ?? 41;
+const DEFAULT_NECKLACE_CHAIN = 'Forsat S';
+const NECKLACE_REQUIRED_TAG = 'nckl';
+
+const normalizeTag = (value) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  return String(value).trim().toLowerCase();
+};
+
+const productHasTag = (product, tag) => {
+  const target = normalizeTag(tag);
+  if (!target) {
+    return false;
+  }
+
+  const rawTags = Array.isArray(product?.tags)
+    ? product.tags
+    : typeof product?.tags === 'string'
+      ? product.tags.split(',')
+      : [];
+
+  return rawTags.some((entry) => normalizeTag(entry) === target);
+};
+
+const isNecklaceProduct = (product) =>
+  product?.collection === 'collier' &&
+  product?.status === 'active' &&
+  productHasTag(product, NECKLACE_REQUIRED_TAG);
 
 const createEmptySupplementBackups = () => ({
   bracelets: null,
@@ -223,8 +253,8 @@ const resolveStoredNecklaceSupplement = (entry, size) => {
 
   const baseSupplement = Number(entry?.supplement) || 0;
   const perCm = Number(entry?.perCm) || 0;
-  const delta = size - DEFAULT_NECKLACE_SIZE;
-  const incremental = delta > 0 ? delta * perCm : 0;
+  const delta = Number(size) - DEFAULT_NECKLACE_SIZE;
+  const incremental = Number.isFinite(delta) ? delta * perCm : 0;
 
   return baseSupplement + incremental;
 };
@@ -1555,8 +1585,12 @@ const collectNecklaceGroupsFromProduct = (product, chainTypeSupplements = {}) =>
     }
 
     const groupKey = signature.groupKey ?? null;
-    const preference = Number.isFinite(size)
+    const sizePreference = Number.isFinite(size)
       ? Math.abs(size - DEFAULT_NECKLACE_SIZE)
+      : Number.POSITIVE_INFINITY;
+    const chainPreference = signature.chain === DEFAULT_NECKLACE_CHAIN ? 0 : 1;
+    const preference = Number.isFinite(sizePreference)
+      ? chainPreference * 1000 + sizePreference
       : Number.POSITIVE_INFINITY;
 
     const existing = entries.get(groupKey);
@@ -3027,7 +3061,7 @@ export const usePricingStore = create(
     previewNecklaces: () => {
       const { products, supplements } = get();
       return products
-        .filter((product) => product.collection === 'collier' && product.status === 'active')
+        .filter((product) => isNecklaceProduct(product))
         .map((product) => {
           const groups = collectNecklaceGroupsFromProduct(product, supplements.necklaces);
           const lookup = new Map();
@@ -3091,7 +3125,7 @@ export const usePricingStore = create(
         const missingSummaries = [];
 
         for (const product of products) {
-          if (product.collection !== 'collier') {
+          if (!isNecklaceProduct(product)) {
             updatedProducts.push(product);
             continue;
           }
