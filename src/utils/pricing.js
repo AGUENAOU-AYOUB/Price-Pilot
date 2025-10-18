@@ -433,8 +433,8 @@ export const resolveNecklaceSupplement = (data, size) => {
 
   const baseSupplement = Number(data?.supplement) || 0;
   const perCm = Number(data?.perCm) || 0;
-  const delta = size - DEFAULT_NECKLACE_SIZE;
-  const incremental = delta > 0 ? delta * perCm : 0;
+  const delta = Number(size) - DEFAULT_NECKLACE_SIZE;
+  const incremental = Number.isFinite(delta) ? delta * perCm : 0;
   return baseSupplement + incremental;
 };
 
