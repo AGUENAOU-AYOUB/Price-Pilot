@@ -462,12 +462,12 @@ const calculateNecklacePrice = (basePrice, chainConfig = {}, size) => {
     return basePrice + override;
   }
 
-  const baseSupplement = Number(chainConfig?.supplement) || 0;
-  const perCm = Number(chainConfig?.perCm) || 0;
-  const delta = normalizedSize - DEFAULT_NECKLACE_SIZE;
-  const incremental = delta > 0 ? delta * perCm : 0;
+  const baseSupplementRaw = Number(chainConfig?.supplement);
+  const perCmRaw = Number(chainConfig?.perCm);
+  const baseSupplement = Number.isFinite(baseSupplementRaw) ? baseSupplementRaw : 0;
+  const perCm = Number.isFinite(perCmRaw) ? perCmRaw : 0;
 
-  return basePrice + baseSupplement + incremental;
+  return basePrice + baseSupplement + (normalizedSize - DEFAULT_NECKLACE_SIZE) * perCm;
 };
 
 const pricesEqual = (current, target) =>
