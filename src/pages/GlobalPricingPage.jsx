@@ -38,6 +38,37 @@ const SECTION_DEFINITIONS = [
 ];
 
 export function GlobalPricingPage() {
+  const DEFAULT_ROUNDING = 'luxury';
+  const SECTION_DEFINITIONS = useMemo(
+    () => [
+      {
+        key: 'global-bracelets',
+        labelKey: 'global.section.bracelets.title',
+        subtitleKey: 'global.section.bracelets.subtitle',
+        collections: ['bracelet'],
+      },
+      {
+        key: 'global-necklaces',
+        labelKey: 'global.section.necklaces.title',
+        subtitleKey: 'global.section.necklaces.subtitle',
+        collections: ['collier'],
+      },
+      {
+        key: 'global-rings',
+        labelKey: 'global.section.rings.title',
+        subtitleKey: 'global.section.rings.subtitle',
+        collections: ['bague'],
+      },
+      {
+        key: 'global-earrings',
+        labelKey: 'global.section.earrings.title',
+        subtitleKey: 'global.section.earrings.subtitle',
+        collections: ['earring'],
+      },
+    ],
+    [],
+  );
+
   const previewCollectionChange = usePricingStore((state) => state.previewCollectionChange);
   const applyCollectionChange = usePricingStore((state) => state.applyCollectionChange);
   const backupCollectionLocally = usePricingStore((state) => state.backupCollectionLocally);
@@ -46,6 +77,7 @@ export function GlobalPricingPage() {
   const loadingCounts = usePricingStore((state) => state.loadingCounts);
   const { t } = useTranslation();
   const toast = useToast();
+
   const roundingOptions = useMemo(
     () => [
       { value: 'luxury', label: t('global.rounding.luxury') },
@@ -169,28 +201,33 @@ export function GlobalPricingPage() {
 
   const handleBackup = (section) => {
     const snapshot = getSectionSnapshot(section.key);
-    backupCollectionLocally(section.key, section.collections, {
-      label: t(section.labelKey),
-      percent: snapshot.percent,
-      rounding: snapshot.rounding,
-      silent: true,
+    const sectionName = t(section.labelKey);
+
+    return runAction(section.key, 'backup', async () => {
+      backupCollectionLocally(section.key, section.collections, {
+        label: sectionName,
+        percent: snapshot.percent,
+        rounding: snapshot.rounding,
+        silent: true,
+      });
+      toast.success(t('global.toast.backupSaved', { section: sectionName }));
+      return { success: true, updatedCount: 1 };
     });
-    toast.success(t('global.toast.backupSaved', { section: t(section.labelKey) }));
-    return { success: true, updatedCount: 1 };
   };
 
   const handleRestore = (section) => {
-    const result = restoreCollectionLocally(section.key, {
-      label: t(section.labelKey),
-      silent: true,
-    });
-    if (result?.success) {
-      toast.success(t('global.toast.restoreSuccess', { section: t(section.labelKey) }));
-      return { success: true, updatedCount: result.restoredCount ?? 1 };
-    }
+    const sectionName = t(section.labelKey);
 
-    toast.error(t('global.toast.restoreMissing', { section: t(section.labelKey) }));
-    return { success: false, updatedCount: 0 };
+    return runAction(section.key, 'restore', async () => {
+      const result = restoreCollectionLocally(section.key, { label: sectionName, silent: true });
+      if (result?.success) {
+        toast.success(t('global.toast.restoreSuccess', { section: sectionName }));
+        return { success: true, updatedCount: result.restoredCount ?? 1 };
+      }
+
+      toast.error(t('global.toast.restoreMissing', { section: sectionName }));
+      return { success: false, updatedCount: 0 };
+    });
   };
 
   const formatBackupTimestamp = (timestamp) => {
@@ -262,7 +299,9 @@ export function GlobalPricingPage() {
                     <p className="mt-1 text-sm font-medium text-neutral-800">
                       {formatBackupTimestamp(backupMetadata?.timestamp)}
                     </p>
-                    {backupMetadata?.percent !== null && (
+                    {backupMetadata &&
+                      backupMetadata.percent !== null &&
+                      backupMetadata.percent !== undefined && (
                       <p className="mt-2 text-xs">
                         {t('global.backup.summary', {
                           percent: backupMetadata.percent,
@@ -296,7 +335,7 @@ export function GlobalPricingPage() {
                     variant="secondary"
                     isLoading={isBusy && activeAction === 'backup'}
                     loadingText={t('action.backingUp')}
-                    onClick={() => runAction(section.key, 'backup', () => handleBackup(section))}
+                    onClick={() => handleBackup(section)}
                   >
                     {t('action.backup')}
                   </Button>
@@ -305,9 +344,7 @@ export function GlobalPricingPage() {
                     variant="ghost"
                     isLoading={isBusy && activeAction === 'restore'}
                     loadingText={t('action.restoring')}
-                    onClick={() =>
-                      runAction(section.key, 'restore', () => handleRestore(section))
-                    }
+                    onClick={() => handleRestore(section)}
                   >
                     {t('action.restoreBackup')}
                   </Button>

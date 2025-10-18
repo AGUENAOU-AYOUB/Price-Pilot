@@ -491,6 +491,8 @@ const loadStoredSupplements = () => {
   return supplements;
 };
 
+const SECTION_BACKUP_STORAGE_KEY = 'price-pilot.section-backups';
+
 const SCOPE_COLLECTIONS = {
   global: [],
   bracelets: ['bracelet'],
@@ -521,6 +523,117 @@ const cloneProducts = (products = []) => products.map((product) => cloneProduct(
 const buildCollectionSet = (scope) => {
   const collections = SCOPE_COLLECTIONS[scope] ?? [];
   return new Set(collections.map((collection) => collection.toLowerCase()));
+};
+
+const loadStoredSectionBackups = () => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const stored = window.localStorage.getItem(SECTION_BACKUP_STORAGE_KEY);
+    if (!stored) {
+      return {};
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object') {
+      return {};
+    }
+
+    const normalized = {};
+    for (const [scope, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== 'object') {
+        continue;
+      }
+
+      normalized[scope] = {
+        timestamp: typeof value.timestamp === 'string' ? value.timestamp : null,
+        collections: Array.isArray(value.collections)
+          ? value.collections.map((entry) => String(entry)).filter(Boolean)
+          : [],
+        percent: Number.isFinite(Number(value.percent)) ? Number(value.percent) : null,
+        rounding: typeof value.rounding === 'string' ? value.rounding : null,
+        products: Array.isArray(value.products) ? value.products : [],
+      };
+    }
+
+    return normalized;
+  } catch (error) {
+    console.warn('Failed to load section backups from localStorage:', error);
+    return {};
+  }
+};
+
+const persistSectionBackups = (backups) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(SECTION_BACKUP_STORAGE_KEY, JSON.stringify(backups ?? {}));
+  } catch (error) {
+    console.warn('Failed to persist section backups to localStorage:', error);
+  }
+};
+
+const normalizeCollectionList = (collections) => {
+  if (!collections) {
+    return [];
+  }
+
+  const array = Array.isArray(collections) ? collections : [collections];
+  return array
+    .map((entry) => (entry === null || entry === undefined ? '' : String(entry).trim().toLowerCase()))
+    .filter(Boolean);
+};
+
+const productMatchesCollections = (product, collectionSet) => {
+  if (!(collectionSet instanceof Set) || collectionSet.size === 0) {
+    return true;
+  }
+
+  const key = typeof product?.collection === 'string' ? product.collection.toLowerCase() : '';
+  return collectionSet.has(key);
+};
+
+const captureProductsForCollections = (products, collections) => {
+  const normalized = normalizeCollectionList(collections);
+  if (normalized.length === 0) {
+    return cloneProducts(products);
+  }
+
+  const collectionSet = new Set(normalized);
+  return cloneProducts(
+    products.filter((product) => productMatchesCollections(product, collectionSet)),
+  );
+};
+
+const mergeProductsFromBackup = (currentProducts = [], snapshotProducts = []) => {
+  const snapshotById = new Map(
+    snapshotProducts.map((product) => [product?.id ? String(product.id) : null, cloneProduct(product)]),
+  );
+  snapshotById.delete(null);
+
+  const restoredIds = new Set();
+
+  const merged = currentProducts.map((product) => {
+    const productId = product?.id ? String(product.id) : null;
+    if (!productId || !snapshotById.has(productId)) {
+      return product;
+    }
+
+    restoredIds.add(productId);
+    return cloneProduct(snapshotById.get(productId));
+  });
+
+  for (const [productId, product] of snapshotById.entries()) {
+    if (!restoredIds.has(productId)) {
+      merged.push(cloneProduct(product));
+    }
+  }
+
+  return merged;
 };
 
 const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) => {
@@ -2338,7 +2451,7 @@ export const usePricingStore = create(
       const { products } = get();
 
       return products
-        .filter((product) => product?.status === 'active')
+        .filter((product) => product.status === 'active')
         .filter((product) => productMatchesCollections(product, collectionSet))
         .map((product) => {
           const basePrice = Number(product.basePrice ?? 0);
@@ -3066,6 +3179,7 @@ export const usePricingStore = create(
         updateLabel: options?.updateLabel ?? 'global pricing',
         ...options,
       }),
+
     previewBracelets: () => {
       const { products, supplements } = get();
       return products
