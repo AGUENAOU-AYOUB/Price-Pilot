@@ -108,4 +108,17 @@ export const mockProducts = [
       'Taille de chaine': ['41cm', '45cm', '50cm'],
     },
   },
+  {
+    id: 'earring-1',
+    title: 'Lumen Earrings',
+    collection: 'earring',
+    tags: ['earr'],
+    basePrice: 1750,
+    baseCompareAtPrice: 1950,
+    variants: [],
+    status: 'active',
+    metafields: {
+      'Type de boucle': ['Stud', 'Hoop'],
+    },
+  },
 ];
