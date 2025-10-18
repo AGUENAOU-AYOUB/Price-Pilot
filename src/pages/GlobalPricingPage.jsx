@@ -283,7 +283,9 @@ export function GlobalPricingPage() {
             </form>
 
             <div className="mt-8">
-              <PreviewTable previews={scopePreviews} />
+              <div className="max-h-[32rem] overflow-y-auto pr-1">
+                <PreviewTable previews={scopePreviews} />
+              </div>
             </div>
           </Card>
         );
