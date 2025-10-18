@@ -605,8 +605,81 @@ const captureProductsForCollections = (products, collections) => {
 
   const collectionSet = new Set(normalized);
   return cloneProducts(
-    products.filter((product) => productMatchesCollections(product, collectionSet)),
+    (Array.isArray(products) ? products : []).filter((product) =>
+      productMatchesCollections(product, collectionSet),
+    ),
   );
+};
+
+const summarizeProductForPreview = (product) => ({
+  id: product?.id ? String(product.id) : '',
+  title: product?.title ?? '',
+  handle: product?.handle ?? null,
+  collection: product?.collection ?? null,
+  basePrice: Number(product?.basePrice ?? 0),
+  baseCompareAtPrice: Number(
+    product?.baseCompareAtPrice ?? product?.basePrice ?? 0,
+  ),
+});
+
+const deriveVariantChange = (variant, basePrice, baseCompare, adjustment, rounding) => {
+  const currentPrice = Number(variant?.price ?? basePrice);
+  const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
+  const nextPrice = applyPercentage(currentPrice, adjustment, { rounding });
+  const nextCompare = applyPercentage(currentCompare, adjustment, { rounding });
+
+  const priceChanged = Number.isFinite(currentPrice) ? nextPrice !== currentPrice : false;
+  const compareChanged = Number.isFinite(currentCompare)
+    ? nextCompare !== currentCompare
+    : false;
+
+  let changeType = null;
+  if (priceChanged && compareChanged) {
+    changeType = 'price-compare';
+  } else if (priceChanged) {
+    changeType = 'price';
+  } else if (compareChanged) {
+    changeType = 'compare';
+  }
+
+  return {
+    previousPrice: currentPrice,
+    previousCompareAtPrice: currentCompare,
+    nextPrice,
+    nextCompare,
+    changeType,
+    changed: Boolean(changeType),
+  };
+};
+
+const buildPercentagePreviewEntry = (product, adjustment, rounding) => {
+  const basePrice = Number(product?.basePrice ?? 0);
+  const baseCompare = Number(product?.baseCompareAtPrice ?? product?.basePrice ?? 0);
+  const updatedBasePrice = applyPercentage(basePrice, adjustment, { rounding });
+  const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment, { rounding });
+
+  const variants = (Array.isArray(product?.variants) ? product.variants : []).map((variant) => {
+    const variantId = variant?.id ? String(variant.id) : `${product?.id ?? 'product'}-${variant?.title ?? 'variant'}`;
+    const change = deriveVariantChange(variant, basePrice, baseCompare, adjustment, rounding);
+
+    return {
+      id: variantId,
+      title: variant?.title ?? 'Variant',
+      price: change.nextPrice,
+      compareAtPrice: change.nextCompare,
+      previousPrice: change.previousPrice,
+      previousCompareAtPrice: change.previousCompareAtPrice,
+      status: change.changed ? 'changed' : 'unchanged',
+      changeType: change.changeType,
+    };
+  });
+
+  return {
+    product: summarizeProductForPreview(product),
+    updatedBasePrice,
+    updatedCompareAtPrice,
+    variants,
+  };
 };
 
 const mergeProductsFromBackup = (currentProducts = [], snapshotProducts = []) => {
@@ -2415,7 +2488,7 @@ export const usePricingStore = create(
       const friendly = label ?? scope;
       get().log(`Saved local backup for ${friendly}.`, scope, silent ? 'silent' : 'success');
 
-      return payload;
+      return { ...payload, success: true };
     },
 
     restoreCollectionLocally: (scope, { label, silent = false } = {}) => {
@@ -2448,47 +2521,12 @@ export const usePricingStore = create(
       const normalizedCollections = normalizeCollectionList(collections);
       const collectionSet =
         normalizedCollections.length > 0 ? new Set(normalizedCollections) : null;
-      const { products } = get();
+      const products = Array.isArray(get().products) ? get().products : [];
 
       return products
-        .filter((product) => product.status === 'active')
+        .filter((product) => (product?.status ?? '').toLowerCase() === 'active')
         .filter((product) => productMatchesCollections(product, collectionSet))
-        .map((product) => {
-          const basePrice = Number(product.basePrice ?? 0);
-          const baseCompare = Number(product.baseCompareAtPrice ?? product.basePrice ?? 0);
-          const updatedBasePrice = applyPercentage(basePrice, adjustment, { rounding });
-          const updatedCompareAtPrice = applyPercentage(baseCompare, adjustment, { rounding });
-
-          const variants = (Array.isArray(product.variants) ? product.variants : []).map(
-            (variant) => {
-              const currentPrice = Number(variant?.price ?? basePrice);
-              const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
-              const nextPrice = applyPercentage(currentPrice, adjustment, { rounding });
-              const nextCompare = applyPercentage(currentCompare, adjustment, { rounding });
-              const changed = currentPrice !== nextPrice || currentCompare !== nextCompare;
-
-              return {
-                ...variant,
-                id: variant?.id
-                  ? String(variant.id)
-                  : `${product.id}-${variant?.title ?? 'variant'}`,
-                title: variant?.title ?? 'Variant',
-                price: nextPrice,
-                compareAtPrice: nextCompare,
-                previousPrice: currentPrice,
-                previousCompareAtPrice: currentCompare,
-                status: changed ? 'changed' : 'unchanged',
-              };
-            },
-          );
-
-          return {
-            product,
-            updatedBasePrice,
-            updatedCompareAtPrice,
-            variants,
-          };
-        });
+        .map((product) => buildPercentagePreviewEntry(product, adjustment, rounding));
     },
 
     applyCollectionChange: async (scope, collections = [], percent = 0, options = {}) => {
@@ -2526,7 +2564,7 @@ export const usePricingStore = create(
           return { success: false, reason: 'missing-proxy' };
         }
 
-        const products = get().products;
+        const products = Array.isArray(get().products) ? get().products : [];
         const updatedProducts = [];
         const updatesByProduct = new Map();
         const originalVariantLookup = new Map();
@@ -2551,15 +2589,17 @@ export const usePricingStore = create(
               originalVariantLookup.set(variantId, variant);
             }
 
-            const currentPrice = Number(variant?.price ?? basePrice);
-            const currentCompare = Number(variant?.compareAtPrice ?? baseCompare);
-            const updatedPrice = applyPercentage(currentPrice, adjustment, { rounding });
-            const updatedCompare = applyPercentage(currentCompare, adjustment, { rounding });
+            const change = deriveVariantChange(
+              variant,
+              basePrice,
+              baseCompare,
+              adjustment,
+              rounding,
+            );
+            const updatedPrice = change.nextPrice;
+            const updatedCompare = change.nextCompare;
 
-            if (
-              variantId &&
-              (updatedPrice !== currentPrice || updatedCompare !== currentCompare)
-            ) {
+            if (variantId && change.changed) {
               if (!updatesByProduct.has(product.id)) {
                 updatesByProduct.set(product.id, {
                   productId: product.id,
