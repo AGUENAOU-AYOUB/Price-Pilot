@@ -453,13 +453,51 @@ const pickForsatBaseVariant = (variants, productKind, reqId) => {
   return best.variant;
 };
 
+const pickNecklaceBaseEntry = (candidates = []) => {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return null;
+  }
+
+  let best = null;
+  let bestScore = null;
+
+  for (const entry of candidates) {
+    const sizeKnown = Number.isFinite(entry.size);
+    const diff = sizeKnown ? Math.abs(entry.size - DEFAULT_NECKLACE_SIZE) : Number.POSITIVE_INFINITY;
+    const missingPrice = entry.hasPrice ? 0 : 1;
+    const score = { diff, missingPrice };
+
+    if (
+      !best ||
+      score.diff < bestScore.diff ||
+      (score.diff === bestScore.diff && score.missingPrice < bestScore.missingPrice)
+    ) {
+      best = entry;
+      bestScore = score;
+    }
+  }
+
+  return best;
+};
+
 // ---------- pricing ----------
-const calculateNecklacePrice = (basePrice, chainConfig = {}, size) => {
-  const normalizedSize = Number.isFinite(size) ? size : DEFAULT_NECKLACE_SIZE;
-  const override =
-    chainConfig?.sizes instanceof Map ? chainConfig.sizes.get(normalizedSize) : undefined;
-  if (Number.isFinite(override)) {
-    return basePrice + override;
+const normalizeNecklaceSize = (size) =>
+  Number.isFinite(size) ? size : DEFAULT_NECKLACE_SIZE;
+
+const resolveNecklaceSizeOverride = (chainConfig = {}, size) => {
+  if (chainConfig?.sizes instanceof Map) {
+    const override = chainConfig.sizes.get(size);
+    if (Number.isFinite(override)) {
+      return override;
+    }
+  }
+  return null;
+};
+
+const computeNecklaceIncrement = (chainConfig = {}, size) => {
+  const override = resolveNecklaceSizeOverride(chainConfig, size);
+  if (override !== null) {
+    return override;
   }
 
   const baseSupplementRaw = Number(chainConfig?.supplement);
@@ -467,7 +505,21 @@ const calculateNecklacePrice = (basePrice, chainConfig = {}, size) => {
   const baseSupplement = Number.isFinite(baseSupplementRaw) ? baseSupplementRaw : 0;
   const perCm = Number.isFinite(perCmRaw) ? perCmRaw : 0;
 
-  return basePrice + baseSupplement + (normalizedSize - DEFAULT_NECKLACE_SIZE) * perCm;
+  return baseSupplement + (size - DEFAULT_NECKLACE_SIZE) * perCm;
+};
+
+const calculateNecklacePrice = (basePrice, chainConfig = {}, size) => {
+  const normalizedSize = normalizeNecklaceSize(size);
+  return basePrice + computeNecklaceIncrement(chainConfig, normalizedSize);
+};
+
+const deriveNecklaceBaseFromPrice = (price, chainConfig = {}, size) => {
+  if (!Number.isFinite(price)) {
+    return null;
+  }
+
+  const normalizedSize = normalizeNecklaceSize(size);
+  return price - computeNecklaceIncrement(chainConfig, normalizedSize);
 };
 
 const pricesEqual = (current, target) =>
@@ -685,58 +737,198 @@ app.post('/webhooks/product-update', async (req, res) => {
         }
       }
     } else {
-      const baseVariant = pickForsatBaseVariant(product.variants, productKind, reqId);
-      if (!baseVariant) {
-        log.warn(`[${reqId}] Forsat S base variant missing, skipping`);
-        return res.status(200).json({ skipped: true, reason: 'Forsat S base variant missing' });
-      }
-
-      const basePrice = moneyToNumber(baseVariant.price);
-      const baseCompareAt =
-        baseVariant.compare_at_price != null ? moneyToNumber(baseVariant.compare_at_price) : null;
-      log.debug(`[${reqId}] base variant`, {
-        id: baseVariant.id,
-        title: baseVariant.title,
-        price: basePrice,
-        compareAt: baseCompareAt,
-      });
-
-      for (const variant of product.variants) {
-        if (variant.id === baseVariant.id) {
-          log.debug(`[${reqId}] skip base ${variant.id}`);
-          continue;
+      const productOptions = Array.isArray(product.options) ? product.options : [];
+      const extraOptionIndexSet = new Set();
+      productOptions.forEach((option, idx) => {
+        const normalizedName = normalize(option?.name);
+        if (!normalizedName) {
+          return;
         }
 
+        if (normalizedName === 'chain variants' || normalizedName === 'taille de chaine') {
+          return;
+        }
+
+        const position = Number(option?.position);
+        const index = Number.isFinite(position) ? position : idx + 1;
+        if (index >= 1) {
+          extraOptionIndexSet.add(index);
+        }
+      });
+      const extraOptionIndices = Array.from(extraOptionIndexSet).sort((a, b) => a - b);
+
+      const DEFAULT_CONTEXT_KEY = '__default__';
+      const buildContextKey = (variant) => {
+        if (extraOptionIndices.length === 0) {
+          return { key: DEFAULT_CONTEXT_KEY, labelParts: [] };
+        }
+
+        const labelParts = [];
+        const keyParts = [];
+        for (const optionIndex of extraOptionIndices) {
+          const raw = variant?.[`option${optionIndex}`];
+          labelParts.push(raw ?? '');
+          const normalizedValue = normalize(raw);
+          keyParts.push(normalizedValue || `__empty${optionIndex}`);
+        }
+
+        const key = keyParts.join('::') || DEFAULT_CONTEXT_KEY;
+        return { key, labelParts };
+      };
+
+      const contexts = new Map();
+
+      for (const variant of product.variants) {
         const chainType = identifyChainType(variant, productKind);
         if (!chainType) {
           log.debug(`[${reqId}] skip ${variant.id}: no chainType match for "${variant.title}"`);
           continue;
         }
 
+        const { key, labelParts } = buildContextKey(variant);
+        if (!contexts.has(key)) {
+          const label = labelParts.filter(Boolean).join(' / ') || 'default';
+          contexts.set(key, {
+            key,
+            label,
+            variants: [],
+            baseCandidates: [],
+            baseVariantId: null,
+            basePrice: null,
+            baseCompareAt: null,
+          });
+        }
+
+        const context = contexts.get(key);
+        const hasPrice = variant.price !== null && variant.price !== undefined && variant.price !== '';
+        const hasCompare =
+          variant.compare_at_price !== null &&
+          variant.compare_at_price !== undefined &&
+          variant.compare_at_price !== '';
+        const price = hasPrice ? moneyToNumber(variant.price) : null;
+        const compareAt = hasCompare ? moneyToNumber(variant.compare_at_price) : null;
         const size = extractVariantSize(variant);
-        const targetPrice = calculateNecklacePrice(basePrice, chainType.config, size);
-        const targetCompareAt = baseCompareAt !== null ? baseCompareAt + (targetPrice - basePrice) : null;
 
-        const needsPrice = !pricesEqual(variant.price, targetPrice);
-        const needsCompareAt = !compareAtEqual(variant.compare_at_price, targetCompareAt);
-
-        log.debug(`[${reqId}] variant ${variant.id}`, {
-          title: variant.title,
-          chainKey: chainType.key,
+        const entry = {
+          variant,
+          chainType,
           size,
-          currentPrice: variant.price,
-          targetPrice,
-          currentCompareAt: variant.compare_at_price,
-          targetCompareAt,
-          needsPrice,
-          needsCompareAt,
-        });
+          price,
+          compareAt,
+          hasPrice,
+          hasCompare,
+        };
+        context.variants.push(entry);
+        if (chainType.key === FORSAT_S_KEY) {
+          context.baseCandidates.push(entry);
+        }
+      }
 
-        if (!needsPrice && !needsCompareAt) {
+      if (contexts.size === 0) {
+        log.warn(`[${reqId}] no necklace chain matches, skipping`);
+        return res.status(200).json({ skipped: true, reason: 'No necklace chain matches' });
+      }
+
+      for (const context of contexts.values()) {
+        const baseEntry = pickNecklaceBaseEntry(context.baseCandidates);
+        if (baseEntry) {
+          context.baseVariantId = baseEntry.variant.id;
+          if (baseEntry.hasPrice && Number.isFinite(baseEntry.price)) {
+            context.basePrice = baseEntry.price;
+          }
+          if (baseEntry.hasCompare && Number.isFinite(baseEntry.compareAt)) {
+            context.baseCompareAt = baseEntry.compareAt;
+          }
+        }
+
+        if (!Number.isFinite(context.basePrice)) {
+          for (const entry of context.variants) {
+            if (!entry.hasPrice) {
+              continue;
+            }
+
+            const candidate = deriveNecklaceBaseFromPrice(
+              entry.price,
+              entry.chainType.config,
+              entry.size,
+            );
+            if (Number.isFinite(candidate)) {
+              context.basePrice = candidate;
+              break;
+            }
+          }
+        }
+
+        if (!Number.isFinite(context.basePrice)) {
+          log.warn(`[${reqId}] context=${context.label} missing base price, skipping`);
           continue;
         }
 
-        updates.push({ variant, targetPrice, targetCompareAt });
+        if (!Number.isFinite(context.baseCompareAt)) {
+          let derivedCompare = null;
+          for (const entry of context.variants) {
+            if (!entry.hasCompare) {
+              continue;
+            }
+
+            const candidate = deriveNecklaceBaseFromPrice(
+              entry.compareAt,
+              entry.chainType.config,
+              entry.size,
+            );
+            if (Number.isFinite(candidate)) {
+              derivedCompare = candidate;
+              break;
+            }
+          }
+          context.baseCompareAt = Number.isFinite(derivedCompare) ? derivedCompare : null;
+        }
+
+        log.debug(`[${reqId}] necklace context`, {
+          context: context.label,
+          baseVariantId: context.baseVariantId,
+          basePrice: context.basePrice,
+          baseCompareAt: context.baseCompareAt,
+        });
+
+        for (const entry of context.variants) {
+          if (context.baseVariantId && entry.variant.id === context.baseVariantId) {
+            log.debug(`[${reqId}] skip base ${entry.variant.id} (context=${context.label})`);
+            continue;
+          }
+
+          const targetPrice = calculateNecklacePrice(
+            context.basePrice,
+            entry.chainType.config,
+            entry.size,
+          );
+          const targetCompareAt =
+            context.baseCompareAt !== null
+              ? context.baseCompareAt + (targetPrice - context.basePrice)
+              : null;
+
+          const needsPrice = !pricesEqual(entry.variant.price, targetPrice);
+          const needsCompareAt = !compareAtEqual(entry.variant.compare_at_price, targetCompareAt);
+
+          log.debug(`[${reqId}] variant ${entry.variant.id}`, {
+            title: entry.variant.title,
+            context: context.label,
+            chainKey: entry.chainType.key,
+            size: entry.size,
+            currentPrice: entry.variant.price,
+            targetPrice,
+            currentCompareAt: entry.variant.compare_at_price,
+            targetCompareAt,
+            needsPrice,
+            needsCompareAt,
+          });
+
+          if (!needsPrice && !needsCompareAt) {
+            continue;
+          }
+
+          updates.push({ variant: entry.variant, targetPrice, targetCompareAt });
+        }
       }
     }
 
