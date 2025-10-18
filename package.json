@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "node scripts/run-vite.cjs",
+    "build": "node scripts/build-app.cjs",
+    "preview": "node scripts/run-vite.cjs preview",
     "webhook": "node shopify/webhookServer.js",
     "shopify:proxy": "node shopify/productProxyServer.js"
   },
