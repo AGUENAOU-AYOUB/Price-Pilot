@@ -8,100 +8,6 @@ export const braceletChainTypes = {
   'Chopard M': 1190,
 };
 
-export const necklaceChainTypes = {
-  'Forsat S': {
-    'supplement': 0,
-    'perCm': 25,
-    'sizes': {
-      '41': 0,
-      '45': 180,
-      '50': 280,
-      '55': 380,
-      '60': 560,
-      '70': 780,
-      '80': 980,
-    },
-  },
-  'Forsat M': {
-    'supplement': 450,
-    'perCm': 30,
-    'sizes': {
-      '41': 180,
-      '45': 265,
-      '50': 365,
-      '55': 465,
-      '60': 665,
-      '70': 865,
-      '80': 1065,
-    },
-  },
-  'Forsat L': {
-    'supplement': 990,
-    'perCm': 40,
-    'sizes': {
-      '41': 440,
-      '45': 545,
-      '50': 665,
-      '55': 785,
-      '60': 1005,
-      '70': 1205,
-      '80': 1405,
-    },
-  },
-  'Gourmette S': {
-    'supplement': 990,
-    'perCm': 40,
-    'sizes': {
-      '41': 460,
-      '45': 565,
-      '50': 685,
-      '55': 805,
-      '60': 1025,
-      '70': 1225,
-      '80': 1425,
-    },
-  },
-  'Chopard S': {
-    'supplement': 1250,
-    'perCm': 50,
-    'sizes': {
-      '41': 590,
-      '45': 705,
-      '50': 845,
-      '55': 995,
-      '60': 1255,
-      '70': 1505,
-      '80': 1755,
-    },
-  },
-  'Gourmette M': {
-    'supplement': 1650,
-    'perCm': 60,
-    'sizes': {
-      '41': 790,
-      '45': 925,
-      '50': 1085,
-      '55': 1265,
-      '60': 1585,
-      '70': 1885,
-      '80': 2185,
-    },
-  },
-  'Chopard M': {
-    'supplement': 2390,
-    'perCm': 75,
-    'sizes': {
-      '41': 1090,
-      '45': 1255,
-      '50': 1445,
-      '55': 1665,
-      '60': 2005,
-      '70': 2305,
-      '80': 2605,
-    },
-  },
-};
-
 export const necklaceSizes = [
   41,
   45,
@@ -111,6 +17,32 @@ export const necklaceSizes = [
   70,
   80,
 ];
+
+const DEFAULT_NECKLACE_BASE_SIZE = necklaceSizes[0] ?? 41;
+
+const createNecklaceSizeMap = (supplement, perCm) =>
+  Object.fromEntries(
+    necklaceSizes.map((size) => [
+      String(size),
+      supplement + (size - DEFAULT_NECKLACE_BASE_SIZE) * perCm,
+    ]),
+  );
+
+const createNecklaceConfig = (supplement, perCm) => ({
+  supplement,
+  perCm,
+  sizes: createNecklaceSizeMap(supplement, perCm),
+});
+
+export const necklaceChainTypes = {
+  'Forsat S': createNecklaceConfig(0, 20),
+  'Forsat M': createNecklaceConfig(390, 25),
+  'Forsat L': createNecklaceConfig(790, 35),
+  'Gourmette S': createNecklaceConfig(790, 35),
+  'Chopard S': createNecklaceConfig(990, 45),
+  'Gourmette M': createNecklaceConfig(1290, 55),
+  'Chopard M': createNecklaceConfig(1890, 70),
+};
 
 export const ringBandSupplements = {
   'Small': {
@@ -141,4 +73,3 @@ export const ringSizes = [
 ];
 
 export const HAND_CHAIN_MULTIPLIER = 1.5;
-

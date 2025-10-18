@@ -420,10 +420,12 @@ export const buildBraceletVariants = (product, supplements) => {
 const DEFAULT_NECKLACE_SIZE = necklaceSizes[0] ?? 41;
 
 export const resolveNecklaceSupplement = (data, size) => {
+  const normalizedSize = Number.isFinite(size) ? size : DEFAULT_NECKLACE_SIZE;
+
   if (data && typeof data === 'object') {
     const sizes = data.sizes;
     if (sizes && typeof sizes === 'object') {
-      const direct = sizes[size] ?? sizes[String(size)];
+      const direct = sizes[normalizedSize] ?? sizes[String(normalizedSize)];
       const numericDirect = Number(direct);
       if (Number.isFinite(numericDirect)) {
         return numericDirect;
@@ -431,11 +433,12 @@ export const resolveNecklaceSupplement = (data, size) => {
     }
   }
 
-  const baseSupplement = Number(data?.supplement) || 0;
-  const perCm = Number(data?.perCm) || 0;
-  const delta = size - DEFAULT_NECKLACE_SIZE;
-  const incremental = delta > 0 ? delta * perCm : 0;
-  return baseSupplement + incremental;
+  const baseSupplementRaw = Number(data?.supplement);
+  const perCmRaw = Number(data?.perCm);
+  const baseSupplement = Number.isFinite(baseSupplementRaw) ? baseSupplementRaw : 0;
+  const perCm = Number.isFinite(perCmRaw) ? perCmRaw : 0;
+
+  return baseSupplement + (normalizedSize - DEFAULT_NECKLACE_SIZE) * perCm;
 };
 
 const DEFAULT_GROUP_ENTRY = (product) => ({
