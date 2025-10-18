@@ -436,18 +436,61 @@ const loadStoredSupplements = () => {
   return supplements;
 };
 
+const normalizeScopeValue = (value) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+const buildNormalizedSet = (values = []) => {
+  const normalized = new Set();
+  for (const entry of values) {
+    const scoped = normalizeScopeValue(entry);
+    if (scoped) {
+      normalized.add(scoped);
+    }
+  }
+  return normalized;
+};
+
 const SCOPE_COLLECTIONS = {
   global: [],
-  bracelets: ['bracelet'],
-  necklaces: ['collier'],
-  rings: ['bague'],
-  handchains: ['handchain'],
-  sets: ['ensemble'],
-  others: ['earring', 'handchain', 'ensemble'],
+  bracelets: ['bracelet', 'bracelets'],
+  necklaces: ['collier', 'colliers', 'necklace', 'necklaces'],
+  rings: ['bague', 'bagues', 'ring', 'rings'],
+  handchains: ['handchain', 'handchains', 'hand chain', 'hand-chain'],
+  sets: ['ensemble', 'ensembles', 'set', 'sets'],
+  others: [],
   'azor-archive': [],
 };
 
-const PRIMARY_SCOPE_COLLECTIONS = new Set(['bracelet', 'collier', 'bague']);
+const SCOPE_TAGS = {
+  global: [],
+  bracelets: ['bracelet', 'bracelets', 'brac'],
+  necklaces: ['necklace', 'necklaces', 'collier', 'colliers', 'nckl'],
+  rings: ['ring', 'rings', 'bague', 'bagues', 'rng'],
+  handchains: ['handchain', 'handchains', 'hand chain', 'hand-chain'],
+  sets: ['ensemble', 'ensembles', 'set', 'sets'],
+  others: [],
+  'azor-archive': [],
+};
+
+const SCOPE_COLLECTION_SETS = Object.fromEntries(
+  Object.entries(SCOPE_COLLECTIONS).map(([scope, values]) => [scope, buildNormalizedSet(values)]),
+);
+
+const SCOPE_TAG_SETS = Object.fromEntries(
+  Object.entries(SCOPE_TAGS).map(([scope, values]) => [scope, buildNormalizedSet(values)]),
+);
+
+const PRIMARY_SCOPE_COLLECTIONS = new Set([
+  ...SCOPE_COLLECTION_SETS.bracelets,
+  ...SCOPE_COLLECTION_SETS.necklaces,
+  ...SCOPE_COLLECTION_SETS.rings,
+]);
+
+const PRIMARY_SCOPE_TAGS = new Set([
+  ...SCOPE_TAG_SETS.bracelets,
+  ...SCOPE_TAG_SETS.necklaces,
+  ...SCOPE_TAG_SETS.rings,
+]);
 
 const BACKUP_SCOPES = Object.keys(SCOPE_COLLECTIONS);
 
@@ -508,8 +551,7 @@ const getScopeCopy = (scope) => ({
   ...(SCOPE_COPY[scope] ?? {}),
 });
 
-const normalizeScopeKey = (scope) =>
-  typeof scope === 'string' ? scope.trim().toLowerCase() : '';
+const normalizeScopeKey = (scope) => normalizeScopeValue(scope);
 
 const clampProgressValue = (value) => Math.min(100, Math.max(0, Math.round(value)));
 
@@ -522,13 +564,40 @@ const normalizeProgressValue = (value) => {
   return Number.isFinite(numeric) ? clampProgressValue(numeric) : null;
 };
 
+const matchesTagSet = (tagSet, tags) => {
+  if (!(tagSet instanceof Set) || tagSet.size === 0) {
+    return false;
+  }
+
+  if (!Array.isArray(tags)) {
+    return false;
+  }
+
+  for (const tag of tags) {
+    const normalizedTag = normalizeScopeValue(tag);
+    if (normalizedTag && tagSet.has(normalizedTag)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const isPrimaryScopeProduct = (collectionKey, tags) => {
+  if (PRIMARY_SCOPE_COLLECTIONS.has(collectionKey)) {
+    return true;
+  }
+
+  return matchesTagSet(PRIMARY_SCOPE_TAGS, tags);
+};
+
 const createScopeMatcher = (scope, collectionSet, options = {}) => {
   const normalizedScope = normalizeScopeKey(scope);
   const includeInactive = options.includeInactive ?? false;
   const treatAsGlobal =
-    normalizedScope !== 'others' &&
-    collectionSet instanceof Set &&
-    collectionSet.size === 0;
+    normalizedScope === 'global' ||
+    (normalizedScope !== 'others' && collectionSet instanceof Set && collectionSet.size === 0);
+  const tagSet = SCOPE_TAG_SETS[normalizedScope];
 
   return (product) => {
     if (!product || typeof product !== 'object') {
@@ -542,18 +611,22 @@ const createScopeMatcher = (scope, collectionSet, options = {}) => {
     const productCollection = normalizeScopeKey(product.collection);
 
     if (normalizedScope === 'others') {
-      return !PRIMARY_SCOPE_COLLECTIONS.has(productCollection);
+      return !isPrimaryScopeProduct(productCollection, product.tags);
     }
 
-    if (!(collectionSet instanceof Set)) {
+    if (collectionSet instanceof Set && collectionSet.size > 0) {
+      if (collectionSet.has(productCollection)) {
+        return true;
+      }
+    } else if (treatAsGlobal) {
       return true;
     }
 
-    if (treatAsGlobal) {
+    if (matchesTagSet(tagSet, product.tags)) {
       return true;
     }
 
-    return collectionSet.has(productCollection);
+    return collectionSet instanceof Set && collectionSet.size === 0 ? treatAsGlobal : false;
   };
 };
 
@@ -668,8 +741,8 @@ const cloneProduct = (product) => ({
 const cloneProducts = (products = []) => products.map((product) => cloneProduct(product));
 
 const buildCollectionSet = (scope) => {
-  const collections = SCOPE_COLLECTIONS[scope] ?? [];
-  return new Set(collections.map((collection) => collection.toLowerCase()));
+  const sourceSet = SCOPE_COLLECTION_SETS[scope];
+  return sourceSet ? new Set(sourceSet) : new Set();
 };
 
 const mergeProductsForScope = (currentProducts, remoteProducts, collectionSet) => {
